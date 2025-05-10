@@ -14,7 +14,7 @@ import (
 )
 
 // Version is the current version of the framework
-const Version = "1.0.1"
+const Version = "1.0.2"
 
 // New creates a new router with default configuration
 func New() *router.Router {

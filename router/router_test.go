@@ -427,3 +427,102 @@ func TestServeHTTPWithMiddleware(t *testing.T) {
 		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
 	}
 }
+
+// TestComplexParametersRouting tests routing with multiple path parameters
+func TestComplexParametersRouting(t *testing.T) {
+	const expectedStatus = 200
+	r := New()
+
+	// Define a handler that captures path parameters
+	var capturedParams map[string]string
+	handler := func(c *context.Context) {
+		capturedParams = c.Params
+		c.Writer.WriteHeader(http.StatusOK)
+	}
+
+	// Register routes with complex parameter combinations
+	r.GET("/api/users/:id", handler)
+	r.GET("/api/users/:id/posts/:postId", handler)
+	r.GET("/api/categories/:category/tags/:tag/posts/:postId", handler)
+	r.GET("/api/:version/resources/:resourceType/:resourceId/subresources/:subId", handler)
+
+	// Test case 1: Simple parameter
+	req1 := httptest.NewRequest("GET", "/api/users/123", nil)
+	w1 := httptest.NewRecorder()
+
+	r.ServeHTTP(w1, req1)
+
+	if w1.Code != expectedStatus {
+		t.Errorf("Expected status %d, got %d", expectedStatus, w1.Code)
+	}
+
+	if capturedParams["id"] != "123" {
+		t.Errorf("Expected id='123', got %s", capturedParams["id"])
+	}
+
+	// Test case 2: Multiple parameters
+	req2 := httptest.NewRequest("GET", "/api/users/456/posts/789", nil)
+	w2 := httptest.NewRecorder()
+
+	r.ServeHTTP(w2, req2)
+
+	if w2.Code != expectedStatus {
+		t.Errorf("Expected status %d, got %d", expectedStatus, w2.Code)
+	}
+
+	if capturedParams["id"] != "456" {
+		t.Errorf("Expected id='456', got %s", capturedParams["id"])
+	}
+
+	if capturedParams["postId"] != "789" {
+		t.Errorf("Expected postId='789', got %s", capturedParams["postId"])
+	}
+
+	// Test case 3: Three parameters
+	req3 := httptest.NewRequest("GET", "/api/categories/tech/tags/golang/posts/101", nil)
+	w3 := httptest.NewRecorder()
+
+	r.ServeHTTP(w3, req3)
+
+	if w3.Code != expectedStatus {
+		t.Errorf("Expected status %d, got %d", expectedStatus, w3.Code)
+	}
+
+	if capturedParams["category"] != "tech" {
+		t.Errorf("Expected category='tech', got %s", capturedParams["category"])
+	}
+
+	if capturedParams["tag"] != "golang" {
+		t.Errorf("Expected tag='golang', got %s", capturedParams["tag"])
+	}
+
+	if capturedParams["postId"] != "101" {
+		t.Errorf("Expected postId='101', got %s", capturedParams["postId"])
+	}
+
+	// Test case 4: Four parameters
+	req4 := httptest.NewRequest("GET", "/api/v1/resources/databases/mysql-01/subresources/table1", nil)
+	w4 := httptest.NewRecorder()
+
+	r.ServeHTTP(w4, req4)
+
+	if w4.Code != expectedStatus {
+		t.Errorf("Expected status %d, got %d", expectedStatus, w4.Code)
+	}
+
+	if capturedParams["version"] != "v1" {
+		t.Errorf("Expected version='v1', got %s", capturedParams["version"])
+	}
+
+	if capturedParams["resourceType"] != "databases" {
+		t.Errorf("Expected resourceType='databases', got %s", capturedParams["resourceType"])
+	}
+
+	if capturedParams["resourceId"] != "mysql-01" {
+		t.Errorf("Expected resourceId='mysql-01', got %s", capturedParams["resourceId"])
+	}
+
+	if capturedParams["subId"] != "table1" {
+		t.Errorf("Expected subId='table1', got %s", capturedParams["subId"])
+	}
+}

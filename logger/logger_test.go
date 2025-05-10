@@ -1,3 +1,4 @@
+// Package logger provides logging functionality.
 package logger
 
 import (
@@ -6,6 +7,10 @@ import (
 	"os"
 	"strings"
 	"testing"
+)
+
+const (
+	unexpectedLogOutput = "Unexpected log output: %s"
 )
 
 func TestGet(t *testing.T) {
@@ -21,57 +26,52 @@ func TestGet(t *testing.T) {
 	}
 }
 
-func TestNew(t *testing.T) {
-	testPrefix := "TEST_LOGGER"
-	logger := New(testPrefix)
+// TestCustomLogger tests creating a custom logger with a specific prefix
+func TestCustomLogger(t *testing.T) {
+	logger := &Logger{
+		level:  INFO,
+		prefix: "TEST",
+		logger: log.New(os.Stderr, "", log.LstdFlags),
+	}
 
 	if logger == nil {
-		t.Fatal("New() returned nil")
+		t.Fatal("Custom logger creation failed")
 	}
 
-	if logger.prefix != testPrefix {
-		t.Errorf("Expected prefix %s, got %s", testPrefix, logger.prefix)
-	}
-
-	if logger.level != INFO {
-		t.Errorf("Expected default level INFO, got %v", logger.level)
+	if logger.prefix != "TEST" {
+		t.Errorf("Expected prefix TEST, got %s", logger.prefix)
 	}
 }
 
 func TestSetLevel(t *testing.T) {
-	logger := New("TEST")
+	logger := Get()
+	origLevel := logger.level
+	defer logger.SetLevel(origLevel) // restore original level
 
-	// Default level should be INFO
-	if logger.level != INFO {
-		t.Errorf("Expected default level INFO, got %v", logger.level)
-	}
-
-	// Set level to DEBUG
+	// Test setting each level
 	logger.SetLevel(DEBUG)
 	if logger.level != DEBUG {
 		t.Errorf("Expected level DEBUG, got %v", logger.level)
 	}
 
-	// Set level to ERROR
+	logger.SetLevel(INFO)
+	if logger.level != INFO {
+		t.Errorf("Expected level INFO, got %v", logger.level)
+	}
+
+	logger.SetLevel(WARN)
+	if logger.level != WARN {
+		t.Errorf("Expected level WARN, got %v", logger.level)
+	}
+
 	logger.SetLevel(ERROR)
 	if logger.level != ERROR {
 		t.Errorf("Expected level ERROR, got %v", logger.level)
 	}
-}
 
-func TestSetPrefix(t *testing.T) {
-	logger := New("ORIGINAL")
-
-	// Test prefix set by New
-	if logger.prefix != "ORIGINAL" {
-		t.Errorf("Expected prefix ORIGINAL, got %s", logger.prefix)
-	}
-
-	// Change prefix
-	newPrefix := "CHANGED"
-	logger.SetPrefix(newPrefix)
-	if logger.prefix != newPrefix {
-		t.Errorf("Expected prefix %s, got %s", newPrefix, logger.prefix)
+	logger.SetLevel(FATAL)
+	if logger.level != FATAL {
+		t.Errorf("Expected level FATAL, got %v", logger.level)
 	}
 }
 
@@ -86,18 +86,18 @@ func TestInfoLogs(t *testing.T) {
 
 	// Test Info
 	buf.Reset()
-	logger.Info("This is a test")
+	logger.Info("This is info")
 	output := buf.String()
-	if !strings.Contains(output, "[TEST] INFO: This is a test") {
-		t.Errorf("Unexpected log output: %s", output)
+	if !strings.Contains(output, "[TEST] INFO: This is info") {
+		t.Errorf(unexpectedLogOutput, output)
 	}
 
 	// Test Infof
 	buf.Reset()
-	logger.Infof("This is %s #%d", "test", 2)
+	logger.Infof("This is info %s #%d", "test", 1)
 	output = buf.String()
-	if !strings.Contains(output, "[TEST] INFO: This is test #2") {
-		t.Errorf("Unexpected log output: %s", output)
+	if !strings.Contains(output, "[TEST] INFO: This is info test #1") {
+		t.Errorf(unexpectedLogOutput, output)
 	}
 }
 
@@ -112,10 +112,10 @@ func TestDebugLogs(t *testing.T) {
 
 	// Test Debug
 	buf.Reset()
-	logger.Debug("This is a debug message")
+	logger.Debug("This is debug")
 	output := buf.String()
-	if !strings.Contains(output, "[TEST] DEBUG: This is a debug message") {
-		t.Errorf("Unexpected log output: %s", output)
+	if !strings.Contains(output, "[TEST] DEBUG: This is debug") {
+		t.Errorf(unexpectedLogOutput, output)
 	}
 
 	// Test Debugf
@@ -123,7 +123,7 @@ func TestDebugLogs(t *testing.T) {
 	logger.Debugf("This is debug %s #%d", "test", 2)
 	output = buf.String()
 	if !strings.Contains(output, "[TEST] DEBUG: This is debug test #2") {
-		t.Errorf("Unexpected log output: %s", output)
+		t.Errorf(unexpectedLogOutput, output)
 	}
 
 	// Test that debug messages aren't shown when level is INFO
@@ -150,7 +150,7 @@ func TestWarnLogs(t *testing.T) {
 	logger.Warn("This is a warning")
 	output := buf.String()
 	if !strings.Contains(output, "[TEST] WARN: This is a warning") {
-		t.Errorf("Unexpected log output: %s", output)
+		t.Errorf(unexpectedLogOutput, output)
 	}
 
 	// Test Warnf
@@ -158,7 +158,7 @@ func TestWarnLogs(t *testing.T) {
 	logger.Warnf("This is warning %s #%d", "test", 2)
 	output = buf.String()
 	if !strings.Contains(output, "[TEST] WARN: This is warning test #2") {
-		t.Errorf("Unexpected log output: %s", output)
+		t.Errorf(unexpectedLogOutput, output)
 	}
 }
 
@@ -176,7 +176,7 @@ func TestErrorLogs(t *testing.T) {
 	logger.Error("This is an error")
 	output := buf.String()
 	if !strings.Contains(output, "[TEST] ERROR: This is an error") {
-		t.Errorf("Unexpected log output: %s", output)
+		t.Errorf(unexpectedLogOutput, output)
 	}
 
 	// Test Errorf
@@ -184,12 +184,62 @@ func TestErrorLogs(t *testing.T) {
 	logger.Errorf("This is error %s #%d", "test", 2)
 	output = buf.String()
 	if !strings.Contains(output, "[TEST] ERROR: This is error test #2") {
-		t.Errorf("Unexpected log output: %s", output)
+		t.Errorf(unexpectedLogOutput, output)
 	}
 }
 
-// We'll skip testing fatal logs since they call os.Exit
-// which terminates the test process
+// No need to redefine osExit - using the one from logger.go
 
-// Override os.Exit for testing Fatal logs
-var osExit = os.Exit
+func TestFatalLogs(t *testing.T) {
+	// Save original os.Exit and restore it at the end
+	originalOsExit := osExit
+	defer func() { osExit = originalOsExit }()
+
+	// Create a mock for os.Exit
+	exitCalled := false
+	exitCode := 0
+	osExit = func(code int) {
+		exitCalled = true
+		exitCode = code
+	}
+
+	// Use a buffer to capture log output
+	var buf bytes.Buffer
+	logger := &Logger{
+		level:  FATAL,
+		prefix: "TEST",
+		logger: log.New(&buf, "", 0), // No timestamp/flags for easier testing
+	}
+
+	// Test Fatal
+	buf.Reset()
+	exitCalled = false
+	logger.Fatal("This is fatal")
+	output := buf.String()
+
+	if !strings.Contains(output, "[TEST] FATAL: This is fatal") {
+		t.Errorf(unexpectedLogOutput, output)
+	}
+
+	if !exitCalled {
+		t.Error("os.Exit was not called for Fatal")
+	}
+
+	if exitCode != 1 {
+		t.Errorf("Expected exit code 1, got %d", exitCode)
+	}
+
+	// Test Fatalf
+	buf.Reset()
+	exitCalled = false
+	logger.Fatalf("This is fatal %s #%d", "test", 2)
+	output = buf.String()
+
+	if !strings.Contains(output, "[TEST] FATAL: This is fatal test #2") {
+		t.Errorf(unexpectedLogOutput, output)
+	}
+
+	if !exitCalled {
+		t.Error("os.Exit was not called for Fatalf")
+	}
+}

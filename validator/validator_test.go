@@ -370,3 +370,94 @@ func TestHasErrors(t *testing.T) {
 		t.Error("Validator should have errors")
 	}
 }
+
+// TestArrayOfNestedStructs tests validation of arrays of nested structs
+func TestArrayOfNestedStructs(t *testing.T) {
+	type Address struct {
+		Street  string `json:"street" validate:"required"`
+		City    string `json:"city" validate:"required"`
+		Country string `json:"country" validate:"required"`
+		ZipCode string `json:"zipCode" validate:"required"`
+	}
+
+	type Product struct {
+		ID          int     `json:"id" validate:"min=1"`
+		Name        string  `json:"name" validate:"required"`
+		Price       float64 `json:"price" validate:"min=0.01"`
+		Description string  `json:"description" validate:"max=1000"`
+	}
+
+	type Order struct {
+		ID                int       `json:"id" validate:"min=1"`
+		Products          []Product `json:"products" validate:"required"`
+		ShippingAddresses []Address `json:"shippingAddresses" validate:"required"`
+	}
+
+	v := New()
+
+	// Valid case - everything correctly populated
+	validOrder := Order{
+		ID: 101,
+		Products: []Product{
+			{ID: 1, Name: "Product 1", Price: 19.99, Description: "Description 1"},
+			{ID: 2, Name: "Product 2", Price: 29.99, Description: "Description 2"},
+		},
+		ShippingAddresses: []Address{
+			{Street: "123 Main St", City: "New York", Country: "USA", ZipCode: "10001"},
+		},
+	}
+
+	errors := v.Validate(validOrder)
+	if len(errors) > 0 {
+		t.Errorf("Expected no validation errors for valid order, got %d", len(errors))
+	}
+
+	// Invalid case 1 - invalid product in array
+	invalidProductOrder := Order{
+		ID: 102,
+		Products: []Product{
+			{ID: 1, Name: "Product 1", Price: 19.99, Description: "Description 1"},
+			{ID: 2, Name: "", Price: 29.99, Description: "Description 2"}, // Missing name
+		},
+		ShippingAddresses: []Address{
+			{Street: "123 Main St", City: "New York", Country: "USA", ZipCode: "10001"},
+		},
+	}
+
+	errors = v.Validate(invalidProductOrder)
+	if len(errors) != 1 {
+		t.Errorf("Expected 1 validation error for invalid product name, got %d", len(errors))
+	}
+
+	// Invalid case 2 - invalid address in array
+	invalidAddressOrder := Order{
+		ID: 103,
+		Products: []Product{
+			{ID: 1, Name: "Product 1", Price: 19.99, Description: "Description 1"},
+		},
+		ShippingAddresses: []Address{
+			{Street: "123 Main St", City: "", Country: "USA", ZipCode: "10001"}, // Missing city
+		},
+	}
+
+	errors = v.Validate(invalidAddressOrder)
+	if len(errors) != 1 {
+		t.Errorf("Expected 1 validation error for invalid address city, got %d", len(errors))
+	}
+
+	// Invalid case 3 - multiple validation errors
+	multipleErrorsOrder := Order{
+		ID: 104,
+		Products: []Product{
+			{ID: 0, Name: "", Price: -1, Description: "Description"}, // Multiple errors
+		},
+		ShippingAddresses: []Address{
+			{Street: "", City: "", Country: "", ZipCode: ""}, // All fields missing
+		},
+	}
+
+	errors = v.Validate(multipleErrorsOrder)
+	if len(errors) < 6 { // At least 6 errors (ID, Name, Price, all 4 address fields)
+		t.Errorf("Expected at least 6 validation errors, got %d", len(errors))
+	}
+}

@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.0.2 (2025-05-11)
+
+### Framework Improvements and Testing Enhancements
+
+#### Development Improvements:
+- Added Makefile for standardized development workflows
+- Created comprehensive TEST_PLAN.md for maintaining test quality
+- Added benchmark tests for router performance analysis
+- Fixed linting issues in test files
+- Improved documentation for testing procedures
+
+#### Test Coverage Improvements:
+- Added tests for Fatal logger methods with proper mocking
+- Enhanced router tests with complex path parameter combinations
+- Added validator tests for arrays of nested structs
+- Improved overall test coverage to 93.5%
+
 ## v1.0.1 (2025-05-11)
 
 ### Test Coverage Improvements

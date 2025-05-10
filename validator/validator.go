@@ -86,6 +86,16 @@ func (v *Validator) validateStruct(prefix string, obj interface{}) {
 			continue
 		}
 
+		// Slice validation for struct elements
+		if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.Struct {
+			// Validate each item in the slice
+			for j := 0; j < field.Len(); j++ {
+				item := field.Index(j)
+				itemFieldName := fmt.Sprintf("%s[%d]", fieldName, j)
+				v.validateStruct(itemFieldName, item.Interface())
+			}
+		}
+
 		// Validate by rules
 		rules := strings.Split(validateTag, ",")
 		for _, rule := range rules {

@@ -35,6 +35,7 @@ type Logger struct {
 var (
 	defaultLogger *Logger
 	once          sync.Once
+	osExit        = os.Exit // Variable for overriding os.Exit in tests
 )
 
 // Get returns the default logger
@@ -98,7 +99,7 @@ func (l *Logger) log(level LogLevel, format string, args ...interface{}) {
 	l.logger.Printf("%s %s%s: %s", timestamp, prefix, levelStr, message)
 
 	if level == FATAL {
-		os.Exit(1)
+		osExit(1)
 	}
 }
 

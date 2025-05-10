@@ -4,7 +4,7 @@ This document provides a summary of the test coverage for the GRA Framework.
 
 ## Overall Coverage
 
-- **Total**: 90.2% of statements
+- **Total**: 91.7% of statements
 
 ## Coverage by Package
 
@@ -14,9 +14,9 @@ This document provides a summary of the test coverage for the GRA Framework.
 | adapter    | 100.0%   | ✅ Complete |
 | middleware | 100.0%   | ✅ Complete |
 | router     | 95.7%    | ✅ High     |
+| logger     | 93.9%    | ✅ High     |
 | context    | 90.0%    | ✅ High     |
-| logger     | 87.9%    | ✅ High     |
-| validator  | 82.6%    | 🟡 Good     |
+| validator  | 84.6%    | ✅ High     |
 
 ## Test Summary
 
