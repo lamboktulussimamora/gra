@@ -13,7 +13,7 @@ fi
 
 # Check core.go
 echo -n "Checking core.go... "
-if grep -q "const Version = \"1.0.0\"" /Users/lamboktulussimamora/Projects/gra/core.go; then
+if grep -q "const Version = \"1.0.1\"" /Users/lamboktulussimamora/Projects/gra/gra.go; then
   echo "✓ Version updated"
 else
   echo "✗ Version not updated"

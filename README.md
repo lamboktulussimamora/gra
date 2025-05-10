@@ -1,5 +1,9 @@
 # GRA Framework
 
+[![Test and Coverage](https://github.com/lamboktulussimamora/gra/actions/workflows/test.yml/badge.svg)](https://github.com/lamboktulussimamora/gra/actions/workflows/test.yml)
+[![Coverage Status](https://coveralls.io/repos/github/lamboktulussimamora/gra/badge.svg?branch=main)](https://coveralls.io/github/lamboktulussimamora/gra?branch=main)
+[![Go Report Card](https://goreportcard.com/badge/github.com/lamboktulussimamora/gra)](https://goreportcard.com/report/github.com/lamboktulussimamora/gra)
+
 A lightweight HTTP framework for building web applications in Go, inspired by Gin.
 
 ## Features
@@ -135,6 +139,26 @@ func createUser(c *core.Context) {
 ## Examples
 
 See the `examples` directory for more usage examples.
+
+## Testing
+
+The framework has comprehensive test coverage:
+
+- Overall test coverage: 90.2%
+- Full test coverage for middleware and adapter packages
+- High coverage for router (95.7%), context (90.0%), logger (87.9%), and validator (82.6%)
+
+To run tests:
+
+```bash
+go test ./...
+```
+
+To check test coverage:
+
+```bash
+go test ./... -cover
+```
 
 ## License
 
