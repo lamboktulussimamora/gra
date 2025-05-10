@@ -2,16 +2,19 @@ name: Coverage Report to Pages
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v4
         with:
           go-version: '1.21'
           
@@ -31,7 +34,9 @@ jobs:
           echo "Coverage report generated on $(date)" >> coverage-report/README.md
           
       - name: Deploy to GitHub Pages
-        uses: JamesIves/github-pages-deploy-action@4.1.4
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages
           folder: coverage-report
+          clean: true
+          token: ${{ secrets.GITHUB_TOKEN }}
