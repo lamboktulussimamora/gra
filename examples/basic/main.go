@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/lamboktulussimamora/gra/core"
+	core "github.com/lamboktulussimamora/gra"
 	"github.com/lamboktulussimamora/gra/middleware"
 	"github.com/lamboktulussimamora/gra/validator"
 )

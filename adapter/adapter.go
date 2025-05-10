@@ -16,8 +16,16 @@ func HTTPHandler(f router.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// ServeHTTP implements the http.Handler interface for HandlerFunc
-func (f router.HandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// HandlerAdapter wraps a router.HandlerFunc to implement http.Handler
+type HandlerAdapter router.HandlerFunc
+
+// ServeHTTP implements the http.Handler interface for HandlerAdapter
+func (f HandlerAdapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := context.New(w, r)
-	f(ctx)
+	router.HandlerFunc(f)(ctx)
+}
+
+// AsHTTPHandler converts a router.HandlerFunc to http.Handler
+func AsHTTPHandler(f router.HandlerFunc) http.Handler {
+	return HandlerAdapter(f)
 }
