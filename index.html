@@ -57,7 +57,7 @@
 				
 				<option value="file0">github.com/lamboktulussimamora/gra/adapter/adapter.go (100.0%)</option>
 				
-				<option value="file1">github.com/lamboktulussimamora/gra/context/context.go (90.0%)</option>
+				<option value="file1">github.com/lamboktulussimamora/gra/context/context.go (100.0%)</option>
 				
 				<option value="file2">github.com/lamboktulussimamora/gra/gra.go (100.0%)</option>
 				
@@ -67,7 +67,7 @@
 				
 				<option value="file5">github.com/lamboktulussimamora/gra/router/router.go (95.7%)</option>
 				
-				<option value="file6">github.com/lamboktulussimamora/gra/validator/validator.go (84.6%)</option>
+				<option value="file6">github.com/lamboktulussimamora/gra/validator/validator.go (98.9%)</option>
 				
 				</select>
 			</div>
@@ -162,7 +162,7 @@ func (c *Context) Status(code int) *Context <span class="cov8" title="1">{
 func (c *Context) JSON(status int, obj interface{}) <span class="cov8" title="1">{
         c.Writer.Header().Set("Content-Type", "application/json")
         c.Writer.WriteHeader(status)
-        if err := json.NewEncoder(c.Writer).Encode(obj); err != nil </span><span class="cov0" title="0">{
+        if err := json.NewEncoder(c.Writer).Encode(obj); err != nil </span><span class="cov8" title="1">{
                 log.Printf("Error encoding JSON: %v", err)
         }</span>
 }
@@ -170,7 +170,7 @@ func (c *Context) JSON(status int, obj interface{}) <span class="cov8" title="1"
 // BindJSON binds JSON request body to a struct
 func (c *Context) BindJSON(obj interface{}) error <span class="cov8" title="1">{
         body, err := io.ReadAll(c.Request.Body)
-        if err != nil </span><span class="cov0" title="0">{
+        if err != nil </span><span class="cov8" title="1">{
                 return err
         }</span>
         <span class="cov8" title="1">defer c.Request.Body.Close()
@@ -205,6 +205,19 @@ func (c *Context) GetQuery(key string) string <span class="cov8" title="1">{
         return c.Request.URL.Query().Get(key)
 }</span>
 
+// JSONData sends a JSON response with just the data without wrapping it in APIResponse.
+// Use this when you want to return only the data payload directly, for example:
+// - When you need to conform to a specific API format expected by a client
+// - When you want to return an array directly in the response body
+// - When integrating with systems that expect a simple JSON structure
+func (c *Context) JSONData(status int, data interface{}) <span class="cov8" title="1">{
+        c.Writer.Header().Set("Content-Type", "application/json")
+        c.Writer.WriteHeader(status)
+        if err := json.NewEncoder(c.Writer).Encode(data); err != nil </span><span class="cov8" title="1">{
+                log.Printf("Error encoding JSON: %v", err)
+        }</span>
+}
+
 // WithValue adds a value to the request context
 func (c *Context) WithValue(key, value interface{}) *Context <span class="cov8" title="1">{
         c.ctx = context.WithValue(c.ctx, key, value)
@@ -234,7 +247,7 @@ import (
 )
 
 // Version is the current version of the framework
-const Version = "1.0.2"
+const Version = "1.0.3"
 
 // New creates a new router with default configuration
 func New() *router.Router <span class="cov8" title="1">{
@@ -738,11 +751,11 @@ func (v *Validator) HasErrors() bool <span class="cov8" title="1">{
 func (v *Validator) validateStruct(prefix string, obj interface{}) <span class="cov8" title="1">{
         val := reflect.ValueOf(obj)
 
-        if val.Kind() == reflect.Ptr </span><span class="cov0" title="0">{
+        if val.Kind() == reflect.Ptr </span><span class="cov8" title="1">{
                 val = val.Elem()
         }</span>
 
-        <span class="cov8" title="1">if val.Kind() != reflect.Struct </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if val.Kind() != reflect.Struct </span><span class="cov8" title="1">{
                 return
         }</span>
 
@@ -752,7 +765,7 @@ func (v *Validator) validateStruct(prefix string, obj interface{}) <span class="
                 field := val.Field(i)
                 fieldType := typ.Field(i)
 
-                if fieldType.Anonymous </span><span class="cov0" title="0">{
+                if fieldType.Anonymous </span><span class="cov8" title="1">{
                         // Handle embedded struct
                         v.validateStruct(prefix, field.Interface())
                         continue</span>
@@ -760,7 +773,7 @@ func (v *Validator) validateStruct(prefix string, obj interface{}) <span class="
 
                 // Get json tag name
                 <span class="cov8" title="1">tag := fieldType.Tag.Get("json")
-                if tag == "" || tag == "-" </span><span class="cov0" title="0">{
+                if tag == "" || tag == "-" </span><span class="cov8" title="1">{
                         continue</span>
                 }
 
@@ -833,13 +846,13 @@ func (v *Validator) validateRequired(field reflect.Value, fieldName string) <spa
                 isValid = field.String() != ""</span>
         case reflect.Ptr, reflect.Slice, reflect.Map:<span class="cov8" title="1">
                 isValid = !field.IsNil()</span>
-        case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:<span class="cov0" title="0">
+        case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:<span class="cov8" title="1">
                 isValid = field.Int() != 0</span>
-        case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:<span class="cov0" title="0">
+        case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:<span class="cov8" title="1">
                 isValid = field.Uint() != 0</span>
-        case reflect.Float32, reflect.Float64:<span class="cov0" title="0">
+        case reflect.Float32, reflect.Float64:<span class="cov8" title="1">
                 isValid = field.Float() != 0</span>
-        case reflect.Bool:<span class="cov0" title="0">
+        case reflect.Bool:<span class="cov8" title="1">
                 isValid = field.Bool()</span>
         }
 
@@ -926,10 +939,19 @@ func (v *Validator) validateMax(field reflect.Value, fieldName, arg string) <spa
                                 Message: fmt.Sprintf("%s must be at most %d", fieldName, max),
                         })
                 }</span>
-        case reflect.Float32, reflect.Float64:<span class="cov0" title="0">
+        case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:<span class="cov8" title="1">
+                max := uint64(0)
+                fmt.Sscanf(arg, "%d", &amp;max)
+                if field.Uint() &gt; max </span><span class="cov8" title="1">{
+                        v.errors = append(v.errors, ValidationError{
+                                Field:   fieldName,
+                                Message: fmt.Sprintf("%s must be at most %d", fieldName, max),
+                        })
+                }</span>
+        case reflect.Float32, reflect.Float64:<span class="cov8" title="1">
                 max := float64(0)
                 fmt.Sscanf(arg, "%f", &amp;max)
-                if field.Float() &gt; max </span><span class="cov0" title="0">{
+                if field.Float() &gt; max </span><span class="cov8" title="1">{
                         v.errors = append(v.errors, ValidationError{
                                 Field:   fieldName,
                                 Message: fmt.Sprintf("%s must be at most %f", fieldName, max),
