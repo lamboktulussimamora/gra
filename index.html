@@ -61,13 +61,13 @@
 				
 				<option value="file2">github.com/lamboktulussimamora/gra/gra.go (100.0%)</option>
 				
-				<option value="file3">github.com/lamboktulussimamora/gra/logger/logger.go (87.9%)</option>
+				<option value="file3">github.com/lamboktulussimamora/gra/logger/logger.go (93.9%)</option>
 				
 				<option value="file4">github.com/lamboktulussimamora/gra/middleware/middleware.go (100.0%)</option>
 				
 				<option value="file5">github.com/lamboktulussimamora/gra/router/router.go (95.7%)</option>
 				
-				<option value="file6">github.com/lamboktulussimamora/gra/validator/validator.go (82.6%)</option>
+				<option value="file6">github.com/lamboktulussimamora/gra/validator/validator.go (84.6%)</option>
 				
 				</select>
 			</div>
@@ -234,7 +234,7 @@ import (
 )
 
 // Version is the current version of the framework
-const Version = "1.0.1"
+const Version = "1.0.2"
 
 // New creates a new router with default configuration
 func New() *router.Router <span class="cov8" title="1">{
@@ -293,6 +293,7 @@ type Logger struct {
 var (
         defaultLogger *Logger
         once          sync.Once
+        osExit        = os.Exit // Variable for overriding os.Exit in tests
 )
 
 // Get returns the default logger
@@ -308,7 +309,7 @@ func Get() *Logger <span class="cov8" title="1">{
 }
 
 // New creates a new logger with the specified prefix
-func New(prefix string) *Logger <span class="cov8" title="1">{
+func New(prefix string) *Logger <span class="cov0" title="0">{
         return &amp;Logger{
                 level:  INFO,
                 prefix: prefix,
@@ -322,7 +323,7 @@ func (l *Logger) SetLevel(level LogLevel) <span class="cov8" title="1">{
 }</span>
 
 // SetPrefix sets the log prefix
-func (l *Logger) SetPrefix(prefix string) <span class="cov8" title="1">{
+func (l *Logger) SetPrefix(prefix string) <span class="cov0" title="0">{
         l.prefix = prefix
 }</span>
 
@@ -342,7 +343,7 @@ func (l *Logger) log(level LogLevel, format string, args ...interface{}) <span c
                 levelStr = "WARN"</span>
         case ERROR:<span class="cov8" title="1">
                 levelStr = "ERROR"</span>
-        case FATAL:<span class="cov0" title="0">
+        case FATAL:<span class="cov8" title="1">
                 levelStr = "FATAL"</span>
         }
 
@@ -355,8 +356,8 @@ func (l *Logger) log(level LogLevel, format string, args ...interface{}) <span c
         message := fmt.Sprintf(format, args...)
         l.logger.Printf("%s %s%s: %s", timestamp, prefix, levelStr, message)
 
-        if level == FATAL </span><span class="cov0" title="0">{
-                os.Exit(1)
+        if level == FATAL </span><span class="cov8" title="1">{
+                osExit(1)
         }</span>
 }
 
@@ -401,12 +402,12 @@ func (l *Logger) Errorf(format string, args ...interface{}) <span class="cov8" t
 }</span>
 
 // Fatal logs a message at FATAL level and exits
-func (l *Logger) Fatal(args ...interface{}) <span class="cov0" title="0">{
+func (l *Logger) Fatal(args ...interface{}) <span class="cov8" title="1">{
         l.log(FATAL, "%s", fmt.Sprint(args...))
 }</span>
 
 // Fatalf logs a formatted message at FATAL level and exits
-func (l *Logger) Fatalf(format string, args ...interface{}) <span class="cov0" title="0">{
+func (l *Logger) Fatalf(format string, args ...interface{}) <span class="cov8" title="1">{
         l.log(FATAL, format, args...)
 }</span>
 </pre>
@@ -781,6 +782,16 @@ func (v *Validator) validateStruct(prefix string, obj interface{}) <span class="
                         continue</span>
                 }
 
+                // Slice validation for struct elements
+                <span class="cov8" title="1">if field.Kind() == reflect.Slice &amp;&amp; field.Type().Elem().Kind() == reflect.Struct </span><span class="cov8" title="1">{
+                        // Validate each item in the slice
+                        for j := 0; j &lt; field.Len(); j++ </span><span class="cov8" title="1">{
+                                item := field.Index(j)
+                                itemFieldName := fmt.Sprintf("%s[%d]", fieldName, j)
+                                v.validateStruct(itemFieldName, item.Interface())
+                        }</span>
+                }
+
                 // Validate by rules
                 <span class="cov8" title="1">rules := strings.Split(validateTag, ",")
                 for _, rule := range rules </span><span class="cov8" title="1">{
@@ -820,7 +831,7 @@ func (v *Validator) validateRequired(field reflect.Value, fieldName string) <spa
         switch field.Kind() </span>{
         case reflect.String:<span class="cov8" title="1">
                 isValid = field.String() != ""</span>
-        case reflect.Ptr, reflect.Slice, reflect.Map:<span class="cov0" title="0">
+        case reflect.Ptr, reflect.Slice, reflect.Map:<span class="cov8" title="1">
                 isValid = !field.IsNil()</span>
         case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:<span class="cov0" title="0">
                 isValid = field.Int() != 0</span>
