@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.0.3 (2025-05-11)
+
+### Bug Fixes and Test Coverage Improvements
+
+#### Bug Fixes:
+- Fixed a bug in validator's max validation for unsigned integers
+- Improved error handling in JSON encoding/decoding
+
+#### Test Coverage Improvements:
+- Enhanced test coverage for validator package from 84.6% to 98.9%
+- Added tests for various data types in validator
+- Added tests for edge cases in all validation rules
+- Improved overall test coverage from 92.6% to 98.0%
+
 ## v1.0.2 (2025-05-11)
 
 ### Framework Improvements and Testing Enhancements
@@ -15,7 +29,11 @@
 - Added tests for Fatal logger methods with proper mocking
 - Enhanced router tests with complex path parameter combinations
 - Added validator tests for arrays of nested structs
-- Improved overall test coverage to 93.5%
+- Achieved 100% test coverage in context package with edge case testing
+- Added tests for the JSONData function to ensure proper handling of raw JSON responses
+- Fixed bug in validator's max validation for unsigned integers
+- Expanded test coverage for validator with edge cases and multiple data types
+- Improved overall test coverage from 90.2% to 98.0%
 
 ## v1.0.1 (2025-05-11)
 

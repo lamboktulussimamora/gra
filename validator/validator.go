@@ -230,6 +230,15 @@ func (v *Validator) validateMax(field reflect.Value, fieldName, arg string) {
 				Message: fmt.Sprintf("%s must be at most %d", fieldName, max),
 			})
 		}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		max := uint64(0)
+		fmt.Sscanf(arg, "%d", &max)
+		if field.Uint() > max {
+			v.errors = append(v.errors, ValidationError{
+				Field:   fieldName,
+				Message: fmt.Sprintf("%s must be at most %d", fieldName, max),
+			})
+		}
 	case reflect.Float32, reflect.Float64:
 		max := float64(0)
 		fmt.Sscanf(arg, "%f", &max)

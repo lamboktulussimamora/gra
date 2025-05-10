@@ -2,10 +2,24 @@ package context
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+)
+
+// Test constants
+const (
+	// Error message constants
+	errStatusCode        = "Expected status code %d, got %d"
+	errContentType       = "Expected Content-Type application/json, got %s"
+	errUnmarshalResponse = "Failed to unmarshal response: %v"
+	errResponseValue     = "Expected %v, got %v"
+
+	// HTTP header constants
+	headerContentType = "Content-Type"
+	contentTypeJSON   = "application/json"
 )
 
 func TestNew(t *testing.T) {
@@ -39,7 +53,7 @@ func TestStatus(t *testing.T) {
 	c.Status(http.StatusOK)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
+		t.Errorf(errStatusCode, http.StatusOK, w.Code)
 	}
 }
 
@@ -64,8 +78,8 @@ func TestJSONBasic(t *testing.T) {
 		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
 	}
 
-	contentType := w.Header().Get("Content-Type")
-	if contentType != "application/json" {
+	contentType := w.Header().Get(headerContentType)
+	if contentType != contentTypeJSON {
 		t.Errorf("Expected Content-Type application/json, got %s", contentType)
 	}
 
@@ -218,6 +232,26 @@ func TestBindJSON(t *testing.T) {
 	})
 }
 
+func TestBindJSONReadError(t *testing.T) {
+	// Create a request with a reader that returns an error
+	errReader := &errorReader{err: io.ErrUnexpectedEOF}
+	r := httptest.NewRequest("POST", "/test", errReader)
+	w := httptest.NewRecorder()
+	c := New(w, r)
+
+	var data map[string]interface{}
+	err := c.BindJSON(&data)
+
+	if err == nil {
+		t.Error("Expected an error when reading request body fails, got nil")
+	}
+
+	// Make sure we got the expected error
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("Expected io.ErrUnexpectedEOF error, got: %v", err)
+	}
+}
+
 func TestSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/test", nil)
@@ -357,5 +391,136 @@ func TestValue(t *testing.T) {
 	retrievedValue = c.Value(unknownKeyInstance)
 	if retrievedValue != nil {
 		t.Errorf("Expected nil for non-existent key, got %v", retrievedValue)
+	}
+}
+
+func TestJSONData(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+	c := New(w, r)
+
+	// Test with struct
+	type TestData struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+
+	data := TestData{
+		Name: "Jane",
+		Age:  25,
+	}
+
+	c.JSONData(http.StatusOK, data)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
+	}
+
+	contentType := w.Header().Get(headerContentType)
+	if contentType != contentTypeJSON {
+		t.Errorf("Expected Content-Type application/json, got %s", contentType)
+	}
+
+	var result TestData
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if result.Name != data.Name || result.Age != data.Age {
+		t.Errorf("Expected %v, got %v", data, result)
+	}
+
+	// Test with map
+	w = httptest.NewRecorder()
+	c = New(w, r)
+
+	mapData := map[string]interface{}{
+		"items": []string{"item1", "item2"},
+		"count": 2,
+	}
+
+	c.JSONData(http.StatusCreated, mapData)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("Expected status code %d, got %d", http.StatusCreated, w.Code)
+	}
+
+	var mapResult map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &mapResult); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	// Check items array
+	items, ok := mapResult["items"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected items to be an array")
+	}
+
+	if len(items) != 2 {
+		t.Errorf("Expected 2 items, got %d", len(items))
+	}
+
+	// Check count
+	count, ok := mapResult["count"].(float64) // JSON numbers are float64 in Go
+	if !ok {
+		t.Fatalf("Expected count to be a number")
+	}
+
+	if count != 2 {
+		t.Errorf("Expected count 2, got %v", count)
+	}
+
+	// Ensure no APIResponse wrapper
+	_, hasStatus := mapResult["status"]
+	if hasStatus {
+		t.Error("Response should not contain status field (should not be wrapped in APIResponse)")
+	}
+}
+
+func TestJSONEncodingError(t *testing.T) {
+	// Use our custom writer that always returns error on Write
+	w := newMockErrorWriter()
+	r := httptest.NewRequest("GET", "/test", nil)
+	c := New(w, r)
+
+	data := map[string]string{
+		"key": "value",
+	}
+
+	// This should not panic despite the writer returning an error
+	c.JSON(http.StatusOK, data)
+
+	// Verify headers were set correctly
+	contentType := w.Header().Get(headerContentType)
+	if contentType != contentTypeJSON {
+		t.Errorf(errContentType, contentType)
+	}
+
+	if w.code != http.StatusOK {
+		t.Errorf(errStatusCode, http.StatusOK, w.code)
+	}
+}
+
+func TestJSONDataEncodingError(t *testing.T) {
+	// Use our custom writer that always returns error on Write
+	w := newMockErrorWriter()
+	r := httptest.NewRequest("GET", "/test", nil)
+	c := New(w, r)
+
+	data := map[string]string{
+		"key": "value",
+	}
+
+	// This should not panic despite the writer returning an error
+	c.JSONData(http.StatusCreated, data)
+
+	// Verify headers were set correctly
+	contentType := w.Header().Get(headerContentType)
+	if contentType != contentTypeJSON {
+		t.Errorf(errContentType, contentType)
+	}
+
+	if w.code != http.StatusCreated {
+		t.Errorf(errStatusCode, http.StatusCreated, w.code)
 	}
 }

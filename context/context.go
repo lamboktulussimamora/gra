@@ -89,6 +89,19 @@ func (c *Context) GetQuery(key string) string {
 	return c.Request.URL.Query().Get(key)
 }
 
+// JSONData sends a JSON response with just the data without wrapping it in APIResponse.
+// Use this when you want to return only the data payload directly, for example:
+// - When you need to conform to a specific API format expected by a client
+// - When you want to return an array directly in the response body
+// - When integrating with systems that expect a simple JSON structure
+func (c *Context) JSONData(status int, data interface{}) {
+	c.Writer.Header().Set("Content-Type", "application/json")
+	c.Writer.WriteHeader(status)
+	if err := json.NewEncoder(c.Writer).Encode(data); err != nil {
+		log.Printf("Error encoding JSON: %v", err)
+	}
+}
+
 // WithValue adds a value to the request context
 func (c *Context) WithValue(key, value interface{}) *Context {
 	c.ctx = context.WithValue(c.ctx, key, value)

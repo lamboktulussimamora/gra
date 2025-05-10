@@ -4,7 +4,7 @@ This document provides a summary of the test coverage for the GRA Framework.
 
 ## Overall Coverage
 
-- **Total**: 91.7% of statements
+- **Total**: 98.0% of statements
 
 ## Coverage by Package
 
@@ -15,8 +15,8 @@ This document provides a summary of the test coverage for the GRA Framework.
 | middleware | 100.0%   | ✅ Complete |
 | router     | 95.7%    | ✅ High     |
 | logger     | 93.9%    | ✅ High     |
-| context    | 90.0%    | ✅ High     |
-| validator  | 84.6%    | ✅ High     |
+| context    | 100.0%   | ✅ Complete |
+| validator  | 98.9%    | ✅ Complete |
 
 ## Test Summary
 
@@ -36,6 +36,8 @@ This document provides a summary of the test coverage for the GRA Framework.
 - Tests for JSON serialization/deserialization
 - Tests for error handling and success responses
 - Tests for context value handling
+- Tests for JSONData function (for returning unwrapped JSON responses)
+- Tests for edge cases (JSON encoding errors, IO errors)
 
 ### Logger Package
 - Tests for various log levels (Debug, Info, Warn, Error)
@@ -62,6 +64,9 @@ This document provides a summary of the test coverage for the GRA Framework.
 - Tests for email validation
 - Tests for min/max value validation
 - Tests for nested struct validation
+- Tests for various data types (string, int, uint, float, bool, pointer, slice, map)
+- Tests for embedded structs and JSON tag handling
+- Tests for edge cases and boundary conditions in validation rules
 - Tests for validation error handling
 
 ## Areas for Future Improvement
