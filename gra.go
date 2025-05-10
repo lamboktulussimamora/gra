@@ -1,10 +1,10 @@
-// Package core provides a lightweight HTTP framework for building web applications.
+// Package gra provides a lightweight HTTP framework for building web applications.
 //
 // GRA is a minimalist web framework inspired by Gin, designed for building
 // clean architecture applications in Go. It includes a Context object for handling
 // requests and responses, a Router for URL routing, middleware support, and validation
 // utilities.
-package core
+package gra
 
 import (
 	"net/http"
@@ -14,7 +14,7 @@ import (
 )
 
 // Version is the current version of the framework
-const Version = "1.0.0"
+const Version = "1.0.1"
 
 // New creates a new router with default configuration
 func New() *router.Router {

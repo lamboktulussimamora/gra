@@ -25,7 +25,7 @@ package main
 
 import (
 	"net/http"
-	"github.com/lamboktulussimamora/gra/core"
+	"github.com/lamboktulussimamora/gra"
 	"github.com/lamboktulussimamora/gra/middleware"
 )
 
@@ -35,7 +35,7 @@ type Response struct {
 
 func main() {
 	// Create a new router
-	r := core.New()
+	r := gra.New()
 
 	// Add middleware
 	r.Use(middleware.Logger())
@@ -43,19 +43,19 @@ func main() {
 	r.Use(middleware.CORS("*"))
 
 	// Define routes
-	r.GET("/", func(c *core.Context) {
+	r.GET("/", func(c *gra.Context) {
 		c.Success(http.StatusOK, "Welcome to GRA Framework", Response{
 			Message: "Hello, World!",
 		})
 	})
 
-	r.GET("/hello/:name", func(c *core.Context) {
+	r.GET("/hello/:name", func(c *gra.Context) {
 		name := c.GetParam("name")
 		c.Success(http.StatusOK, "Hello "+name, nil)
 	})
 
 	// Start the server
-	core.Run(":8080", r)
+	gra.Run(":8080", r)
 }
 ```
 

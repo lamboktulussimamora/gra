@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	core "github.com/lamboktulussimamora/gra"
+	"github.com/lamboktulussimamora/gra"
 	"github.com/lamboktulussimamora/gra/middleware"
 	"github.com/lamboktulussimamora/gra/validator"
 )
@@ -20,7 +20,7 @@ type User struct {
 
 func main() {
 	// Create a new router
-	r := core.New()
+	r := gra.New()
 
 	// Add middlewares
 	r.Use(
@@ -30,14 +30,14 @@ func main() {
 	)
 
 	// Set up routes
-	r.GET("/", func(c *core.Context) {
+	r.GET("/", func(c *gra.Context) {
 		c.Success(http.StatusOK, "Welcome to GRA Framework", map[string]interface{}{
-			"version": core.Version,
+			"version": gra.Version,
 			"time":    time.Now(),
 		})
 	})
 
-	r.GET("/users/:id", func(c *core.Context) {
+	r.GET("/users/:id", func(c *gra.Context) {
 		id := c.GetParam("id")
 		c.Success(http.StatusOK, "User found", map[string]interface{}{
 			"id":   id,
@@ -45,7 +45,7 @@ func main() {
 		})
 	})
 
-	r.POST("/users", func(c *core.Context) {
+	r.POST("/users", func(c *gra.Context) {
 		var user User
 		if err := c.BindJSON(&user); err != nil {
 			c.Error(http.StatusBadRequest, "Invalid request body")
@@ -73,5 +73,5 @@ func main() {
 
 	// Start the server
 	fmt.Println("Server running at http://localhost:8080")
-	core.Run(":8080", r)
+	gra.Run(":8080", r)
 }

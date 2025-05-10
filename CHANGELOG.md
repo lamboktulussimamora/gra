@@ -29,3 +29,11 @@ This release marks the official renaming of the framework from "go-core-framewor
 - Middleware support
 - Validation utilities
 - Basic examples
+
+## v0.1.1 (2025-10-05)
+- Renamed the package from `core` to `gra`
+- Renamed the file from `core.go` to `gra.go`
+- Updated all import paths in the examples
+- Updated the README to reflect the new package name
+- Updated examples to use the new package name
+- Updated Quick Start Guide to reflect the new package name

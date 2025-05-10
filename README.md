@@ -25,20 +25,20 @@ package main
 
 import (
 	"net/http"
-	"github.com/lamboktulussimamora/gra/core"
+	"github.com/lamboktulussimamora/gra"
 )
 
 func main() {
 	// Create a new router
-	r := core.New()
+	r := gra.New()
 
 	// Define a route
-	r.GET("/hello", func(c *core.Context) {
+	r.GET("/hello", func(c *gra.Context) {
 		c.Success(http.StatusOK, "Hello World", nil)
 	})
 
 	// Start the server
-	core.Run(":8080", r)
+	gra.Run(":8080", r)
 }
 ```
 
