@@ -127,10 +127,10 @@ import (
 
 // APIResponse is a standardized response structure
 type APIResponse struct {
-        Status  string      `json:"status"`          // "success" or "error"
-        Message string      `json:"message"`         // Human-readable message
-        Data    interface{} `json:"data,omitempty"`  // Optional data payload
-        Error   string      `json:"error,omitempty"` // Error message if status is "error"
+        Status  string `json:"status"`          // "success" or "error"
+        Message string `json:"message"`         // Human-readable message
+        Data    any    `json:"data,omitempty"`  // Optional data payload
+        Error   string `json:"error,omitempty"` // Error message if status is "error"
 }
 
 // Context wraps the HTTP request and response
@@ -159,7 +159,7 @@ func (c *Context) Status(code int) *Context <span class="cov8" title="1">{
 }</span>
 
 // JSON sends a JSON response
-func (c *Context) JSON(status int, obj interface{}) <span class="cov8" title="1">{
+func (c *Context) JSON(status int, obj any) <span class="cov8" title="1">{
         c.Writer.Header().Set("Content-Type", "application/json")
         c.Writer.WriteHeader(status)
         if err := json.NewEncoder(c.Writer).Encode(obj); err != nil </span><span class="cov8" title="1">{
@@ -168,7 +168,7 @@ func (c *Context) JSON(status int, obj interface{}) <span class="cov8" title="1"
 }
 
 // BindJSON binds JSON request body to a struct
-func (c *Context) BindJSON(obj interface{}) error <span class="cov8" title="1">{
+func (c *Context) BindJSON(obj any) error <span class="cov8" title="1">{
         body, err := io.ReadAll(c.Request.Body)
         if err != nil </span><span class="cov8" title="1">{
                 return err
@@ -179,7 +179,7 @@ func (c *Context) BindJSON(obj interface{}) error <span class="cov8" title="1">{
 }
 
 // Success sends a success response
-func (c *Context) Success(status int, message string, data interface{}) <span class="cov8" title="1">{
+func (c *Context) Success(status int, message string, data any) <span class="cov8" title="1">{
         c.JSON(status, APIResponse{
                 Status:  "success",
                 Message: message,
@@ -210,7 +210,7 @@ func (c *Context) GetQuery(key string) string <span class="cov8" title="1">{
 // - When you need to conform to a specific API format expected by a client
 // - When you want to return an array directly in the response body
 // - When integrating with systems that expect a simple JSON structure
-func (c *Context) JSONData(status int, data interface{}) <span class="cov8" title="1">{
+func (c *Context) JSONData(status int, data any) <span class="cov8" title="1">{
         c.Writer.Header().Set("Content-Type", "application/json")
         c.Writer.WriteHeader(status)
         if err := json.NewEncoder(c.Writer).Encode(data); err != nil </span><span class="cov8" title="1">{
@@ -219,14 +219,14 @@ func (c *Context) JSONData(status int, data interface{}) <span class="cov8" titl
 }
 
 // WithValue adds a value to the request context
-func (c *Context) WithValue(key, value interface{}) *Context <span class="cov8" title="1">{
+func (c *Context) WithValue(key, value any) *Context <span class="cov8" title="1">{
         c.ctx = context.WithValue(c.ctx, key, value)
         c.Request = c.Request.WithContext(c.ctx)
         return c
 }</span>
 
 // Value gets a value from the request context
-func (c *Context) Value(key interface{}) interface{} <span class="cov8" title="1">{
+func (c *Context) Value(key any) any <span class="cov8" title="1">{
         return c.ctx.Value(key)
 }</span>
 </pre>
@@ -341,7 +341,7 @@ func (l *Logger) SetPrefix(prefix string) <span class="cov0" title="0">{
 }</span>
 
 // log logs a message at the specified level
-func (l *Logger) log(level LogLevel, format string, args ...interface{}) <span class="cov8" title="1">{
+func (l *Logger) log(level LogLevel, format string, args ...any) <span class="cov8" title="1">{
         if level &lt; l.level </span><span class="cov8" title="1">{
                 return
         }</span>
@@ -375,52 +375,52 @@ func (l *Logger) log(level LogLevel, format string, args ...interface{}) <span c
 }
 
 // Debug logs a message at DEBUG level
-func (l *Logger) Debug(args ...interface{}) <span class="cov8" title="1">{
+func (l *Logger) Debug(args ...any) <span class="cov8" title="1">{
         l.log(DEBUG, "%s", fmt.Sprint(args...))
 }</span>
 
 // Debugf logs a formatted message at DEBUG level
-func (l *Logger) Debugf(format string, args ...interface{}) <span class="cov8" title="1">{
+func (l *Logger) Debugf(format string, args ...any) <span class="cov8" title="1">{
         l.log(DEBUG, format, args...)
 }</span>
 
 // Info logs a message at INFO level
-func (l *Logger) Info(args ...interface{}) <span class="cov8" title="1">{
+func (l *Logger) Info(args ...any) <span class="cov8" title="1">{
         l.log(INFO, "%s", fmt.Sprint(args...))
 }</span>
 
 // Infof logs a formatted message at INFO level
-func (l *Logger) Infof(format string, args ...interface{}) <span class="cov8" title="1">{
+func (l *Logger) Infof(format string, args ...any) <span class="cov8" title="1">{
         l.log(INFO, format, args...)
 }</span>
 
 // Warn logs a message at WARN level
-func (l *Logger) Warn(args ...interface{}) <span class="cov8" title="1">{
+func (l *Logger) Warn(args ...any) <span class="cov8" title="1">{
         l.log(WARN, "%s", fmt.Sprint(args...))
 }</span>
 
 // Warnf logs a formatted message at WARN level
-func (l *Logger) Warnf(format string, args ...interface{}) <span class="cov8" title="1">{
+func (l *Logger) Warnf(format string, args ...any) <span class="cov8" title="1">{
         l.log(WARN, format, args...)
 }</span>
 
 // Error logs a message at ERROR level
-func (l *Logger) Error(args ...interface{}) <span class="cov8" title="1">{
+func (l *Logger) Error(args ...any) <span class="cov8" title="1">{
         l.log(ERROR, "%s", fmt.Sprint(args...))
 }</span>
 
 // Errorf logs a formatted message at ERROR level
-func (l *Logger) Errorf(format string, args ...interface{}) <span class="cov8" title="1">{
+func (l *Logger) Errorf(format string, args ...any) <span class="cov8" title="1">{
         l.log(ERROR, format, args...)
 }</span>
 
 // Fatal logs a message at FATAL level and exits
-func (l *Logger) Fatal(args ...interface{}) <span class="cov8" title="1">{
+func (l *Logger) Fatal(args ...any) <span class="cov8" title="1">{
         l.log(FATAL, "%s", fmt.Sprint(args...))
 }</span>
 
 // Fatalf logs a formatted message at FATAL level and exits
-func (l *Logger) Fatalf(format string, args ...interface{}) <span class="cov8" title="1">{
+func (l *Logger) Fatalf(format string, args ...any) <span class="cov8" title="1">{
         l.log(FATAL, format, args...)
 }</span>
 </pre>
@@ -439,7 +439,7 @@ import (
 
 // JWTAuthenticator defines an interface for JWT token validation
 type JWTAuthenticator interface {
-        ValidateToken(tokenString string) (interface{}, error)
+        ValidateToken(tokenString string) (any, error)
 }
 
 // Auth authenticates requests using JWT
@@ -736,7 +736,7 @@ func New() *Validator <span class="cov8" title="1">{
 }</span>
 
 // Validate validates a struct using tags
-func (v *Validator) Validate(obj interface{}) []ValidationError <span class="cov8" title="1">{
+func (v *Validator) Validate(obj any) []ValidationError <span class="cov8" title="1">{
         v.errors = []ValidationError{}
         v.validateStruct("", obj)
         return v.errors
@@ -748,7 +748,7 @@ func (v *Validator) HasErrors() bool <span class="cov8" title="1">{
 }</span>
 
 // validateStruct recursively validates a struct using validate tags
-func (v *Validator) validateStruct(prefix string, obj interface{}) <span class="cov8" title="1">{
+func (v *Validator) validateStruct(prefix string, obj any) <span class="cov8" title="1">{
         val := reflect.ValueOf(obj)
 
         if val.Kind() == reflect.Ptr </span><span class="cov8" title="1">{
