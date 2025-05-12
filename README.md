@@ -65,7 +65,7 @@ if err := c.BindJSON(&user); err != nil {
 }
 
 // Send JSON response
-c.JSON(http.StatusOK, map[string]interface{}{
+c.JSON(http.StatusOK, map[string]any{
 	"message": "Success",
 })
 
@@ -125,7 +125,7 @@ func createUser(c *core.Context) {
 	v := validator.New()
 	errors := v.Validate(user)
 	if len(errors) > 0 {
-		c.JSON(http.StatusBadRequest, map[string]interface{}{
+		c.JSON(http.StatusBadRequest, map[string]any{
 			"status": "error",
 			"errors": errors,
 		})

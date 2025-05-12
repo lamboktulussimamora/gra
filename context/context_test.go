@@ -239,7 +239,7 @@ func TestBindJSONReadError(t *testing.T) {
 	w := httptest.NewRecorder()
 	c := New(w, r)
 
-	var data map[string]interface{}
+	var data map[string]any
 	err := c.BindJSON(&data)
 
 	if err == nil {
@@ -279,7 +279,7 @@ func TestSuccess(t *testing.T) {
 		t.Errorf("Expected message %s, got %s", message, response.Message)
 	}
 
-	responseData, ok := response.Data.(map[string]interface{})
+	responseData, ok := response.Data.(map[string]any)
 	if !ok {
 		t.Fatal("Failed to convert response data")
 	}
@@ -434,7 +434,7 @@ func TestJSONData(t *testing.T) {
 	w = httptest.NewRecorder()
 	c = New(w, r)
 
-	mapData := map[string]interface{}{
+	mapData := map[string]any{
 		"items": []string{"item1", "item2"},
 		"count": 2,
 	}
@@ -445,13 +445,13 @@ func TestJSONData(t *testing.T) {
 		t.Errorf("Expected status code %d, got %d", http.StatusCreated, w.Code)
 	}
 
-	var mapResult map[string]interface{}
+	var mapResult map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &mapResult); err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
 
 	// Check items array
-	items, ok := mapResult["items"].([]interface{})
+	items, ok := mapResult["items"].([]any)
 	if !ok {
 		t.Fatalf("Expected items to be an array")
 	}

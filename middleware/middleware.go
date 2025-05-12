@@ -12,7 +12,7 @@ import (
 
 // JWTAuthenticator defines an interface for JWT token validation
 type JWTAuthenticator interface {
-	ValidateToken(tokenString string) (interface{}, error)
+	ValidateToken(tokenString string) (any, error)
 }
 
 // Auth authenticates requests using JWT

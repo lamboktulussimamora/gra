@@ -27,7 +27,7 @@ func New() *Validator {
 }
 
 // Validate validates a struct using tags
-func (v *Validator) Validate(obj interface{}) []ValidationError {
+func (v *Validator) Validate(obj any) []ValidationError {
 	v.errors = []ValidationError{}
 	v.validateStruct("", obj)
 	return v.errors
@@ -39,7 +39,7 @@ func (v *Validator) HasErrors() bool {
 }
 
 // validateStruct recursively validates a struct using validate tags
-func (v *Validator) validateStruct(prefix string, obj interface{}) {
+func (v *Validator) validateStruct(prefix string, obj any) {
 	val := reflect.ValueOf(obj)
 
 	if val.Kind() == reflect.Ptr {

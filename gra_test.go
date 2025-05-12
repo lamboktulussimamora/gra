@@ -31,7 +31,7 @@ func TestAliases(t *testing.T) {
 	}
 
 	// Test methods on the Context alias
-	c.Success(http.StatusOK, "Test message", map[string]interface{}{
+	c.Success(http.StatusOK, "Test message", map[string]any{
 		"time": time.Now(),
 	})
 

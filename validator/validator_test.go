@@ -41,7 +41,7 @@ type TestNoValidation struct {
 func TestRequiredValidation(t *testing.T) {
 	tests := []struct {
 		name          string
-		input         interface{}
+		input         any
 		expectedValid bool
 	}{
 		{
@@ -762,7 +762,7 @@ func TestArrayOfNestedStructs(t *testing.T) {
 func TestNonStructValidation(t *testing.T) {
 	tests := []struct {
 		name  string
-		input interface{}
+		input any
 	}{
 		{"String Value", "hello"},
 		{"Integer Value", 123},

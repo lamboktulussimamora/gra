@@ -132,7 +132,7 @@ func TestJSONData(t *testing.T) {
 	w = httptest.NewRecorder()
 	c = New(w, r)
 	
-	mapData := map[string]interface{}{
+	mapData := map[string]any{
 		"items": []string{"item1", "item2"},
 		"count": 2,
 	}
@@ -143,13 +143,13 @@ func TestJSONData(t *testing.T) {
 		t.Errorf(errStatusCode, http.StatusCreated, w.Code)
 	}
 
-	var mapResult map[string]interface{}
+	var mapResult map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &mapResult); err != nil {
 		t.Fatalf(errUnmarshalResponse, err)
 	}
 
 	// Check items array
-	items, ok := mapResult["items"].([]interface{})
+	items, ok := mapResult["items"].([]any)
 	if !ok {
 		t.Fatalf("Expected items to be an array")
 	}
@@ -203,7 +203,7 @@ func TestBindJSONError(t *testing.T) {
 	w := httptest.NewRecorder()
 	c := New(w, r)
 
-	var data map[string]interface{}
+	var data map[string]any
 	err := c.BindJSON(&data)
 
 	if err == nil {
@@ -244,7 +244,7 @@ func TestSuccess(t *testing.T) {
 	}
 
 	// Convert response.Data to map for comparison
-	dataMap, ok := response.Data.(map[string]interface{})
+	dataMap, ok := response.Data.(map[string]any)
 	if !ok {
 		t.Fatalf("Expected data to be a map, got %T", response.Data)
 	}

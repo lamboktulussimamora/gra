@@ -70,7 +70,7 @@ func (l *Logger) SetPrefix(prefix string) {
 }
 
 // log logs a message at the specified level
-func (l *Logger) log(level LogLevel, format string, args ...interface{}) {
+func (l *Logger) log(level LogLevel, format string, args ...any) {
 	if level < l.level {
 		return
 	}
@@ -104,51 +104,51 @@ func (l *Logger) log(level LogLevel, format string, args ...interface{}) {
 }
 
 // Debug logs a message at DEBUG level
-func (l *Logger) Debug(args ...interface{}) {
+func (l *Logger) Debug(args ...any) {
 	l.log(DEBUG, "%s", fmt.Sprint(args...))
 }
 
 // Debugf logs a formatted message at DEBUG level
-func (l *Logger) Debugf(format string, args ...interface{}) {
+func (l *Logger) Debugf(format string, args ...any) {
 	l.log(DEBUG, format, args...)
 }
 
 // Info logs a message at INFO level
-func (l *Logger) Info(args ...interface{}) {
+func (l *Logger) Info(args ...any) {
 	l.log(INFO, "%s", fmt.Sprint(args...))
 }
 
 // Infof logs a formatted message at INFO level
-func (l *Logger) Infof(format string, args ...interface{}) {
+func (l *Logger) Infof(format string, args ...any) {
 	l.log(INFO, format, args...)
 }
 
 // Warn logs a message at WARN level
-func (l *Logger) Warn(args ...interface{}) {
+func (l *Logger) Warn(args ...any) {
 	l.log(WARN, "%s", fmt.Sprint(args...))
 }
 
 // Warnf logs a formatted message at WARN level
-func (l *Logger) Warnf(format string, args ...interface{}) {
+func (l *Logger) Warnf(format string, args ...any) {
 	l.log(WARN, format, args...)
 }
 
 // Error logs a message at ERROR level
-func (l *Logger) Error(args ...interface{}) {
+func (l *Logger) Error(args ...any) {
 	l.log(ERROR, "%s", fmt.Sprint(args...))
 }
 
 // Errorf logs a formatted message at ERROR level
-func (l *Logger) Errorf(format string, args ...interface{}) {
+func (l *Logger) Errorf(format string, args ...any) {
 	l.log(ERROR, format, args...)
 }
 
 // Fatal logs a message at FATAL level and exits
-func (l *Logger) Fatal(args ...interface{}) {
+func (l *Logger) Fatal(args ...any) {
 	l.log(FATAL, "%s", fmt.Sprint(args...))
 }
 
 // Fatalf logs a formatted message at FATAL level and exits
-func (l *Logger) Fatalf(format string, args ...interface{}) {
+func (l *Logger) Fatalf(format string, args ...any) {
 	l.log(FATAL, format, args...)
 }

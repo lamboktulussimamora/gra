@@ -13,10 +13,10 @@ import (
 // MockJWTAuthenticator is a mock implementation of JWTAuthenticator
 type MockJWTAuthenticator struct {
 	ShouldSucceed bool
-	Claims        map[string]interface{}
+	Claims        map[string]any
 }
 
-func (m *MockJWTAuthenticator) ValidateToken(tokenString string) (interface{}, error) {
+func (m *MockJWTAuthenticator) ValidateToken(tokenString string) (any, error) {
 	if !m.ShouldSucceed {
 		return nil, errors.New("invalid token")
 	}
@@ -25,7 +25,7 @@ func (m *MockJWTAuthenticator) ValidateToken(tokenString string) (interface{}, e
 
 func TestAuth(t *testing.T) {
 	// Create mock JWT authenticator
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"userId": "123",
 		"role":   "admin",
 	}
@@ -37,7 +37,7 @@ func TestAuth(t *testing.T) {
 
 	// Create a handler to verify the auth middleware
 	handlerCalled := false
-	var capturedClaims interface{}
+	var capturedClaims any
 	testHandler := func(c *context.Context) {
 		handlerCalled = true
 		capturedClaims = c.Value("user")
@@ -122,7 +122,7 @@ func TestAuth(t *testing.T) {
 				if capturedClaims == nil {
 					t.Error("Expected claims to be added to context, but they weren't")
 				} else {
-					claimsMap, ok := capturedClaims.(map[string]interface{})
+					claimsMap, ok := capturedClaims.(map[string]any)
 					if !ok {
 						t.Error("Claims not of expected type")
 					} else if claimsMap["userId"] != claims["userId"] {

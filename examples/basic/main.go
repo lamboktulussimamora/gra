@@ -35,7 +35,7 @@ func main() {
 
 	// Set up routes
 	r.GET("/", func(c *gra.Context) {
-		c.Success(http.StatusOK, "Welcome to GRA Framework", map[string]interface{}{
+		c.Success(http.StatusOK, "Welcome to GRA Framework", map[string]any{
 			"version": gra.Version,
 			"time":    time.Now(),
 		})
@@ -43,7 +43,7 @@ func main() {
 
 	r.GET("/users/:id", func(c *gra.Context) {
 		id := c.GetParam("id")
-		c.Success(http.StatusOK, "User found", map[string]interface{}{
+		c.Success(http.StatusOK, "User found", map[string]any{
 			"id":   id,
 			"name": "John Doe",
 		})
@@ -60,7 +60,7 @@ func main() {
 		v := validator.New()
 		errors := v.Validate(user)
 		if len(errors) > 0 {
-			c.JSON(http.StatusBadRequest, map[string]interface{}{
+			c.JSON(http.StatusBadRequest, map[string]any{
 				"status": "error",
 				"error":  "Validation failed",
 				"errors": errors,

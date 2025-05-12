@@ -11,10 +11,10 @@ import (
 
 // APIResponse is a standardized response structure
 type APIResponse struct {
-	Status  string      `json:"status"`          // "success" or "error"
-	Message string      `json:"message"`         // Human-readable message
-	Data    interface{} `json:"data,omitempty"`  // Optional data payload
-	Error   string      `json:"error,omitempty"` // Error message if status is "error"
+	Status  string `json:"status"`          // "success" or "error"
+	Message string `json:"message"`         // Human-readable message
+	Data    any    `json:"data,omitempty"`  // Optional data payload
+	Error   string `json:"error,omitempty"` // Error message if status is "error"
 }
 
 // Context wraps the HTTP request and response
@@ -43,7 +43,7 @@ func (c *Context) Status(code int) *Context {
 }
 
 // JSON sends a JSON response
-func (c *Context) JSON(status int, obj interface{}) {
+func (c *Context) JSON(status int, obj any) {
 	c.Writer.Header().Set("Content-Type", "application/json")
 	c.Writer.WriteHeader(status)
 	if err := json.NewEncoder(c.Writer).Encode(obj); err != nil {
@@ -52,7 +52,7 @@ func (c *Context) JSON(status int, obj interface{}) {
 }
 
 // BindJSON binds JSON request body to a struct
-func (c *Context) BindJSON(obj interface{}) error {
+func (c *Context) BindJSON(obj any) error {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		return err
@@ -63,7 +63,7 @@ func (c *Context) BindJSON(obj interface{}) error {
 }
 
 // Success sends a success response
-func (c *Context) Success(status int, message string, data interface{}) {
+func (c *Context) Success(status int, message string, data any) {
 	c.JSON(status, APIResponse{
 		Status:  "success",
 		Message: message,
@@ -94,7 +94,7 @@ func (c *Context) GetQuery(key string) string {
 // - When you need to conform to a specific API format expected by a client
 // - When you want to return an array directly in the response body
 // - When integrating with systems that expect a simple JSON structure
-func (c *Context) JSONData(status int, data interface{}) {
+func (c *Context) JSONData(status int, data any) {
 	c.Writer.Header().Set("Content-Type", "application/json")
 	c.Writer.WriteHeader(status)
 	if err := json.NewEncoder(c.Writer).Encode(data); err != nil {
@@ -103,13 +103,13 @@ func (c *Context) JSONData(status int, data interface{}) {
 }
 
 // WithValue adds a value to the request context
-func (c *Context) WithValue(key, value interface{}) *Context {
+func (c *Context) WithValue(key, value any) *Context {
 	c.ctx = context.WithValue(c.ctx, key, value)
 	c.Request = c.Request.WithContext(c.ctx)
 	return c
 }
 
 // Value gets a value from the request context
-func (c *Context) Value(key interface{}) interface{} {
+func (c *Context) Value(key any) any {
 	return c.ctx.Value(key)
 }
