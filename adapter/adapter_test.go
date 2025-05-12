@@ -121,13 +121,13 @@ func TestHandlerChain(t *testing.T) {
 	// Create a test router.HandlerFunc
 	testHandler := func(c *context.Context) {
 		executionOrder = append(executionOrder, "handler")
-		
+
 		// Check if middleware data was passed correctly
 		value := c.Value("key")
 		if value != "value" {
 			t.Errorf("Expected middleware to set context value 'value', got %v", value)
 		}
-		
+
 		c.Status(http.StatusOK).JSON(http.StatusOK, map[string]string{
 			"message": "success",
 		})

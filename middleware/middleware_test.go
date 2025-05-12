@@ -29,7 +29,7 @@ func TestAuth(t *testing.T) {
 		"userId": "123",
 		"role":   "admin",
 	}
-	
+
 	mockJWT := &MockJWTAuthenticator{
 		ShouldSucceed: true,
 		Claims:        claims,
@@ -92,11 +92,11 @@ func TestAuth(t *testing.T) {
 			// Create test request and response
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("GET", "/protected", nil)
-			
+
 			if tc.authHeader != "" {
 				r.Header.Set("Authorization", tc.authHeader)
 			}
-			
+
 			c := context.New(w, r)
 
 			// Execute middleware and handler
@@ -271,19 +271,19 @@ func TestCORS(t *testing.T) {
 
 			// Check CORS headers
 			headers := w.Header()
-			
+
 			if headers.Get("Access-Control-Allow-Origin") != allowOrigin {
-				t.Errorf("Expected Access-Control-Allow-Origin to be %s, got %s", 
+				t.Errorf("Expected Access-Control-Allow-Origin to be %s, got %s",
 					allowOrigin, headers.Get("Access-Control-Allow-Origin"))
 			}
-			
+
 			if headers.Get("Access-Control-Allow-Methods") != "GET, POST, PUT, DELETE, OPTIONS" {
-				t.Errorf("Expected Access-Control-Allow-Methods to be %s, got %s", 
+				t.Errorf("Expected Access-Control-Allow-Methods to be %s, got %s",
 					"GET, POST, PUT, DELETE, OPTIONS", headers.Get("Access-Control-Allow-Methods"))
 			}
-			
+
 			if headers.Get("Access-Control-Allow-Headers") != "Authorization, Content-Type" {
-				t.Errorf("Expected Access-Control-Allow-Headers to be %s, got %s", 
+				t.Errorf("Expected Access-Control-Allow-Headers to be %s, got %s",
 					"Authorization, Content-Type", headers.Get("Access-Control-Allow-Headers"))
 			}
 		})

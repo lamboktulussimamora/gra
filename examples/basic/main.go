@@ -11,6 +11,10 @@ import (
 	"github.com/lamboktulussimamora/gra/validator"
 )
 
+// User represents a user model
+// with validation tags
+// to ensure required fields are present
+// and email format is valid
 type User struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name" validate:"required"`
