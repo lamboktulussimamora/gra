@@ -788,6 +788,225 @@ func TestNonStructValidation(t *testing.T) {
 	}
 }
 
+// TestRegexpValidation tests the regexp validation rule
+func TestRegexpValidation(t *testing.T) {
+	type RegexpTest struct {
+		PhoneNumber string `json:"phoneNumber" validate:"regexp=^[0-9]{10}$"`
+		PostalCode  string `json:"postalCode" validate:"regexp=^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$"`
+		Username    string `json:"username" validate:"regexp=^[a-zA-Z0-9_]{3,20}$"`
+	}
+
+	tests := []struct {
+		name          string
+		input         RegexpTest
+		expectedValid bool
+		invalidFields []string
+	}{
+		{
+			name: "All Valid",
+			input: RegexpTest{
+				PhoneNumber: "1234567890",
+				PostalCode:  "A1B 2C3",
+				Username:    "user_123",
+			},
+			expectedValid: true,
+		},
+		{
+			name: "Invalid Phone",
+			input: RegexpTest{
+				PhoneNumber: "123456", // Too short
+				PostalCode:  "A1B 2C3",
+				Username:    "user_123",
+			},
+			expectedValid: false,
+			invalidFields: []string{"phoneNumber"},
+		},
+		{
+			name: "Invalid Postal Code",
+			input: RegexpTest{
+				PhoneNumber: "1234567890",
+				PostalCode:  "123 456", // Wrong format
+				Username:    "user_123",
+			},
+			expectedValid: false,
+			invalidFields: []string{"postalCode"},
+		},
+		{
+			name: "Invalid Username",
+			input: RegexpTest{
+				PhoneNumber: "1234567890",
+				PostalCode:  "A1B 2C3",
+				Username:    "user@123", // Invalid character
+			},
+			expectedValid: false,
+			invalidFields: []string{"username"},
+		},
+		{
+			name: "Multiple Invalid Fields",
+			input: RegexpTest{
+				PhoneNumber: "12345", // Too short
+				PostalCode:  "123",   // Wrong format
+				Username:    "u",     // Too short
+			},
+			expectedValid: false,
+			invalidFields: []string{"phoneNumber", "postalCode", "username"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := New()
+			errors := v.Validate(tt.input)
+
+			if tt.expectedValid && len(errors) > 0 {
+				t.Errorf("Expected input to be valid, but got errors: %v", errors)
+			}
+
+			if !tt.expectedValid {
+				if len(errors) == 0 {
+					t.Error("Expected validation errors, but got none")
+				}
+
+				// Check that all expected invalid fields produced errors
+				errorFields := make(map[string]bool)
+				for _, err := range errors {
+					errorFields[err.Field] = true
+				}
+
+				for _, field := range tt.invalidFields {
+					if !errorFields[field] {
+						t.Errorf("Expected error for field %s, but none was reported", field)
+					}
+				}
+			}
+		})
+	}
+
+	// Create a simple struct with regexp validations
+	type User struct {
+		Username string `json:"username" validate:"regexp=[a-z0-9_]{3,16}"`
+		Phone    string `json:"phone" validate:"regexp=[0-9]{10}"`
+	}
+
+	// Test valid case
+	validUser := User{
+		Username: "valid_user123",
+		Phone:    "1234567890",
+	}
+
+	v := New()
+	errors := v.Validate(validUser)
+	if len(errors) > 0 {
+		t.Errorf("Expected valid user to pass validation, got errors: %v", errors)
+	}
+
+	// Test invalid username
+	invalidUser := User{
+		Username: "Invalid@User", // Contains invalid characters
+		Phone:    "1234567890",
+	}
+
+	errors = v.Validate(invalidUser)
+	if len(errors) == 0 {
+		t.Error("Expected validation error for invalid username, got none")
+	} else if len(errors) > 0 && errors[0].Field != "username" {
+		t.Errorf("Expected error for username field, got error for %s", errors[0].Field)
+	}
+
+	// Test invalid phone
+	invalidPhone := User{
+		Username: "valid_user",
+		Phone:    "123", // Too short
+	}
+
+	errors = v.Validate(invalidPhone)
+	if len(errors) == 0 {
+		t.Error("Expected validation error for invalid phone, got none")
+	} else if len(errors) > 0 && errors[0].Field != "phone" {
+		t.Errorf("Expected error for phone field, got error for %s", errors[0].Field)
+	}
+}
+
+// TestSimpleRegexpValidation tests the regexp validation rule
+func TestSimpleRegexpValidation(t *testing.T) {
+	// Create a struct with a single field using regexp validation
+	type SimpleRegexp struct {
+		Code string `json:"code" validate:"regexp=^[A-Z]{3}$"` // Exactly 3 uppercase letters
+	}
+
+	v := New()
+
+	// Test valid value
+	valid := SimpleRegexp{Code: "ABC"}
+	if errs := v.Validate(valid); len(errs) > 0 {
+		t.Errorf("Expected valid code 'ABC' to pass validation, got errors: %v", errs)
+	}
+
+	// Test invalid value
+	invalid := SimpleRegexp{Code: "123"}
+	if errs := v.Validate(invalid); len(errs) == 0 {
+		t.Error("Expected '123' to fail validation, but got no errors")
+	}
+}
+
+// TestBatchValidation tests the batch validation functionality
+func TestBatchValidation(t *testing.T) {
+	type Item struct {
+		Name  string `json:"name" validate:"required"`
+		Price int    `json:"price" validate:"min=1"`
+	}
+
+	items := []any{
+		Item{Name: "Valid Item", Price: 100},
+		Item{Name: "", Price: 200},        // Missing name
+		Item{Name: "Low Price", Price: 0}, // Price below minimum
+		Item{Name: "", Price: 0},          // Multiple errors
+	}
+
+	v := New()
+	results := v.ValidateBatch(items)
+
+	// Check if we have the correct number of results
+	if len(results) != len(items) {
+		t.Errorf("Expected %d results, got %d", len(items), len(results))
+	}
+
+	// First item should be valid
+	if len(results[0].Errors) != 0 {
+		t.Errorf("Expected item 0 to be valid, but got %d errors", len(results[0].Errors))
+	}
+
+	// Second item should have one error (name)
+	if len(results[1].Errors) != 1 {
+		t.Errorf("Expected item 1 to have 1 error, got %d", len(results[1].Errors))
+	} else if results[1].Errors[0].Field != "name" {
+		t.Errorf("Expected error on 'name' field, got '%s'", results[1].Errors[0].Field)
+	}
+
+	// Third item should have one error (price)
+	if len(results[2].Errors) != 1 {
+		t.Errorf("Expected item 2 to have 1 error, got %d", len(results[2].Errors))
+	} else if results[2].Errors[0].Field != "price" {
+		t.Errorf("Expected error on 'price' field, got '%s'", results[2].Errors[0].Field)
+	}
+
+	// Fourth item should have two errors (name and price)
+	if len(results[3].Errors) != 2 {
+		t.Errorf("Expected item 3 to have 2 errors, got %d", len(results[3].Errors))
+	}
+
+	// Test HasBatchErrors
+	if !v.HasBatchErrors(results) {
+		t.Error("Expected HasBatchErrors to return true")
+	}
+
+	// Test FilterInvalid
+	invalid := v.FilterInvalid(results)
+	if len(invalid) != 3 {
+		t.Errorf("Expected 3 invalid results, got %d", len(invalid))
+	}
+}
+
 // TestPointerStructValidation tests validation of pointer to struct
 func TestPointerStructValidation(t *testing.T) {
 	// Valid case - pointer to struct with all fields valid

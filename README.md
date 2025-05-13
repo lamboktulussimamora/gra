@@ -113,6 +113,8 @@ type User struct {
 	Name     string `json:"name" validate:"required"`
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=6"`
+	Role     string `json:"role" validate:"enum=user,admin,guest"`
+	Phone    string `json:"phone" validate:"regexp=^[0-9]{10}$"`
 }
 
 func createUser(c *core.Context) {
@@ -133,6 +135,58 @@ func createUser(c *core.Context) {
 	}
 
 	// Process validated user...
+}
+```
+
+### Validation Rules
+
+The validator supports the following validation rules:
+
+- `required`: Field cannot be empty/zero
+- `email`: Field must be a valid email address
+- `min=X`: String length or number value must be at least X
+- `max=X`: String length or number value must be at most X
+- `regexp=pattern`: String must match the specified regular expression pattern
+- `enum=val1,val2,val3`: String must be one of the specified values
+- `range=min,max`: Number must be within the specified inclusive range
+
+### Custom Error Messages
+
+You can specify custom error messages for validation rules:
+
+```go
+type Product struct {
+    Name  string `json:"name" validate:"required|Name is mandatory"`
+    Price int    `json:"price" validate:"range=1,10000|Price must be between $1 and $10,000"`
+}
+```
+
+### Batch Validation
+
+You can validate multiple objects at once:
+
+```go
+// Products to validate
+products := []any{
+    Product{Name: "Product 1", Price: 100},
+    Product{Name: "", Price: -5},  // Invalid
+    Product{Name: "Product 3", Price: 9999},
+}
+
+v := validator.New()
+results := v.ValidateBatch(products)
+
+// Check if any validation errors
+if v.HasBatchErrors(results) {
+    // Get only invalid results
+    invalid := v.FilterInvalid(results)
+    
+    for _, result := range invalid {
+        fmt.Printf("Item at index %d has %d errors\n", result.Index, len(result.Errors))
+        for _, err := range result.Errors {
+            fmt.Printf("  - Field: %s, Error: %s\n", err.Field, err.Message)
+        }
+    }
 }
 ```
 
