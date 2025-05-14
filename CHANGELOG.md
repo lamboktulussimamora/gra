@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.0.4 (2025-05-14)
+
+### Feature Enhancements
+
+#### New Features:
+- Added API versioning package with multiple strategies (path, query, header, media type)
+- Implemented HTTP response caching middleware with ETag support
+- Added versioning and caching example application
+
+#### Documentation:
+- Updated README.md with comprehensive documentation for new features
+- Created ENHANCEMENT_SUMMARY.md with details of implementations
+- Added example code for both versioning and caching features
+
 ## v1.0.3 (2025-05-11)
 
 ### Bug Fixes and Test Coverage Improvements

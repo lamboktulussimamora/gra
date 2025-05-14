@@ -10,6 +10,8 @@ A lightweight HTTP framework for building web applications in Go, inspired by Gi
 
 - Context-based request handling
 - HTTP routing with path parameters
+- API versioning support
+- Response caching
 - Middleware support
 - Request validation
 - Standardized API responses
@@ -90,6 +92,31 @@ r.GET("/users/:id", getUser)
 r.PUT("/users/:id", updateUser)
 r.DELETE("/users/:id", deleteUser)
 ```
+
+### Route Groups
+
+You can group routes with a common prefix:
+
+```go
+// Create an API group
+api := r.Group("/api")
+
+// Add routes to the group
+api.GET("/users", listUsers)
+api.POST("/users", createUser)
+
+// Create nested groups
+v1 := api.Group("/v1")
+v1.GET("/products", listProductsV1)
+
+v2 := api.Group("/v2") 
+v2.GET("/products", listProductsV2)
+```
+
+The above code will create these routes:
+- `/api/users` (GET, POST)
+- `/api/v1/products` (GET)
+- `/api/v2/products` (GET)
 
 ## Middleware
 
@@ -212,6 +239,163 @@ To check test coverage:
 
 ```bash
 go test ./... -cover
+```
+
+## API Versioning
+
+API versioning helps you maintain backward compatibility while evolving your API. The versioning package provides multiple strategies for API versioning:
+
+```go
+import (
+    "github.com/lamboktulussimamora/gra/versioning"
+)
+
+// Create a new router
+r := gra.New()
+
+// Set up versioning with URL path strategy (default)
+// This will handle URLs like /v1/users, /v2/users, etc.
+v := versioning.New().
+    WithSupportedVersions("1", "2").
+    WithDefaultVersion("1")
+
+// Apply versioning middleware
+r.Use(v.Middleware())
+```
+
+### Versioning Strategies
+
+You can choose from different versioning strategies:
+
+#### Path Versioning
+
+Uses the URL path to specify the version:
+
+```go
+// /v1/users, /v2/users, etc.
+v := versioning.New().
+    WithStrategy(&versioning.PathVersionStrategy{Prefix: "v"})
+```
+
+#### Query Parameter Versioning
+
+Uses a query parameter to specify the version:
+
+```go
+// /users?version=1, /users?v=2, etc.
+v := versioning.New().
+    WithStrategy(&versioning.QueryVersionStrategy{ParamName: "version"})
+```
+
+#### Header Versioning
+
+Uses a custom HTTP header to specify the version:
+
+```go
+// HTTP Header: Accept-Version: 1
+v := versioning.New().
+    WithStrategy(&versioning.HeaderVersionStrategy{HeaderName: "Accept-Version"})
+```
+
+#### Media Type Versioning
+
+Uses the Accept header with vendor media type to specify the version:
+
+```go
+// HTTP Header: Accept: application/vnd.api.v1+json
+v := versioning.New().
+    WithStrategy(&versioning.MediaTypeVersionStrategy{MediaTypePrefix: "application/vnd."})
+```
+
+### Accessing Version Information
+
+You can access the API version in your handlers:
+
+```go
+func getUser(c *gra.Context) {
+    // Get version info
+    versionInfo, exists := versioning.GetAPIVersion(c)
+    if exists {
+        fmt.Println("API Version:", versionInfo.Version)
+    }
+    
+    // Handle request normally...
+}
+```
+
+## Response Caching
+
+The cache middleware improves performance by caching responses to GET requests:
+
+```go
+import (
+    "github.com/lamboktulussimamora/gra/cache"
+)
+
+// Create a new router
+r := gra.New()
+
+// Add cache middleware with default settings (5-minute TTL)
+r.Use(cache.New())
+```
+
+### Custom Cache Configuration
+
+Configure caching behavior:
+
+```go
+// Create a custom cache configuration
+config := cache.DefaultCacheConfig()
+config.TTL = time.Minute * 10  // Set TTL to 10 minutes
+config.Methods = []string{http.MethodGet, http.MethodHead}  // Cache GET and HEAD requests
+config.MaxBodySize = 5 * 1024 * 1024  // Increase max cache size to 5MB
+
+// Use custom configuration
+r.Use(cache.WithConfig(config))
+```
+
+### Cache Stores
+
+The default in-memory store works for single-instance applications. For distributed applications, you can implement the `CacheStore` interface:
+
+```go
+type MyCacheStore struct {
+    // Your implementation details
+}
+
+// Implement the CacheStore interface methods
+func (s *MyCacheStore) Get(key string) (*cache.CacheEntry, bool) {
+    // Your implementation
+}
+
+func (s *MyCacheStore) Set(key string, entry *cache.CacheEntry, ttl time.Duration) {
+    // Your implementation
+}
+
+func (s *MyCacheStore) Delete(key string) {
+    // Your implementation
+}
+
+func (s *MyCacheStore) Clear() {
+    // Your implementation
+}
+
+// Use your custom store
+config := cache.DefaultCacheConfig()
+config.Store = &MyCacheStore{}
+r.Use(cache.WithConfig(config))
+```
+
+### Cache Control
+
+Manually control cache behavior:
+
+```go
+// Clear entire cache
+cache.ClearCache(myStore)
+
+// Invalidate specific entry
+cache.InvalidateCache(myStore, "GET:/api/users/123")
 ```
 
 ## License
