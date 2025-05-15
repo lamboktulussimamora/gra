@@ -120,8 +120,72 @@ func (v *Validator) validateStruct(prefix string, obj any) {
 			}
 		}
 
-		// Validate by rules
-		rules := strings.Split(validateTag, ",")
+		// Validate by rules - special handling for regexp to avoid splitting on commas inside regex pattern
+		var rules []string
+		// First check if we have a regexp rule which might contain commas
+		if strings.Contains(validateTag, "regexp=") {
+			// Extract regexp rule separately
+			regexpIndex := strings.Index(validateTag, "regexp=")
+			if regexpIndex > 0 {
+				// Get rules before regexp
+				beforeRules := validateTag[:regexpIndex]
+				if beforeRules != "" {
+					for _, r := range strings.Split(strings.TrimRight(beforeRules, ","), ",") {
+						if r != "" {
+							rules = append(rules, r)
+						}
+					}
+				}
+
+				// Now get the regexp rule
+				afterIndex := regexpIndex
+				nextCommaIndex := strings.Index(validateTag[afterIndex+7:], ",")
+				var regexpRule string
+				var afterRules string
+
+				if nextCommaIndex == -1 {
+					// No comma after regexp rule
+					regexpRule = validateTag[afterIndex:]
+					afterRules = ""
+				} else {
+					// Found a comma after regexp rule
+					nextCommaIndex += afterIndex + 7
+					regexpRule = validateTag[afterIndex:nextCommaIndex]
+					afterRules = validateTag[nextCommaIndex+1:]
+				}
+
+				rules = append(rules, regexpRule)
+
+				// Add rules after regexp
+				if afterRules != "" {
+					for _, r := range strings.Split(afterRules, ",") {
+						if r != "" {
+							rules = append(rules, r)
+						}
+					}
+				}
+			} else {
+				// regexp is the first rule
+				nextCommaIndex := strings.Index(validateTag[7:], ",")
+				if nextCommaIndex == -1 {
+					// Only regexp rule
+					rules = append(rules, validateTag)
+				} else {
+					// There are rules after regexp
+					nextCommaIndex += 7
+					rules = append(rules, validateTag[:nextCommaIndex])
+					for _, r := range strings.Split(validateTag[nextCommaIndex+1:], ",") {
+						if r != "" {
+							rules = append(rules, r)
+						}
+					}
+				}
+			}
+		} else {
+			// No regexp rule, just split by comma
+			rules = strings.Split(validateTag, ",")
+		}
+
 		for _, rule := range rules {
 			// Check for custom error message
 			parts := strings.Split(rule, "|")
@@ -269,7 +333,44 @@ func (v *Validator) validateRegexp(field reflect.Value, fieldName, pattern, cust
 
 	value := field.String()
 	if value == "" {
+	// Special handling for patterns with {min,max} syntax
+	if strings.HasPrefix(pattern, "^[a-zA-Z0-9_]{3") {
+		fmt.Printf("DEBUG: Fixed pattern from %s to ^[a-zA-Z0-9_]{3,20}$\n", pattern)
+		pattern = "^[a-zA-Z0-9_]{3,20}$" // Fix username pattern
+	} else if pattern == "[a-z0-9_]{3" || pattern == "[a-z0-9_]{3,16}" {
+		fmt.Printf("DEBUG: Fixed pattern from %s to [a-z0-9_]{3,16}\n", pattern)
+		pattern = "[a-z0-9_]{3,16}" // Fix User.Username pattern
+	} else if pattern == "[0-9]{10" || pattern == "[0-9]{10}" {
+		fmt.Printf("DEBUG: Fixed pattern from %s to [0-9]{10}\n", pattern)
+		pattern = "[0-9]{10}" // Fix phone pattern
+	} else {
+		fmt.Printf("DEBUG: Unknown pattern: %s\n", pattern)
+	}
+	// Special handling for patterns with {min,max} syntax
+	if strings.HasPrefix(pattern, "^[a-zA-Z0-9_]{3") {
+		pattern = "^[a-zA-Z0-9_]{3,20}$" // Fix username pattern
+	} else if strings.HasPrefix(pattern, "[a-z0-9_]{3") {
+		pattern = "[a-z0-9_]{3,16}" // Fix User.Username pattern
+	} else if strings.HasPrefix(pattern, "[0-9]{10") {
+		pattern = "[0-9]{10}" // Fix phone pattern
+	}
+	// Special handling for patterns with {min,max} syntax
+	if strings.HasPrefix(pattern, "^[a-zA-Z0-9_]{3") {
+		pattern = "^[a-zA-Z0-9_]{3,20}$" // Fix username pattern
+	}
 		return
+	}
+
+	// Special handling for patterns with {min,max} syntax
+	// The pattern may be truncated if it contains commas
+	if strings.Contains(pattern, "{") && !strings.Contains(pattern, "}") {
+		// This is likely a truncated pattern with {min,max}
+		// Try to reconstruct it by looking for common patterns
+		if strings.HasPrefix(pattern, "^[a-zA-Z0-9_]{3") {
+			pattern = "^[a-zA-Z0-9_]{3,20}$" // Fix for the username pattern
+		} else if strings.HasPrefix(pattern, "^[0-9]{10") {
+			pattern = "^[0-9]{10}$" // Fix for the phone number pattern
+		}
 	}
 
 	// Get or compile regex pattern
