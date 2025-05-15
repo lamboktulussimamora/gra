@@ -124,7 +124,7 @@ func (s *Server) setupRoutes() {
 	// Direct routes for public endpoints
 	s.app.GET("/", s.handleHome)
 	s.app.POST("/login", s.handleLogin)
-	
+
 	// API routes with authentication
 	s.app.GET("/api/profile", s.withMiddlewares(
 		s.handleGetProfile,
@@ -133,7 +133,7 @@ func (s *Server) setupRoutes() {
 		middleware.SecureHeaders(),
 		middleware.Auth(s, "user"),
 	))
-	
+
 	// Admin routes with additional middleware
 	s.app.GET("/api/admin/dashboard", s.withMiddlewares(
 		s.handleAdminDashboard,
