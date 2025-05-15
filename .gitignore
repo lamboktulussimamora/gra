@@ -4,6 +4,8 @@
 *.dll
 *.so
 *.dylib
+examples/*/auth-and-security
+examples/*/versioning-and-cache
 
 # Test binary, built with `go test -c`
 *.test
