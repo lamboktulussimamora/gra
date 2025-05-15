@@ -27,6 +27,13 @@ type Router struct {
 	middlewares      []Middleware
 	notFound         HandlerFunc
 	methodNotAllowed HandlerFunc
+	prefix           string // Path prefix for the router
+}
+
+// Group creates a new Router instance with a path prefix
+type Group struct {
+	router *Router // Parent router
+	prefix string  // Path prefix for this group
 }
 
 // New creates a new router
@@ -40,6 +47,7 @@ func New() *Router {
 		methodNotAllowed: func(c *context.Context) {
 			c.Error(http.StatusMethodNotAllowed, "Method not allowed")
 		},
+		prefix: "",
 	}
 }
 
@@ -77,6 +85,21 @@ func (r *Router) DELETE(path string, handler HandlerFunc) {
 	r.Handle(http.MethodDelete, path, handler)
 }
 
+// PATCH registers a new PATCH route
+func (r *Router) PATCH(path string, handler HandlerFunc) {
+	r.Handle(http.MethodPatch, path, handler)
+}
+
+// HEAD registers a new HEAD route
+func (r *Router) HEAD(path string, handler HandlerFunc) {
+	r.Handle(http.MethodHead, path, handler)
+}
+
+// OPTIONS registers a new OPTIONS route
+func (r *Router) OPTIONS(path string, handler HandlerFunc) {
+	r.Handle(http.MethodOptions, path, handler)
+}
+
 // SetNotFound sets the not found handler
 func (r *Router) SetNotFound(handler HandlerFunc) {
 	r.notFound = handler
@@ -85,6 +108,82 @@ func (r *Router) SetNotFound(handler HandlerFunc) {
 // SetMethodNotAllowed sets the method not allowed handler
 func (r *Router) SetMethodNotAllowed(handler HandlerFunc) {
 	r.methodNotAllowed = handler
+}
+
+// Group creates a new route group
+func (r *Router) Group(prefix string) *Group {
+	return &Group{
+		router: r,
+		prefix: normalizePrefix(prefix),
+	}
+}
+
+// Use adds middleware to the group
+func (g *Group) Use(middleware ...Middleware) *Group {
+	g.router.middlewares = append(g.router.middlewares, middleware...)
+	return g
+}
+
+// GET adds a GET route to the group
+func (g *Group) GET(path string, handler HandlerFunc) {
+	g.router.GET(g.prefix+path, handler)
+}
+
+// POST adds a POST route to the group
+func (g *Group) POST(path string, handler HandlerFunc) {
+	g.router.POST(g.prefix+path, handler)
+}
+
+// PUT adds a PUT route to the group
+func (g *Group) PUT(path string, handler HandlerFunc) {
+	g.router.PUT(g.prefix+path, handler)
+}
+
+// DELETE adds a DELETE route to the group
+func (g *Group) DELETE(path string, handler HandlerFunc) {
+	g.router.DELETE(g.prefix+path, handler)
+}
+
+// PATCH adds a PATCH route to the group
+func (g *Group) PATCH(path string, handler HandlerFunc) {
+	g.router.PATCH(g.prefix+path, handler)
+}
+
+// HEAD adds a HEAD route to the group
+func (g *Group) HEAD(path string, handler HandlerFunc) {
+	g.router.HEAD(g.prefix+path, handler)
+}
+
+// OPTIONS adds an OPTIONS route to the group
+func (g *Group) OPTIONS(path string, handler HandlerFunc) {
+	g.router.OPTIONS(g.prefix+path, handler)
+}
+
+// Handle adds a route with any method to the group
+func (g *Group) Handle(method, path string, handler HandlerFunc) {
+	g.router.Handle(method, g.prefix+path, handler)
+}
+
+// Group creates a sub-group with a prefix appended to the current group's prefix
+func (g *Group) Group(prefix string) *Group {
+	return &Group{
+		router: g.router,
+		prefix: g.prefix + normalizePrefix(prefix),
+	}
+}
+
+// normalizePrefix ensures the prefix starts with / and doesn't end with /
+func normalizePrefix(prefix string) string {
+	if prefix == "" {
+		return ""
+	}
+	if !strings.HasPrefix(prefix, "/") {
+		prefix = "/" + prefix
+	}
+	if strings.HasSuffix(prefix, "/") {
+		prefix = prefix[:len(prefix)-1]
+	}
+	return prefix
 }
 
 // pathMatch checks if the request path matches a route path

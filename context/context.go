@@ -9,6 +9,15 @@ import (
 	"net/http"
 )
 
+// HTTP header constants
+const (
+	HeaderContentType   = "Content-Type"
+	HeaderAccept        = "Accept"
+	HeaderAuthorization = "Authorization"
+
+	ContentTypeJSON = "application/json"
+)
+
 // APIResponse is a standardized response structure
 type APIResponse struct {
 	Status  string `json:"status"`          // "success" or "error"
@@ -44,7 +53,7 @@ func (c *Context) Status(code int) *Context {
 
 // JSON sends a JSON response
 func (c *Context) JSON(status int, obj any) {
-	c.Writer.Header().Set("Content-Type", "application/json")
+	c.Writer.Header().Set(HeaderContentType, ContentTypeJSON)
 	c.Writer.WriteHeader(status)
 	if err := json.NewEncoder(c.Writer).Encode(obj); err != nil {
 		log.Printf("Error encoding JSON: %v", err)
@@ -95,7 +104,7 @@ func (c *Context) GetQuery(key string) string {
 // - When you want to return an array directly in the response body
 // - When integrating with systems that expect a simple JSON structure
 func (c *Context) JSONData(status int, data any) {
-	c.Writer.Header().Set("Content-Type", "application/json")
+	c.Writer.Header().Set(HeaderContentType, ContentTypeJSON)
 	c.Writer.WriteHeader(status)
 	if err := json.NewEncoder(c.Writer).Encode(data); err != nil {
 		log.Printf("Error encoding JSON: %v", err)
@@ -112,4 +121,48 @@ func (c *Context) WithValue(key, value any) *Context {
 // Value gets a value from the request context
 func (c *Context) Value(key any) any {
 	return c.ctx.Value(key)
+}
+
+// GetHeader gets a header value from the request
+func (c *Context) GetHeader(key string) string {
+	return c.Request.Header.Get(key)
+}
+
+// SetHeader sets a header value in the response
+func (c *Context) SetHeader(key, value string) *Context {
+	c.Writer.Header().Set(key, value)
+	return c
+}
+
+// GetCookie gets a cookie from the request
+func (c *Context) GetCookie(name string) (string, error) {
+	cookie, err := c.Request.Cookie(name)
+	if err != nil {
+		return "", err
+	}
+	return cookie.Value, nil
+}
+
+// SetCookie sets a cookie in the response
+func (c *Context) SetCookie(name, value string, maxAge int, path, domain string, secure, httpOnly bool) *Context {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     name,
+		Value:    value,
+		MaxAge:   maxAge,
+		Path:     path,
+		Domain:   domain,
+		Secure:   secure,
+		HttpOnly: httpOnly,
+	})
+	return c
+}
+
+// GetContentType gets the Content-Type header
+func (c *Context) GetContentType() string {
+	return c.GetHeader(HeaderContentType)
+}
+
+// Redirect redirects the request to a new URL
+func (c *Context) Redirect(status int, url string) {
+	http.Redirect(c.Writer, c.Request, url, status)
 }
