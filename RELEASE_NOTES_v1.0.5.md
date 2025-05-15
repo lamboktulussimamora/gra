@@ -13,12 +13,23 @@ GRA Framework v1.0.5 is a maintenance release that fixes issues in the example a
 - Resolved compatibility issues in examples with local module usage
 - Fixed incorrect header routing in versioning-and-cache example
 
+### Validator Package
+- Fixed regex pattern validation for usernames and phone numbers
+- Fixed commented-out test assertions in validator_test.go
+
 ## Improvements
+
+### Validator Package
+- Refactored validator.go to reduce cognitive complexity
+- Improved regex pattern handling with proper anchoring
+- Modularized validation functions for better maintainability
+- Enhanced test coverage for regex pattern validation
 
 ### Documentation
 - Enhanced example applications with better documentation
 - Updated README files for all examples
 - Clarified usage instructions for authentication and API versioning
+- Updated ENHANCEMENT_SUMMARY.md with validator improvements
 
 ### Project Organization
 - Updated .gitignore to exclude example binaries
