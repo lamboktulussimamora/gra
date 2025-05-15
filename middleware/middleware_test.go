@@ -289,3 +289,125 @@ func TestCORS(t *testing.T) {
 		})
 	}
 }
+
+// Header name constants for testing
+const (
+	headerXSSProtection       = "X-XSS-Protection"
+	headerContentTypeOptions  = "X-Content-Type-Options"
+	headerFrameOptions        = "X-Frame-Options"
+	headerReferrerPolicy      = "Referrer-Policy"
+	headerCSP                 = "Content-Security-Policy"
+	headerHSTS                = "Strict-Transport-Security"
+	headerCrossOriginResource = "Cross-Origin-Resource-Policy"
+)
+
+func TestSecureHeaders(t *testing.T) {
+	// Create a request with a method and URL
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+
+	// Create a response recorder
+	w := httptest.NewRecorder()
+
+	// Create a context
+	c := context.New(w, req)
+
+	// Create handler function
+	handlerFunc := func(c *context.Context) {
+		c.Writer.WriteHeader(http.StatusOK)
+		c.Writer.Write([]byte("test"))
+	}
+
+	// Apply secure headers middleware
+	middleware := SecureHeaders()
+	handler := middleware(handlerFunc)
+
+	// Call handler
+	handler(c)
+
+	// Assert headers
+	headers := w.Result().Header
+
+	// Check X-XSS-Protection header
+	if headers.Get(headerXSSProtection) != "1; mode=block" {
+		t.Errorf("Expected X-XSS-Protection header to be '1; mode=block', got '%s'", headers.Get(headerXSSProtection))
+	}
+
+	// Check X-Content-Type-Options header
+	if headers.Get(headerContentTypeOptions) != "nosniff" {
+		t.Errorf("Expected X-Content-Type-Options header to be 'nosniff', got '%s'", headers.Get(headerContentTypeOptions))
+	}
+
+	// Check X-Frame-Options header
+	if headers.Get(headerFrameOptions) != "SAMEORIGIN" {
+		t.Errorf("Expected X-Frame-Options header to be 'SAMEORIGIN', got '%s'", headers.Get(headerFrameOptions))
+	}
+
+	// Check Referrer-Policy header
+	if headers.Get(headerReferrerPolicy) != "no-referrer" {
+		t.Errorf("Expected Referrer-Policy header to be 'no-referrer', got '%s'", headers.Get(headerReferrerPolicy))
+	}
+
+	// Check Cross-Origin-Resource-Policy header
+	if headers.Get(headerCrossOriginResource) != "same-origin" {
+		t.Errorf("Expected Cross-Origin-Resource-Policy header to be 'same-origin', got '%s'", headers.Get(headerCrossOriginResource))
+	}
+}
+
+func TestSecureHeadersWithConfig(t *testing.T) {
+	// Create a custom config
+	config := SecureHeadersConfig{
+		XSSProtection:         "0",
+		ContentTypeNosniff:    "nosniff",
+		XFrameOptions:         "DENY",
+		HSTSMaxAge:            300,
+		HSTSIncludeSubdomains: true,
+		ContentSecurityPolicy: "default-src 'self'",
+		ReferrerPolicy:        "same-origin",
+	}
+
+	// Create a request with a method and URL
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+
+	// Create a response recorder
+	w := httptest.NewRecorder()
+
+	// Create a context
+	c := context.New(w, req)
+
+	// Create handler function
+	handlerFunc := func(c *context.Context) {
+		c.Writer.WriteHeader(http.StatusOK)
+		c.Writer.Write([]byte("test"))
+	}
+
+	// Apply secure headers middleware with custom config
+	middleware := SecureHeadersWithConfig(config)
+	handler := middleware(handlerFunc)
+
+	// Call handler
+	handler(c)
+
+	// Assert headers
+	headers := w.Result().Header
+
+	// Check X-XSS-Protection header
+	if headers.Get(headerXSSProtection) != "0" {
+		t.Errorf("Expected X-XSS-Protection header to be '0', got '%s'", headers.Get(headerXSSProtection))
+	}
+
+	// Check X-Frame-Options header
+	if headers.Get(headerFrameOptions) != "DENY" {
+		t.Errorf("Expected X-Frame-Options header to be 'DENY', got '%s'", headers.Get(headerFrameOptions))
+	}
+
+	// Check Content-Security-Policy header
+	if headers.Get(headerCSP) != "default-src 'self'" {
+		t.Errorf("Expected Content-Security-Policy header to be \"default-src 'self'\", got '%s'", headers.Get(headerCSP))
+	}
+
+	// Check HSTS header
+	expectedHSTS := "max-age=300; includeSubDomains"
+	if headers.Get(headerHSTS) != expectedHSTS {
+		t.Errorf("Expected Strict-Transport-Security header to be '%s', got '%s'", expectedHSTS, headers.Get(headerHSTS))
+	}
+}

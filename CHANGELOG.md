@@ -1,18 +1,21 @@
 # Changelog
 
-## v1.0.4 (2025-05-14)
+## v1.0.4 (2025-05-15)
 
 ### Feature Enhancements
 
 #### New Features:
 - Added API versioning package with multiple strategies (path, query, header, media type)
 - Implemented HTTP response caching middleware with ETag support
+- Implemented JWT authentication package with token generation and validation
+- Added secure headers middleware for improved security
 - Added versioning and caching example application
+- Added authentication and security example application
 
 #### Documentation:
 - Updated README.md with comprehensive documentation for new features
 - Created ENHANCEMENT_SUMMARY.md with details of implementations
-- Added example code for both versioning and caching features
+- Added example code for all new features
 
 ## v1.0.3 (2025-05-11)
 

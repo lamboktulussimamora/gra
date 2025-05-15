@@ -10,6 +10,8 @@ A lightweight HTTP framework for building web applications in Go, inspired by Gi
 
 - Context-based request handling
 - HTTP routing with path parameters
+- JWT authentication and authorization
+- Secure HTTP headers middleware
 - API versioning support
 - Response caching
 - Middleware support
@@ -128,8 +130,58 @@ r.Use(
 	middleware.Logger(),
 	middleware.Recovery(),
 	middleware.CORS("*"),
+	middleware.SecureHeaders(),
 )
+
+// Apply middleware to a specific group
+authRoutes := r.Group("/api")
+authRoutes.Use(middleware.Auth(jwtService, "user"))
 ```
+
+### Available Middleware
+
+1. **Logger**: Logs HTTP requests and responses
+2. **Recovery**: Recovers from panics in handlers
+3. **CORS**: Configures Cross-Origin Resource Sharing
+4. **Auth**: JWT authentication middleware
+5. **SecureHeaders**: Adds security-related HTTP headers
+6. **Cache**: HTTP response caching (see Cache section)
+
+### JWT Authentication
+
+The JWT middleware authenticates requests using JSON Web Tokens:
+
+```go
+// Create JWT service
+jwtService, _ := jwt.NewServiceWithKey([]byte("your-secret-key"))
+
+// Use JWT middleware
+protectedRoutes.Use(middleware.Auth(jwtService, "user"))
+```
+
+### Secure Headers
+
+The secure headers middleware adds security-related HTTP headers:
+
+```go
+// Use default secure headers
+app.Use(middleware.SecureHeaders())
+
+// Or use custom configuration
+config := middleware.DefaultSecureHeadersConfig()
+config.ContentSecurityPolicy = "default-src 'self'"
+config.XFrameOptions = "DENY"
+app.Use(middleware.SecureHeadersWithConfig(config))
+```
+
+Included headers:
+- X-XSS-Protection
+- X-Content-Type-Options
+- X-Frame-Options
+- Strict-Transport-Security (HSTS)
+- Content-Security-Policy
+- Referrer-Policy
+- Cross-Origin-Resource-Policy
 
 ## Validation
 
@@ -396,6 +448,85 @@ cache.ClearCache(myStore)
 
 // Invalidate specific entry
 cache.InvalidateCache(myStore, "GET:/api/users/123")
+```
+
+## JWT Authentication
+
+The JWT (JSON Web Tokens) package provides authentication functionality:
+
+```go
+import "github.com/lamboktulussimamora/gra/jwt"
+```
+
+### Creating a JWT Service
+
+```go
+// Create with a signing key
+jwtService, err := jwt.NewServiceWithKey([]byte("your-secret-signing-key"))
+
+// Or create with custom configuration
+config := jwt.DefaultConfig()
+config.SigningKey = []byte("your-secret-key")
+config.ExpirationTime = time.Hour * 48  // 48 hours
+config.Issuer = "my-application"
+jwtService, err := jwt.NewService(config)
+```
+
+### Generating Tokens
+
+```go
+// Create claims
+claims := jwt.StandardClaims{
+    Subject: "user-123",  // Required
+    Custom: map[string]interface{}{
+        "username": "johndoe",
+        "role": "admin",
+    },
+}
+
+// Generate token
+token, err := jwtService.GenerateToken(claims)
+```
+
+### Validating Tokens
+
+```go
+// Validate a token
+claims, err := jwtService.ValidateToken(tokenString)
+if err != nil {
+    // Handle error: jwt.ErrInvalidToken, jwt.ErrExpiredToken
+    return
+}
+
+// Access claims
+userID := claims["sub"].(string)
+username := claims["username"].(string)
+role := claims["role"].(string)
+```
+
+### Refreshing Tokens
+
+```go
+// Refresh a token (generate new token with same claims)
+newToken, err := jwtService.RefreshToken(oldTokenString)
+```
+
+### Using with Middleware
+
+```go
+// Protect routes with JWT authentication
+protectedRoutes := r.Group("/api")
+protectedRoutes.Use(middleware.Auth(jwtService, "user"))
+
+// Access claims in your handlers
+func getUserProfile(c *context.Context) {
+    // Get user claims from context
+    userClaims := c.Value("user").(map[string]interface{})
+    userID := userClaims["sub"].(string)
+    
+    // Handle request
+    // ...
+}
 ```
 
 ## License
