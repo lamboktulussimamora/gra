@@ -66,7 +66,11 @@ func (c *Context) BindJSON(obj any) error {
 	if err != nil {
 		return err
 	}
-	defer c.Request.Body.Close()
+	defer func() {
+		if cerr := c.Request.Body.Close(); cerr != nil {
+			log.Printf("Error closing request body: %v", cerr)
+		}
+	}()
 
 	return json.Unmarshal(body, obj)
 }

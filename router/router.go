@@ -180,9 +180,7 @@ func normalizePrefix(prefix string) string {
 	if !strings.HasPrefix(prefix, "/") {
 		prefix = "/" + prefix
 	}
-	if strings.HasSuffix(prefix, "/") {
-		prefix = prefix[:len(prefix)-1]
-	}
+	prefix = strings.TrimSuffix(prefix, "/")
 	return prefix
 }
 

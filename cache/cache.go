@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -270,7 +271,9 @@ func WithConfig(config CacheConfig) router.Middleware {
 				// Write status and body
 				c.Status(entry.StatusCode)
 				w := c.Writer
-				w.Write(entry.Body)
+				if _, err := w.Write(entry.Body); err != nil {
+					log.Printf("Error writing cached response: %v", err)
+				}
 
 				return
 			}

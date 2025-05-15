@@ -20,7 +20,9 @@ const (
 	PhoneNumberPattern       = "[0-9]{10}"
 
 	// Error message templates
-	InvalidRangeMsg = "Invalid range values for %s"
+	InvalidRangeMsg    = "Invalid range values for %s"
+	InvalidMinValueMsg = "invalid min value: %s"
+	InvalidMaxValueMsg = "invalid max value: %s"
 )
 
 // Common validation patterns
@@ -375,19 +377,28 @@ func (v *Validator) validateMin(field reflect.Value, fieldName, arg, customMessa
 	switch field.Kind() {
 	case reflect.String:
 		min := 0
-		fmt.Sscanf(arg, "%d", &min)
+		if _, err := fmt.Sscanf(arg, "%d", &min); err != nil {
+			v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
+			return
+		}
 		if len(field.String()) < min {
 			v.addError(fieldName, fmt.Sprintf("%s must be at least %d characters", fieldName, min), customMessage)
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		min := int64(0)
-		fmt.Sscanf(arg, "%d", &min)
+		if _, err := fmt.Sscanf(arg, "%d", &min); err != nil {
+			v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
+			return
+		}
 		if field.Int() < min {
 			v.addError(fieldName, fmt.Sprintf("%s must be at least %d", fieldName, min), customMessage)
 		}
 	case reflect.Float32, reflect.Float64:
 		min := float64(0)
-		fmt.Sscanf(arg, "%f", &min)
+		if _, err := fmt.Sscanf(arg, "%f", &min); err != nil {
+			v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
+			return
+		}
 		if field.Float() < min {
 			v.addError(fieldName, fmt.Sprintf("%s must be at least %f", fieldName, min), customMessage)
 		}
@@ -398,29 +409,61 @@ func (v *Validator) validateMin(field reflect.Value, fieldName, arg, customMessa
 func (v *Validator) validateMax(field reflect.Value, fieldName, arg, customMessage string) {
 	switch field.Kind() {
 	case reflect.String:
-		max := 0
-		fmt.Sscanf(arg, "%d", &max)
-		if len(field.String()) > max {
-			v.addError(fieldName, fmt.Sprintf("%s must be at most %d characters", fieldName, max), customMessage)
-		}
+		v.validateMaxString(field, fieldName, arg, customMessage)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		max := int64(0)
-		fmt.Sscanf(arg, "%d", &max)
-		if field.Int() > max {
-			v.addError(fieldName, fmt.Sprintf("%s must be at most %d", fieldName, max), customMessage)
-		}
+		v.validateMaxInt(field, fieldName, arg, customMessage)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		max := uint64(0)
-		fmt.Sscanf(arg, "%d", &max)
-		if field.Uint() > max {
-			v.addError(fieldName, fmt.Sprintf("%s must be at most %d", fieldName, max), customMessage)
-		}
+		v.validateMaxUint(field, fieldName, arg, customMessage)
 	case reflect.Float32, reflect.Float64:
-		max := float64(0)
-		fmt.Sscanf(arg, "%f", &max)
-		if field.Float() > max {
-			v.addError(fieldName, fmt.Sprintf("%s must be at most %f", fieldName, max), customMessage)
-		}
+		v.validateMaxFloat(field, fieldName, arg, customMessage)
+	}
+}
+
+// validateMaxString validates maximum string length
+func (v *Validator) validateMaxString(field reflect.Value, fieldName, arg, customMessage string) {
+	max := 0
+	if _, err := fmt.Sscanf(arg, "%d", &max); err != nil {
+		v.addError(fieldName, fmt.Sprintf(InvalidMaxValueMsg, arg), customMessage)
+		return
+	}
+	if len(field.String()) > max {
+		v.addError(fieldName, fmt.Sprintf("%s must be at most %d characters", fieldName, max), customMessage)
+	}
+}
+
+// validateMaxInt validates maximum integer value
+func (v *Validator) validateMaxInt(field reflect.Value, fieldName, arg, customMessage string) {
+	max := int64(0)
+	if _, err := fmt.Sscanf(arg, "%d", &max); err != nil {
+		v.addError(fieldName, fmt.Sprintf(InvalidMaxValueMsg, arg), customMessage)
+		return
+	}
+	if field.Int() > max {
+		v.addError(fieldName, fmt.Sprintf("%s must be at most %d", fieldName, max), customMessage)
+	}
+}
+
+// validateMaxUint validates maximum unsigned integer value
+func (v *Validator) validateMaxUint(field reflect.Value, fieldName, arg, customMessage string) {
+	max := uint64(0)
+	if _, err := fmt.Sscanf(arg, "%d", &max); err != nil {
+		v.addError(fieldName, fmt.Sprintf(InvalidMaxValueMsg, arg), customMessage)
+		return
+	}
+	if field.Uint() > max {
+		v.addError(fieldName, fmt.Sprintf("%s must be at most %d", fieldName, max), customMessage)
+	}
+}
+
+// validateMaxFloat validates maximum float value
+func (v *Validator) validateMaxFloat(field reflect.Value, fieldName, arg, customMessage string) {
+	max := float64(0)
+	if _, err := fmt.Sscanf(arg, "%f", &max); err != nil {
+		v.addError(fieldName, fmt.Sprintf(InvalidMaxValueMsg, arg), customMessage)
+		return
+	}
+	if field.Float() > max {
+		v.addError(fieldName, fmt.Sprintf("%s must be at most %f", fieldName, max), customMessage)
 	}
 }
 

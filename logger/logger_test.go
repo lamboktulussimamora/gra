@@ -34,9 +34,7 @@ func TestCustomLogger(t *testing.T) {
 		logger: log.New(os.Stderr, "", log.LstdFlags),
 	}
 
-	if logger == nil {
-		t.Fatal("Custom logger creation failed")
-	}
+	// A struct created with the & operator can never be nil
 
 	if logger.prefix != "TEST" {
 		t.Errorf("Expected prefix TEST, got %s", logger.prefix)

@@ -314,7 +314,9 @@ func TestSecureHeaders(t *testing.T) {
 	// Create handler function
 	handlerFunc := func(c *context.Context) {
 		c.Writer.WriteHeader(http.StatusOK)
-		c.Writer.Write([]byte("test"))
+		if _, err := c.Writer.Write([]byte("test")); err != nil {
+			t.Errorf("Failed to write response: %v", err)
+		}
 	}
 
 	// Apply secure headers middleware
@@ -377,7 +379,9 @@ func TestSecureHeadersWithConfig(t *testing.T) {
 	// Create handler function
 	handlerFunc := func(c *context.Context) {
 		c.Writer.WriteHeader(http.StatusOK)
-		c.Writer.Write([]byte("test"))
+		if _, err := c.Writer.Write([]byte("test")); err != nil {
+			t.Errorf("Failed to write response: %v", err)
+		}
 	}
 
 	// Apply secure headers middleware with custom config
