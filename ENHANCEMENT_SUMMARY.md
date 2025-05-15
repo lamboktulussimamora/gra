@@ -4,6 +4,22 @@ This document summarizes the enhancements made to the GRA framework.
 
 ## Implemented Features
 
+### 0. Validator Package Improvements
+
+- Refactored validator.go to reduce cognitive complexity:
+  - Reduced validateStruct complexity from 83 to below 15
+  - Reduced Schema.Validate complexity from 16 to below 15
+  - Reduced Schema.validateString complexity from 16 to below 15
+- Improved regex pattern handling:
+  - Added proper anchors (^ and $) to patterns
+  - Created specialized pattern handlers for common validation cases
+  - Fixed validation of usernames and phone numbers
+- Modularized validation logic:
+  - Split large methods into smaller, focused functions
+  - Extracted reusable validation components
+  - Improved code organization and readability
+- Fixed issues with duplicate code and validation tests
+
 ### 1. API Versioning Package
 
 - Created a versioning package with multiple versioning strategies:

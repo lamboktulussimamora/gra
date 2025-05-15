@@ -8,11 +8,15 @@
 - Fixed routing issues in auth-and-security example
 - Resolved compatibility issues in examples with local module usage
 - Fixed incorrect header routing in versioning-and-cache example
+- Fixed regex pattern validation in validator package for usernames and phone numbers
 
 #### Improvements:
 - Enhanced example applications with better documentation
 - Updated .gitignore to exclude example binaries
 - Improved test script organization
+- Refactored validator.go to reduce cognitive complexity
+- Improved regex pattern handling with proper anchoring
+- Modularized validation functions for better maintainability
 
 ## v1.0.4 (2025-05-15)
 
