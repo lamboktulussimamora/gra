@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.0.5 (2025-05-15)
+
+### Bug Fixes and Improvements
+
+#### Bug Fixes:
+- Fixed routing issues in auth-and-security example
+- Resolved compatibility issues in examples with local module usage
+- Fixed incorrect header routing in versioning-and-cache example
+
+#### Improvements:
+- Enhanced example applications with better documentation
+- Updated .gitignore to exclude example binaries
+- Improved test script organization
+
 ## v1.0.4 (2025-05-15)
 
 ### Feature Enhancements
