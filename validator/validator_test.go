@@ -4,6 +4,58 @@ import (
 	"testing"
 )
 
+const (
+	// Field names for tests
+	fieldName        = "name"
+	fieldEmail       = "email"
+	fieldPrice       = "price"
+	fieldUserID      = "userId"
+	fieldPhone       = "phone"
+	fieldAge         = "age"
+	fieldPassword    = "password"
+	fieldBalance     = "balance"
+	fieldPostalCode  = "postalCode"
+	fieldUsername    = "username"
+	fieldDescription = "description"
+	fieldCity        = "city"
+	fieldCountry     = "country"
+	fieldZipCode     = "zipCode"
+	fieldCode        = "code"
+
+	// Test values
+	testUsername    = "testuser"
+	testEmail       = "test@example.com"
+	testUser        = "Test User"
+	testPassword    = "password123"
+	testAddress     = "123 Main St"
+	testPostalCode  = "A1B 2C3"
+	testName        = "John Doe"
+	testUserEmail   = "john@example.com"
+	testCity        = "New York"
+	testCountry     = "USA"
+	testZipCode     = "10001"
+	testValidCode   = "ABC"
+	testInvalidCode = "123"
+
+	// Test product values
+	testProductName = "Product 1"
+	testDescription = "Description 1"
+	testProduct2    = "Product 2"
+	testDesc2       = "Description 2"
+
+	// Test price values
+	testPrice1 = 19.99
+	testPrice2 = 29.99
+
+	// Common test validation messages
+	msgValidationPass = "Expected valid %s to pass validation, got errors: %v"
+	msgValidationFail = "Expected '%s' to fail validation, but got no errors"
+	msgNoError        = "Expected no errors, got %d errors: %v"
+	msgInvalidField   = "Expected error for field '%s', got error for '%s'"
+	msgFieldNoError   = "Expected error for field %s, but none was reported"
+	msgErrorCount     = "Expected %d errors, got %d: %v"
+)
+
 // TestNew ensures the validator creates a new instance correctly
 func TestNew(t *testing.T) {
 	v := New()
@@ -261,6 +313,46 @@ func TestRequiredEdgeCases(t *testing.T) {
 	}
 }
 
+// Constants for validation error messages
+const (
+	msgEmailFormatError = "email must be a valid email address"
+	msgEmailRequired    = "email is required"
+)
+
+// checkEmailValidationError finds email validation errors in the error list
+func checkEmailValidationError(errors []ValidationError, errorType string) bool {
+	for _, err := range errors {
+		if err.Field == fieldEmail && err.Message == errorType {
+			return true
+		}
+	}
+	return false
+}
+
+// validateEmailResult checks if the validation result matches expectations
+func validateEmailResult(t *testing.T, email string, isValid bool, errors []ValidationError) {
+	// For empty email, just check required error
+	if email == "" {
+		hasRequiredError := checkEmailValidationError(errors, msgEmailRequired)
+		if !hasRequiredError {
+			t.Errorf("Expected 'required' error for empty email")
+		}
+		return
+	}
+
+	// Check for format errors
+	hasFormatError := checkEmailValidationError(errors, msgEmailFormatError)
+
+	// Validate based on expected validity
+	if isValid && hasFormatError {
+		t.Errorf("Email %q should be valid, but validation failed", email)
+	}
+
+	if !isValid && !hasFormatError {
+		t.Errorf("Email %q should be invalid, but validation passed", email)
+	}
+}
+
 // TestEmailValidation tests the email validation rule
 func TestEmailValidation(t *testing.T) {
 	tests := []struct {
@@ -283,50 +375,59 @@ func TestEmailValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			v := New()
 			user := TestUser{
-				Name:     "Test User",
+				Name:     testUser,
 				Email:    tt.email,
 				Age:      30,
-				Password: "password123",
+				Password: testPassword,
 			}
 
 			errors := v.Validate(user)
-
-			// If email is empty, it should be caught by 'required' validation
-			if tt.email == "" {
-				hasEmailError := false
-				for _, err := range errors {
-					if err.Field == "email" && err.Message == "email is required" {
-						hasEmailError = true
-					}
-				}
-
-				if !hasEmailError {
-					t.Errorf("Expected 'required' error for empty email")
-				}
-				return
-			}
-
-			// Check for email validation errors
-			hasEmailFormatError := false
-			for _, err := range errors {
-				if err.Field == "email" && err.Message == "email must be a valid email address" {
-					hasEmailFormatError = true
-				}
-			}
-
-			if tt.valid && hasEmailFormatError {
-				t.Errorf("Email %q should be valid, but validation failed", tt.email)
-			}
-
-			if !tt.valid && !hasEmailFormatError {
-				t.Errorf("Email %q should be invalid, but validation passed", tt.email)
-			}
+			validateEmailResult(t, tt.email, tt.valid, errors)
 		})
+	}
+}
+
+// findValidationError searches for a specific validation error
+func findValidationError(errors []ValidationError, field, expectedMessage string) bool {
+	for _, err := range errors {
+		if err.Field == field && err.Message == expectedMessage {
+			return true
+		}
+	}
+	return false
+}
+
+// checkMinValidation performs validation checks for min rule tests
+func checkMinValidation(t *testing.T, errors []ValidationError, field string, value interface{}, minValue interface{}, expectError bool) {
+	var errorMsg string
+	var hasError bool
+
+	switch field {
+	case fieldAge:
+		errorMsg = "age must be at least 18"
+	case fieldPassword:
+		errorMsg = "password must be at least 6 characters"
+	case fieldBalance:
+		errorMsg = "balance must be at least 0.000000"
+	}
+
+	hasError = findValidationError(errors, field, errorMsg)
+
+	if expectError && !hasError {
+		t.Errorf("Expected %s validation error for %v < %v", field, value, minValue)
+	}
+
+	if !expectError && hasError {
+		t.Errorf("Unexpected %s validation error for %v >= %v", field, value, minValue)
 	}
 }
 
 // TestMinValidation tests the min validation rule
 func TestMinValidation(t *testing.T) {
+	const minAge = 18
+	const minPasswordLen = 6
+	const minBalance = 0.0
+
 	tests := []struct {
 		name       string
 		age        int
@@ -345,8 +446,8 @@ func TestMinValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			v := New()
 			user := TestUser{
-				Name:     "Test User",
-				Email:    "test@example.com",
+				Name:     testUser,
+				Email:    testEmail,
 				Age:      tt.age,
 				Password: tt.password,
 				Balance:  tt.balance,
@@ -354,47 +455,51 @@ func TestMinValidation(t *testing.T) {
 
 			errors := v.Validate(user)
 
-			// Check age validation
-			hasAgeError := false
-			hasPasswordError := false
-			hasBalanceError := false
-
-			for _, err := range errors {
-				if err.Field == "age" && err.Message == "age must be at least 18" {
-					hasAgeError = true
-				}
-				if err.Field == "password" && err.Message == "password must be at least 6 characters" {
-					hasPasswordError = true
-				}
-				if err.Field == "balance" && err.Message == "balance must be at least 0.000000" {
-					hasBalanceError = true
-				}
-			}
-
-			if tt.age < 18 && !hasAgeError {
-				t.Errorf("Expected age validation error for age %d", tt.age)
-			}
-
-			if tt.age >= 18 && hasAgeError {
-				t.Errorf("Unexpected age validation error for age %d", tt.age)
-			}
-
-			if len(tt.password) < 6 && !hasPasswordError {
-				t.Errorf("Expected password validation error for password %q", tt.password)
-			}
-
-			if len(tt.password) >= 6 && hasPasswordError {
-				t.Errorf("Unexpected password validation error for password %q", tt.password)
-			}
-
-			if tt.balance < 0 && !hasBalanceError {
-				t.Errorf("Expected balance validation error for balance %f", tt.balance)
-			}
-
-			if tt.balance >= 0 && hasBalanceError {
-				t.Errorf("Unexpected balance validation error for balance %f", tt.balance)
-			}
+			// Test each validation field
+			checkMinValidation(t, errors, fieldAge, tt.age, minAge, tt.age < minAge)
+			checkMinValidation(t, errors, fieldPassword, tt.password, minPasswordLen, len(tt.password) < minPasswordLen)
+			checkMinValidation(t, errors, fieldBalance, tt.balance, minBalance, tt.balance < minBalance)
 		})
+	}
+}
+
+// Constants for max validation messages and values
+const (
+	msgMaxAgeError      = "age must be at most 120"
+	msgMaxPasswordError = "password must be at most 100 characters"
+	maxAge              = 120
+	maxPasswordLength   = 100
+)
+
+// checkMaxValidationError finds a specific max validation error in the error list
+func checkMaxValidationError(errors []ValidationError, field, message string) bool {
+	for _, err := range errors {
+		if err.Field == field && err.Message == message {
+			return true
+		}
+	}
+	return false
+}
+
+// validateMaxAgeValue checks if the age validation result is as expected
+func validateMaxAgeValue(t *testing.T, age int, hasAgeError bool) {
+	if age > maxAge && !hasAgeError {
+		t.Errorf("Expected age validation error for age %d", age)
+	}
+
+	if age <= maxAge && hasAgeError {
+		t.Errorf("Unexpected age validation error for age %d", age)
+	}
+}
+
+// validateMaxPasswordValue checks if the password validation result is as expected
+func validateMaxPasswordValue(t *testing.T, password string, hasPasswordError bool) {
+	if len(password) > maxPasswordLength && !hasPasswordError {
+		t.Errorf("Expected password validation error for password length %d", len(password))
+	}
+
+	if len(password) <= maxPasswordLength && hasPasswordError {
+		t.Errorf("Unexpected password validation error for password length %d", len(password))
 	}
 }
 
@@ -416,8 +521,8 @@ func TestMaxValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			v := New()
 			user := TestUser{
-				Name:     "Test User",
-				Email:    "test@example.com",
+				Name:     testName,
+				Email:    testEmail,
 				Age:      tt.age,
 				Password: tt.password,
 			}
@@ -425,33 +530,12 @@ func TestMaxValidation(t *testing.T) {
 			errors := v.Validate(user)
 
 			// Check validation errors
-			hasAgeError := false
-			hasPasswordError := false
+			hasAgeError := checkMaxValidationError(errors, fieldAge, msgMaxAgeError)
+			hasPasswordError := checkMaxValidationError(errors, fieldPassword, msgMaxPasswordError)
 
-			for _, err := range errors {
-				if err.Field == "age" && err.Message == "age must be at most 120" {
-					hasAgeError = true
-				}
-				if err.Field == "password" && err.Message == "password must be at most 100 characters" {
-					hasPasswordError = true
-				}
-			}
-
-			if tt.age > 120 && !hasAgeError {
-				t.Errorf("Expected age validation error for age %d", tt.age)
-			}
-
-			if tt.age <= 120 && hasAgeError {
-				t.Errorf("Unexpected age validation error for age %d", tt.age)
-			}
-
-			if len(tt.password) > 100 && !hasPasswordError {
-				t.Errorf("Expected password validation error for password length %d", len(tt.password))
-			}
-
-			if len(tt.password) <= 100 && hasPasswordError {
-				t.Errorf("Unexpected password validation error for password length %d", len(tt.password))
-			}
+			// Validate the results
+			validateMaxAgeValue(t, tt.age, hasAgeError)
+			validateMaxPasswordValue(t, tt.password, hasPasswordError)
 		})
 	}
 }
@@ -788,147 +872,202 @@ func TestNonStructValidation(t *testing.T) {
 	}
 }
 
+// validateRegexpFields checks if the expected invalid fields have validation errors
+func validateRegexpFields(t *testing.T, errors []ValidationError, invalidFields []string) {
+	errorFields := make(map[string]bool)
+	for _, err := range errors {
+		errorFields[err.Field] = true
+	}
+
+	for _, field := range invalidFields {
+		if !errorFields[field] {
+			t.Errorf("Expected error for field %s, but none was reported", field)
+		}
+	}
+}
+
+// Constants for regexp validation messages
+const (
+	msgPhoneRegexp    = "phoneNumber must match the pattern ^[0-9]{10}$"
+	msgPostalRegexp   = "postalCode must match the pattern ^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$"
+	msgUsernameRegexp = "username must match the pattern ^[a-zA-Z0-9_]{3,20}$"
+)
+
+// checkFieldHasError checks if a field has validation errors
+func checkFieldHasError(errors []ValidationError, field string) bool {
+	for _, err := range errors {
+		if err.Field == field {
+			return true
+		}
+	}
+	return false
+}
+
+// validateSimpleUser performs validation tests on a simple User struct
+func validateSimpleUser(t *testing.T) {
+	type User struct {
+		Username string `json:"username" validate:"regexp=[a-z0-9_]{3,16}"`
+		Phone    string `json:"phone" validate:"regexp=[0-9]{10}"`
+	}
+
+	v := New()
+
+	// Test cases for User struct validation
+	testCases := []struct {
+		name         string
+		user         User
+		shouldPass   bool
+		invalidField string
+	}{
+		{
+			name: "Valid User",
+			user: User{
+				Username: "valid_user123",
+				Phone:    "1234567890",
+			},
+			shouldPass: true,
+		},
+		{
+			name: "Invalid Username",
+			user: User{
+				Username: "Invalid@User", // Contains invalid characters
+				Phone:    "1234567890",
+			},
+			shouldPass:   false,
+			invalidField: fieldUsername,
+		},
+		{
+			name: "Invalid Phone",
+			user: User{
+				Username: "valid_user",
+				Phone:    "123", // Too short
+			},
+			shouldPass:   false,
+			invalidField: fieldPhone,
+		},
+	}
+
+	// Run the test cases
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			errors := v.Validate(tc.user)
+
+			if tc.shouldPass {
+				if len(errors) > 0 {
+					t.Errorf(msgValidationPass, tc.name, errors)
+				}
+				return
+			}
+
+			// Shouldn't pass - check for errors
+			if len(errors) == 0 {
+				t.Errorf(msgValidationFail, tc.invalidField)
+				return
+			}
+
+			if !checkFieldHasError(errors, tc.invalidField) {
+				t.Errorf(msgInvalidField, tc.invalidField, errors[0].Field)
+			}
+		})
+	}
+}
+
+// runRegexpValidationTest runs the validation test for the given input and expected outcomes
+func runRegexpValidationTest(t *testing.T, validator *Validator, input interface{}, expectedValid bool, invalidFields []string) {
+	errors := validator.Validate(input)
+
+	if expectedValid {
+		if len(errors) > 0 {
+			t.Errorf(msgValidationPass, "input", errors)
+		}
+		return
+	}
+
+	// Test should fail validation
+	if len(errors) == 0 {
+		t.Error("Expected validation errors, but got none")
+		return
+	}
+
+	// Check that all expected invalid fields produced errors
+	validateRegexpFields(t, errors, invalidFields)
+}
+
 // TestRegexpValidation tests the regexp validation rule
 func TestRegexpValidation(t *testing.T) {
+	// Define the test struct outside the loop to reduce complexity
 	type RegexpTest struct {
 		PhoneNumber string `json:"phoneNumber" validate:"regexp=^[0-9]{10}$"`
 		PostalCode  string `json:"postalCode" validate:"regexp=^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$"`
 		Username    string `json:"username" validate:"regexp=^[a-zA-Z0-9_]{3,20}$"`
 	}
 
-	tests := []struct {
-		name          string
-		input         RegexpTest
-		expectedValid bool
-		invalidFields []string
-	}{
-		{
-			name: "All Valid",
-			input: RegexpTest{
-				PhoneNumber: "1234567890",
-				PostalCode:  "A1B 2C3",
-				Username:    "user_123",
-			},
-			expectedValid: true,
-		},
-		{
-			name: "Invalid Phone",
-			input: RegexpTest{
-				PhoneNumber: "123456", // Too short
-				PostalCode:  "A1B 2C3",
-				Username:    "user_123",
-			},
-			expectedValid: false,
-			invalidFields: []string{"phoneNumber"},
-		},
-		{
-			name: "Invalid Postal Code",
-			input: RegexpTest{
-				PhoneNumber: "1234567890",
-				PostalCode:  "123 456", // Wrong format
-				Username:    "user_123",
-			},
-			expectedValid: false,
-			invalidFields: []string{"postalCode"},
-		},
-		{
-			name: "Invalid Username",
-			input: RegexpTest{
-				PhoneNumber: "1234567890",
-				PostalCode:  "A1B 2C3",
-				Username:    "user@123", // Invalid character
-			},
-			expectedValid: false,
-			invalidFields: []string{"username"},
-		},
-		{
-			name: "Multiple Invalid Fields",
-			input: RegexpTest{
-				PhoneNumber: "12345", // Too short
-				PostalCode:  "123",   // Wrong format
-				Username:    "u",     // Too short
-			},
-			expectedValid: false,
-			invalidFields: []string{"phoneNumber", "postalCode", "username"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			v := New()
-			errors := v.Validate(tt.input)
-
-			if tt.expectedValid && len(errors) > 0 {
-				t.Errorf("Expected input to be valid, but got errors: %v", errors)
-			}
-
-			if !tt.expectedValid {
-				if len(errors) == 0 {
-					t.Error("Expected validation errors, but got none")
-				}
-
-				// Check that all expected invalid fields produced errors
-				errorFields := make(map[string]bool)
-				for _, err := range errors {
-					errorFields[err.Field] = true
-				}
-
-				for _, field := range tt.invalidFields {
-					if !errorFields[field] {
-						t.Errorf("Expected error for field %s, but none was reported", field)
-					}
-				}
-			}
-		})
-	}
-
-	// Create a simple struct with regexp validations
-	type User struct {
-		Username string `json:"username" validate:"regexp=[a-z0-9_]{3,16}"`
-		Phone    string `json:"phone" validate:"regexp=[0-9]{10}"`
-	}
-
-	// Test valid case
-	validUser := User{
-		Username: "valid_user123",
-		Phone:    "1234567890",
-	}
-
+	// Create a reusable validator
 	v := New()
-	errors := v.Validate(validUser)
-	if len(errors) > 0 {
-		t.Errorf("Expected valid user to pass validation, got errors: %v", errors)
-	}
 
-	// Test invalid username
-	invalidUser := User{
-		Username: "Invalid@User", // Contains invalid characters
-		Phone:    "1234567890",
-	}
+	// Test case 1: All valid fields
+	t.Run("All Valid", func(t *testing.T) {
+		validInput := RegexpTest{
+			PhoneNumber: "1234567890",
+			PostalCode:  testPostalCode,
+			Username:    "user_123",
+		}
+		runRegexpValidationTest(t, v, validInput, true, nil)
+	})
 
-	errors = v.Validate(invalidUser)
-	if len(errors) == 0 {
-		t.Error("Expected validation error for invalid username, got none")
-	} else if len(errors) > 0 && errors[0].Field != "username" {
-		t.Errorf("Expected error for username field, got error for %s", errors[0].Field)
-	}
+	// Test case 2: Invalid phone number
+	t.Run("Invalid Phone", func(t *testing.T) {
+		invalidPhone := RegexpTest{
+			PhoneNumber: "123456", // Too short
+			PostalCode:  testPostalCode,
+			Username:    "user_123",
+		}
+		runRegexpValidationTest(t, v, invalidPhone, false, []string{"phoneNumber"})
+	})
 
-	// Test invalid phone
-	invalidPhone := User{
-		Username: "valid_user",
-		Phone:    "123", // Too short
-	}
+	// Test case 3: Invalid postal code
+	t.Run("Invalid Postal Code", func(t *testing.T) {
+		invalidPostal := RegexpTest{
+			PhoneNumber: "1234567890",
+			PostalCode:  "123 456", // Wrong format
+			Username:    "user_123",
+		}
+		runRegexpValidationTest(t, v, invalidPostal, false, []string{fieldPostalCode})
+	})
 
-	errors = v.Validate(invalidPhone)
-	if len(errors) == 0 {
-		t.Error("Expected validation error for invalid phone, got none")
-	} else if len(errors) > 0 && errors[0].Field != "phone" {
-		t.Errorf("Expected error for phone field, got error for %s", errors[0].Field)
-	}
+	// Test case 4: Invalid username
+	t.Run("Invalid Username", func(t *testing.T) {
+		invalidUsername := RegexpTest{
+			PhoneNumber: "1234567890",
+			PostalCode:  testPostalCode,
+			Username:    "user@123", // Invalid character
+		}
+		runRegexpValidationTest(t, v, invalidUsername, false, []string{fieldUsername})
+	})
+
+	// Test case 5: Multiple invalid fields
+	t.Run("Multiple Invalid Fields", func(t *testing.T) {
+		multipleInvalid := RegexpTest{
+			PhoneNumber: "12345", // Too short
+			PostalCode:  "123",   // Wrong format
+			Username:    "u",     // Too short
+		}
+		runRegexpValidationTest(t, v, multipleInvalid, false, []string{"phoneNumber", "postalCode", "username"})
+	})
+
+	// Run separate test for simple user struct
+	t.Run("Simple User Validation", func(t *testing.T) {
+		validateSimpleUser(t)
+	})
 }
 
 // TestSimpleRegexpValidation tests the regexp validation rule
 func TestSimpleRegexpValidation(t *testing.T) {
+	const (
+		validCode   = "ABC"
+		invalidCode = "123"
+	)
+
 	// Create a struct with a single field using regexp validation
 	type SimpleRegexp struct {
 		Code string `json:"code" validate:"regexp=^[A-Z]{3}$"` // Exactly 3 uppercase letters
@@ -937,15 +1076,15 @@ func TestSimpleRegexpValidation(t *testing.T) {
 	v := New()
 
 	// Test valid value
-	valid := SimpleRegexp{Code: "ABC"}
+	valid := SimpleRegexp{Code: validCode}
 	if errs := v.Validate(valid); len(errs) > 0 {
-		t.Errorf("Expected valid code 'ABC' to pass validation, got errors: %v", errs)
+		t.Errorf("Expected valid code '%s' to pass validation, got errors: %v", validCode, errs)
 	}
 
 	// Test invalid value
-	invalid := SimpleRegexp{Code: "123"}
+	invalid := SimpleRegexp{Code: invalidCode}
 	if errs := v.Validate(invalid); len(errs) == 0 {
-		t.Error("Expected '123' to fail validation, but got no errors")
+		t.Errorf("Expected '%s' to fail validation, but got no errors", invalidCode)
 	}
 }
 
@@ -979,15 +1118,15 @@ func TestBatchValidation(t *testing.T) {
 	// Second item should have one error (name)
 	if len(results[1].Errors) != 1 {
 		t.Errorf("Expected item 1 to have 1 error, got %d", len(results[1].Errors))
-	} else if results[1].Errors[0].Field != "name" {
-		t.Errorf("Expected error on 'name' field, got '%s'", results[1].Errors[0].Field)
+	} else if results[1].Errors[0].Field != fieldName {
+		t.Errorf("Expected error on '%s' field, got '%s'", fieldName, results[1].Errors[0].Field)
 	}
 
 	// Third item should have one error (price)
 	if len(results[2].Errors) != 1 {
 		t.Errorf("Expected item 2 to have 1 error, got %d", len(results[2].Errors))
-	} else if results[2].Errors[0].Field != "price" {
-		t.Errorf("Expected error on 'price' field, got '%s'", results[2].Errors[0].Field)
+	} else if results[2].Errors[0].Field != fieldPrice {
+		t.Errorf("Expected error on '%s' field, got '%s'", fieldPrice, results[2].Errors[0].Field)
 	}
 
 	// Fourth item should have two errors (name and price)
