@@ -38,7 +38,7 @@ GRA Framework v1.0.5 is a maintenance release that fixes issues in the example a
 
 ## Requirements
 
-- Go 1.16+
+- Go 1.24+
 
 ## Migration
 

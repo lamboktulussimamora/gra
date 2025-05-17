@@ -65,7 +65,7 @@ GRA Framework v1.0.4 introduces significant enhancements to security and API man
 
 ## Requirements
 
-- Go 1.16+
+- Go 1.24+
 
 ## Migration
 
