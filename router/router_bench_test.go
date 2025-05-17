@@ -8,6 +8,12 @@ import (
 	"github.com/lamboktulussimamora/gra/context"
 )
 
+const (
+	// Route paths for benchmarking
+	pathUserWithID = "/api/users/:id"
+	pathResource   = "/api/resource/"
+)
+
 func BenchmarkRouterSimple(b *testing.B) {
 	r := New()
 
@@ -18,9 +24,9 @@ func BenchmarkRouterSimple(b *testing.B) {
 	r.GET("/", handler)
 	r.GET("/api/users", handler)
 	r.POST("/api/users", handler)
-	r.GET("/api/users/:id", handler)
-	r.PUT("/api/users/:id", handler)
-	r.DELETE("/api/users/:id", handler)
+	r.GET(pathUserWithID, handler)
+	r.PUT(pathUserWithID, handler)
+	r.DELETE(pathUserWithID, handler)
 
 	// Simple route
 	req1 := httptest.NewRequest("GET", "/", nil)
@@ -53,20 +59,20 @@ func BenchmarkRouterComplex(b *testing.B) {
 
 	// Register a larger number of routes to test routing performance with many routes
 	for i := 0; i < 100; i++ {
-		r.GET("/api/resource/"+string(rune(i)), handler)
-		r.GET("/api/resource/"+string(rune(i))+"/:id", handler)
-		r.PUT("/api/resource/"+string(rune(i))+"/:id", handler)
-		r.DELETE("/api/resource/"+string(rune(i))+"/:id", handler)
+		r.GET(pathResource+string(rune(i)), handler)
+		r.GET(pathResource+string(rune(i))+"/:id", handler)
+		r.PUT(pathResource+string(rune(i))+"/:id", handler)
+		r.DELETE(pathResource+string(rune(i))+"/:id", handler)
 	}
 
 	// Add some more specific routes
-	r.GET("/api/users/:id/profile", handler)
-	r.GET("/api/users/:id/posts/:postId/comments", handler)
-	r.GET("/api/users/:id/posts/:postId/comments/:commentId", handler)
+	r.GET(pathUserWithID+"/profile", handler)
+	r.GET(pathUserWithID+"/posts/:postID/comments", handler)
+	r.GET(pathUserWithID+"/posts/:postID/comments/:commentID", handler)
 
 	// Requests to test
-	req1 := httptest.NewRequest("GET", "/api/resource/A", nil)
-	req2 := httptest.NewRequest("GET", "/api/resource/Z/123", nil)
+	req1 := httptest.NewRequest("GET", pathResource+"A", nil)
+	req2 := httptest.NewRequest("GET", pathResource+"Z/123", nil)
 	req3 := httptest.NewRequest("GET", "/api/users/123/posts/456/comments/789", nil)
 
 	b.ResetTimer()

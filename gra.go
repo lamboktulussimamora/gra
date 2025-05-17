@@ -8,6 +8,7 @@ package gra
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/lamboktulussimamora/gra/context"
 	"github.com/lamboktulussimamora/gra/router"
@@ -21,9 +22,40 @@ func New() *router.Router {
 	return router.New()
 }
 
-// Run starts the HTTP server with the given router
+// Default timeout values for the HTTP server
+const (
+	// DefaultReadTimeout is the maximum duration for reading the entire request
+	DefaultReadTimeout = 10 * time.Second
+
+	// DefaultWriteTimeout is the maximum duration for writing the response
+	DefaultWriteTimeout = 30 * time.Second
+
+	// DefaultIdleTimeout is the maximum duration to wait for the next request
+	DefaultIdleTimeout = 120 * time.Second
+)
+
+// Run starts the HTTP server with the given router and default timeouts
 func Run(addr string, r *router.Router) error {
-	return http.ListenAndServe(addr, r)
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      r,
+		ReadTimeout:  DefaultReadTimeout,
+		WriteTimeout: DefaultWriteTimeout,
+		IdleTimeout:  DefaultIdleTimeout,
+	}
+	return srv.ListenAndServe()
+}
+
+// RunWithConfig starts the HTTP server with custom configuration
+func RunWithConfig(addr string, r *router.Router, readTimeout, writeTimeout, idleTimeout time.Duration) error {
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      r,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
+		IdleTimeout:  idleTimeout,
+	}
+	return srv.ListenAndServe()
 }
 
 // Context is an alias for context.Context

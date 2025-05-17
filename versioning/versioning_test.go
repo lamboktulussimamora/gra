@@ -8,6 +8,161 @@ import (
 	"github.com/lamboktulussimamora/gra/context"
 )
 
+// Path constants for testing
+const (
+	pathV1Users = "/v1/users"
+	pathV2Users = "/v2/users"
+	pathV3Users = "/v3/users"
+	pathUsers   = "/users"
+
+	// Version constants
+	version1 = "1"
+	version2 = "2"
+	version3 = "3"
+
+	// Parameter names
+	paramVersion    = "version"
+	paramAPIVersion = "api_version"
+
+	// Header names
+	headerAcceptVersion = "Accept-Version"
+	headerXAPIVersion   = "X-API-Version"
+	headerAccept        = "Accept"
+
+	// Media types
+	mediaTypeJSON           = "application/json"
+	mediaTypeVndPrefix      = "application/vnd."
+	mediaTypeVndAPIV1       = "application/vnd.api.v1+json"
+	mediaTypeVndAPIV2       = "application/vnd.api.v2+json"
+	mediaTypeMultipleWithV2 = "application/json, application/vnd.api.v2+json"
+
+	// API version context key
+	apiVersionKey = "API-Version"
+
+	// Error messages
+	errExpectedError         = "Expected error but got nil"
+	errExpectedNoError       = "Expected no error but got: %v"
+	errExpectedVersion       = "Expected version %s but got %s"
+	errExpectedNoVersionInfo = "Expected no version info but got: %+v"
+	errExpectedVersionInfo   = "Expected version info but got none"
+	errExpectedStatus        = "Expected status %d but got %d"
+)
+
+// Test helper functions
+
+// setupPathRequest creates a request for path versioning tests
+func setupPathRequest(path string) (*http.Request, *httptest.ResponseRecorder, *context.Context) {
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	w := httptest.NewRecorder()
+	return req, w, context.New(w, req)
+}
+
+// setupQueryRequest creates a request with query parameters for versioning tests
+func setupQueryRequest(query string) (*http.Request, *httptest.ResponseRecorder, *context.Context) {
+	req := httptest.NewRequest(http.MethodGet, pathUsers+query, nil)
+	w := httptest.NewRecorder()
+	return req, w, context.New(w, req)
+}
+
+// setupHeaderRequest prepares a request with the appropriate version header
+func setupHeaderRequest(headerName, headerValue string) (*http.Request, *httptest.ResponseRecorder, *context.Context) {
+	req := httptest.NewRequest(http.MethodGet, pathUsers, nil)
+
+	// Set default header name if empty
+	effectiveHeaderName := headerName
+	if effectiveHeaderName == "" {
+		effectiveHeaderName = headerAcceptVersion
+	}
+
+	// Set header value if provided
+	if headerValue != "" {
+		req.Header.Set(effectiveHeaderName, headerValue)
+	}
+
+	w := httptest.NewRecorder()
+	return req, w, context.New(w, req)
+}
+
+// setupMediaTypeRequest creates a request with an Accept header for versioning tests
+func setupMediaTypeRequest(acceptValue string) (*http.Request, *httptest.ResponseRecorder, *context.Context) {
+	req := httptest.NewRequest(http.MethodGet, pathUsers, nil)
+	if acceptValue != "" {
+		req.Header.Set(headerAccept, acceptValue)
+	}
+
+	w := httptest.NewRecorder()
+	return req, w, context.New(w, req)
+}
+
+// checkVersionResult validates version extraction results
+func checkVersionResult(t *testing.T, version string, err error, expectedVer string, expectedError bool) {
+	t.Helper()
+
+	// Check error cases
+	if expectedError {
+		if err == nil {
+			t.Error(errExpectedError)
+		}
+	} else if err != nil {
+		t.Errorf(errExpectedNoError, err)
+	}
+
+	// Check version
+	if version != expectedVer {
+		t.Errorf(errExpectedVersion, expectedVer, version)
+	}
+}
+
+// setupVersioningOptions creates versioning options with the provided settings
+func setupVersioningOptions(supportedVersions []string, defaultVersion string, strictVersioning bool) *VersioningOptions {
+	return New().
+		WithStrategy(&PathVersionStrategy{Prefix: "v"}).
+		WithSupportedVersions(supportedVersions...).
+		WithDefaultVersion(defaultVersion).
+		WithStrictVersioning(strictVersioning)
+}
+
+// checkVersioningResults validates the middleware execution results
+func checkVersioningResults(t *testing.T, statusCode int, capturedVersion string, expectedStatus int, expectedVersion string) {
+	t.Helper()
+
+	// Check status code
+	if statusCode != expectedStatus {
+		t.Errorf(errExpectedStatus, expectedStatus, statusCode)
+	}
+
+	// Check captured version if expecting success
+	if expectedStatus == http.StatusOK && capturedVersion != expectedVersion {
+		t.Errorf(errExpectedVersion, expectedVersion, capturedVersion)
+	}
+}
+
+// createTestContext creates a context for testing version info
+func createTestContext() *context.Context {
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, pathV1Users, nil)
+	return context.New(w, req)
+}
+
+// checkVersionInfo validates the version information
+func checkVersionInfo(t *testing.T, info VersionInfo, exists bool, shouldExist bool, expectedInfo VersionInfo) {
+	t.Helper()
+
+	if !shouldExist && exists {
+		t.Errorf(errExpectedNoVersionInfo, info)
+		return
+	}
+
+	if shouldExist && !exists {
+		t.Error(errExpectedVersionInfo)
+		return
+	}
+
+	if shouldExist && exists && info.Version != expectedInfo.Version {
+		t.Errorf(errExpectedVersion, expectedInfo.Version, info.Version)
+	}
+}
+
 func TestPathVersionStrategy(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -15,55 +170,18 @@ func TestPathVersionStrategy(t *testing.T) {
 		expectedVer   string
 		expectedError bool
 	}{
-		{
-			name:          "Valid v1 path",
-			path:          "/v1/users",
-			expectedVer:   "1",
-			expectedError: false,
-		},
-		{
-			name:          "Valid v2 path",
-			path:          "/v2/users",
-			expectedVer:   "2",
-			expectedError: false,
-		},
-		{
-			name:          "No version in path",
-			path:          "/users",
-			expectedVer:   "",
-			expectedError: true,
-		},
-		{
-			name:          "Custom prefix",
-			path:          "/api-v3/users",
-			expectedVer:   "",
-			expectedError: true,
-		},
+		{"Valid v1 path", pathV1Users, version1, false},
+		{"Valid v2 path", pathV2Users, version2, false},
+		{"No version in path", pathUsers, "", true},
+		{"Custom prefix", "/api-v3/users", "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create request with test path
-			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
-			w := httptest.NewRecorder()
-			c := context.New(w, req)
-
-			// Create strategy and extract version
+			_, _, c := setupPathRequest(tt.path)
 			strategy := &PathVersionStrategy{Prefix: "v"}
 			version, err := strategy.ExtractVersion(c)
-
-			// Check results
-			if tt.expectedError && err == nil {
-				t.Errorf("Expected error but got nil")
-			}
-
-			if !tt.expectedError && err != nil {
-				t.Errorf("Expected no error but got: %v", err)
-			}
-
-			if version != tt.expectedVer {
-				t.Errorf("Expected version %s but got %s", tt.expectedVer, version)
-			}
+			checkVersionResult(t, version, err, tt.expectedVer, tt.expectedError)
 		})
 	}
 }
@@ -76,59 +194,18 @@ func TestQueryVersionStrategy(t *testing.T) {
 		expectedVer   string
 		expectedError bool
 	}{
-		{
-			name:          "Valid version parameter",
-			query:         "?version=1",
-			paramName:     "version",
-			expectedVer:   "1",
-			expectedError: false,
-		},
-		{
-			name:          "Valid v parameter",
-			query:         "?v=2",
-			paramName:     "",
-			expectedVer:   "2",
-			expectedError: false,
-		},
-		{
-			name:          "Custom parameter name",
-			query:         "?api_version=3",
-			paramName:     "api_version",
-			expectedVer:   "3",
-			expectedError: false,
-		},
-		{
-			name:          "Missing parameter",
-			query:         "?other=value",
-			paramName:     "version",
-			expectedVer:   "",
-			expectedError: true,
-		},
+		{"Valid version parameter", "?version=1", paramVersion, version1, false},
+		{"Valid v parameter", "?v=2", "", version2, false},
+		{"Custom parameter name", "?api_version=3", paramAPIVersion, version3, false},
+		{"Missing parameter", "?other=value", paramVersion, "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create request with test query
-			req := httptest.NewRequest(http.MethodGet, "/users"+tt.query, nil)
-			w := httptest.NewRecorder()
-			c := context.New(w, req)
-
-			// Create strategy and extract version
+			_, _, c := setupQueryRequest(tt.query)
 			strategy := &QueryVersionStrategy{ParamName: tt.paramName}
 			version, err := strategy.ExtractVersion(c)
-
-			// Check results
-			if tt.expectedError && err == nil {
-				t.Errorf("Expected error but got nil")
-			}
-
-			if !tt.expectedError && err != nil {
-				t.Errorf("Expected no error but got: %v", err)
-			}
-
-			if version != tt.expectedVer {
-				t.Errorf("Expected version %s but got %s", tt.expectedVer, version)
-			}
+			checkVersionResult(t, version, err, tt.expectedVer, tt.expectedError)
 		})
 	}
 }
@@ -141,60 +218,17 @@ func TestHeaderVersionStrategy(t *testing.T) {
 		expectedVer   string
 		expectedError bool
 	}{
-		{
-			name:          "Default header name",
-			headerName:    "",
-			headerValue:   "1",
-			expectedVer:   "1",
-			expectedError: false,
-		},
-		{
-			name:          "Custom header name",
-			headerName:    "X-API-Version",
-			headerValue:   "2",
-			expectedVer:   "2",
-			expectedError: false,
-		},
-		{
-			name:          "Missing header",
-			headerName:    "X-API-Version",
-			headerValue:   "",
-			expectedVer:   "",
-			expectedError: true,
-		},
+		{"Default header name", "", version1, version1, false},
+		{"Custom header name", headerXAPIVersion, version2, version2, false},
+		{"Missing header", headerXAPIVersion, "", "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create request with test header
-			req := httptest.NewRequest(http.MethodGet, "/users", nil)
-			headerName := tt.headerName
-			if headerName == "" {
-				headerName = "Accept-Version"
-			}
-			if tt.headerValue != "" {
-				req.Header.Set(headerName, tt.headerValue)
-			}
-
-			w := httptest.NewRecorder()
-			c := context.New(w, req)
-
-			// Create strategy and extract version
+			_, _, c := setupHeaderRequest(tt.headerName, tt.headerValue)
 			strategy := &HeaderVersionStrategy{HeaderName: tt.headerName}
 			version, err := strategy.ExtractVersion(c)
-
-			// Check results
-			if tt.expectedError && err == nil {
-				t.Errorf("Expected error but got nil")
-			}
-
-			if !tt.expectedError && err != nil {
-				t.Errorf("Expected no error but got: %v", err)
-			}
-
-			if version != tt.expectedVer {
-				t.Errorf("Expected version %s but got %s", tt.expectedVer, version)
-			}
+			checkVersionResult(t, version, err, tt.expectedVer, tt.expectedError)
 		})
 	}
 }
@@ -206,59 +240,18 @@ func TestMediaTypeVersionStrategy(t *testing.T) {
 		expectedVer   string
 		expectedError bool
 	}{
-		{
-			name:          "Valid vendor media type",
-			accept:        "application/vnd.api.v1+json",
-			expectedVer:   "1",
-			expectedError: false,
-		},
-		{
-			name:          "Multiple media types with valid one",
-			accept:        "application/json, application/vnd.api.v2+json",
-			expectedVer:   "2",
-			expectedError: false,
-		},
-		{
-			name:          "No valid vendor media type",
-			accept:        "application/json",
-			expectedVer:   "",
-			expectedError: true,
-		},
-		{
-			name:          "Missing Accept header",
-			accept:        "",
-			expectedVer:   "",
-			expectedError: true,
-		},
+		{"Valid vendor media type", mediaTypeVndAPIV1, version1, false},
+		{"Multiple media types with valid one", mediaTypeMultipleWithV2, version2, false},
+		{"No valid vendor media type", mediaTypeJSON, "", true},
+		{"Missing Accept header", "", "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create request with test Accept header
-			req := httptest.NewRequest(http.MethodGet, "/users", nil)
-			if tt.accept != "" {
-				req.Header.Set("Accept", tt.accept)
-			}
-
-			w := httptest.NewRecorder()
-			c := context.New(w, req)
-
-			// Create strategy and extract version
-			strategy := &MediaTypeVersionStrategy{MediaTypePrefix: "application/vnd."}
+			_, _, c := setupMediaTypeRequest(tt.accept)
+			strategy := &MediaTypeVersionStrategy{MediaTypePrefix: mediaTypeVndPrefix}
 			version, err := strategy.ExtractVersion(c)
-
-			// Check results
-			if tt.expectedError && err == nil {
-				t.Errorf("Expected error but got nil")
-			}
-
-			if !tt.expectedError && err != nil {
-				t.Errorf("Expected no error but got: %v", err)
-			}
-
-			if version != tt.expectedVer {
-				t.Errorf("Expected version %s but got %s", tt.expectedVer, version)
-			}
+			checkVersionResult(t, version, err, tt.expectedVer, tt.expectedError)
 		})
 	}
 }
@@ -273,54 +266,15 @@ func TestVersioningMiddleware(t *testing.T) {
 		expectedStatus   int
 		expectedVersion  string
 	}{
-		{
-			name:             "Valid version",
-			path:             "/v1/users",
-			supportedVers:    []string{"1", "2"},
-			defaultVer:       "1",
-			strictVersioning: false,
-			expectedStatus:   http.StatusOK,
-			expectedVersion:  "1",
-		},
-		{
-			name:             "Unsupported version",
-			path:             "/v3/users",
-			supportedVers:    []string{"1", "2"},
-			defaultVer:       "1",
-			strictVersioning: false,
-			expectedStatus:   http.StatusBadRequest,
-			expectedVersion:  "",
-		},
-		{
-			name:             "No version with non-strict mode",
-			path:             "/users",
-			supportedVers:    []string{"1", "2"},
-			defaultVer:       "1",
-			strictVersioning: false,
-			expectedStatus:   http.StatusOK,
-			expectedVersion:  "1",
-		},
-		{
-			name:             "No version with strict mode",
-			path:             "/users",
-			supportedVers:    []string{"1", "2"},
-			defaultVer:       "1",
-			strictVersioning: true,
-			expectedStatus:   http.StatusBadRequest,
-			expectedVersion:  "",
-		},
+		{"Valid version", pathV1Users, []string{version1, version2}, version1, false, http.StatusOK, version1},
+		{"Unsupported version", pathV3Users, []string{version1, version2}, version1, false, http.StatusBadRequest, ""},
+		{"No version with non-strict mode", pathUsers, []string{version1, version2}, version1, false, http.StatusOK, version1},
+		{"No version with strict mode", pathUsers, []string{version1, version2}, version1, true, http.StatusBadRequest, ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create versioning options
-			v := New().
-				WithStrategy(&PathVersionStrategy{Prefix: "v"}).
-				WithSupportedVersions(tt.supportedVers...).
-				WithDefaultVersion(tt.defaultVer).
-				WithStrictVersioning(tt.strictVersioning)
-
-			// Create test handler
+			v := setupVersioningOptions(tt.supportedVers, tt.defaultVer, tt.strictVersioning)
 			var capturedVersion string
 			handler := func(c *context.Context) {
 				if versionInfo, exists := GetAPIVersion(c); exists {
@@ -328,56 +282,26 @@ func TestVersioningMiddleware(t *testing.T) {
 				}
 				c.Status(http.StatusOK)
 			}
-
-			// Create middleware chain
 			middleware := v.Middleware()(handler)
-
-			// Create request with test path
-			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
-			w := httptest.NewRecorder()
-			c := context.New(w, req)
-
-			// Execute middleware and handler
+			_, w, c := setupPathRequest(tt.path)
 			middleware(c)
-
-			// Check status code
-			if w.Code != tt.expectedStatus {
-				t.Errorf("Expected status %d but got %d", tt.expectedStatus, w.Code)
-			}
-
-			// Check captured version if expecting success
-			if tt.expectedStatus == http.StatusOK && capturedVersion != tt.expectedVersion {
-				t.Errorf("Expected version %s but got %s", tt.expectedVersion, capturedVersion)
-			}
+			checkVersioningResults(t, w.Code, capturedVersion, tt.expectedStatus, tt.expectedVersion)
 		})
 	}
 }
 
 func TestGetAPIVersion(t *testing.T) {
-	// Create context
-	req := httptest.NewRequest(http.MethodGet, "/v1/users", nil)
-	w := httptest.NewRecorder()
-	c := context.New(w, req)
+	c := createTestContext()
 
-	// Case 1: No version info in context
 	info, exists := GetAPIVersion(c)
-	if exists {
-		t.Errorf("Expected no version info but got: %+v", info)
-	}
+	checkVersionInfo(t, info, exists, false, VersionInfo{})
 
-	// Case 2: Version info in context
 	expectedInfo := VersionInfo{
-		Version:     "2",
+		Version:     version2,
 		IsSupported: true,
 	}
-	c.WithValue("API-Version", expectedInfo)
+	c.WithValue(apiVersionKey, expectedInfo)
 
 	info, exists = GetAPIVersion(c)
-	if !exists {
-		t.Errorf("Expected version info but got none")
-	}
-
-	if info.Version != expectedInfo.Version {
-		t.Errorf("Expected version %s but got %s", expectedInfo.Version, info.Version)
-	}
+	checkVersionInfo(t, info, exists, true, expectedInfo)
 }

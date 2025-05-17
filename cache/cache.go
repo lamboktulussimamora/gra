@@ -3,7 +3,7 @@ package cache
 
 import (
 	"bytes"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -81,7 +81,7 @@ func (s *MemoryStore) Set(key string, entry *CacheEntry, ttl time.Duration) {
 
 	// Generate ETag if not set
 	if entry.ETag == "" {
-		hash := md5.Sum(entry.Body)
+		hash := sha256.Sum256(entry.Body)
 		entry.ETag = hex.EncodeToString(hash[:])
 	}
 
@@ -196,9 +196,8 @@ func New() router.Middleware {
 	return WithConfig(DefaultCacheConfig())
 }
 
-// WithConfig creates a new cache middleware with custom configuration
-func WithConfig(config CacheConfig) router.Middleware {
-	// Set up defaults for any unspecified options
+// initializeConfig sets default values for any unspecified options in the config
+func initializeConfig(config *CacheConfig) {
 	if config.TTL == 0 {
 		config.TTL = DefaultCacheConfig().TTL
 	}
@@ -217,19 +216,107 @@ func WithConfig(config CacheConfig) router.Middleware {
 	if config.MaxBodySize == 0 {
 		config.MaxBodySize = DefaultCacheConfig().MaxBodySize
 	}
+}
+
+// isMethodAllowed checks if the HTTP method is allowed for caching
+func isMethodAllowed(method string, allowedMethods []string) bool {
+	for _, allowed := range allowedMethods {
+		if method == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+// serveFromCache serves a cached response to the client
+func serveFromCache(c *context.Context, entry *CacheEntry) {
+	// Serve headers from cache
+	for name, values := range entry.Headers {
+		for _, value := range values {
+			c.SetHeader(name, value)
+		}
+	}
+
+	// Add cache headers
+	c.SetHeader("X-Cache", "HIT")
+	c.SetHeader("Age", strconv.FormatInt(int64(time.Since(entry.LastModified).Seconds()), 10))
+
+	// Write status and body
+	c.Status(entry.StatusCode)
+	w := c.Writer
+	if _, err := w.Write(entry.Body); err != nil {
+		log.Printf("Error writing cached response: %v", err)
+	}
+}
+
+// handleConditionalGET checks for conditional GET headers and returns true if 304 Not Modified was sent
+func handleConditionalGET(c *context.Context, entry *CacheEntry) bool {
+	// Check for conditional GET requests
+	ifNoneMatch := c.GetHeader("If-None-Match")
+	ifModifiedSince := c.GetHeader("If-Modified-Since")
+
+	// Compare ETag values properly, handling quotes
+	if ifNoneMatch != "" {
+		// Clean the If-None-Match header to handle quoted ETags
+		cleanETag := strings.Trim(ifNoneMatch, "\"")
+		entryETag := strings.Trim(entry.ETag, "\"")
+
+		if cleanETag == entryETag {
+			c.Status(http.StatusNotModified)
+			return true
+		}
+	}
+
+	if ifModifiedSince != "" {
+		if parsedTime, err := time.Parse(http.TimeFormat, ifModifiedSince); err == nil {
+			if !entry.LastModified.After(parsedTime) {
+				c.Status(http.StatusNotModified)
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// createCacheEntry creates a new cache entry from the response
+func createCacheEntry(responseWriter *ResponseWriter, now time.Time) (*CacheEntry, string) {
+	headers := make(map[string][]string)
+
+	// Copy headers that should be cached
+	for name, values := range responseWriter.Header() {
+		// Skip hop-by-hop headers
+		if isHopByHopHeader(name) {
+			continue
+		}
+		headers[name] = values
+	}
+
+	// Generate ETag
+	body := responseWriter.Body()
+	hash := sha256.Sum256(body)
+	etag := hex.EncodeToString(hash[:])
+
+	entry := &CacheEntry{
+		Body:         body,
+		StatusCode:   responseWriter.Status(),
+		Headers:      headers,
+		LastModified: now,
+		ETag:         etag,
+	}
+
+	return entry, etag
+}
+
+// WithConfig creates a new cache middleware with custom configuration
+func WithConfig(config CacheConfig) router.Middleware {
+	// Initialize configuration with defaults
+	initializeConfig(&config)
 
 	return func(next router.HandlerFunc) router.HandlerFunc {
 		return func(c *context.Context) {
-			// Skip cache if the method is not cacheable
-			methodAllowed := false
-			for _, method := range config.Methods {
-				if c.Request.Method == method {
-					methodAllowed = true
-					break
-				}
-			}
-
-			if !methodAllowed || config.SkipCache(c) {
+			// Skip cache if the method is not cacheable or if SkipCache returns true
+			if !isMethodAllowed(c.Request.Method, config.Methods) || config.SkipCache(c) {
 				next(c)
 				return
 			}
@@ -239,42 +326,13 @@ func WithConfig(config CacheConfig) router.Middleware {
 
 			// Check if we have a cached response
 			if entry, found := config.Store.Get(key); found {
-				// Check for conditional GET requests
-				ifNoneMatch := c.GetHeader("If-None-Match")
-				ifModifiedSince := c.GetHeader("If-Modified-Since")
-
-				if ifNoneMatch != "" && ifNoneMatch == entry.ETag {
-					c.Status(http.StatusNotModified)
+				// Check for conditional GET requests that may result in 304 Not Modified
+				if handleConditionalGET(c, entry) {
 					return
 				}
 
-				if ifModifiedSince != "" {
-					if parsedTime, err := time.Parse(http.TimeFormat, ifModifiedSince); err == nil {
-						if !entry.LastModified.After(parsedTime) {
-							c.Status(http.StatusNotModified)
-							return
-						}
-					}
-				}
-
-				// Serve from cache
-				for name, values := range entry.Headers {
-					for _, value := range values {
-						c.SetHeader(name, value)
-					}
-				}
-
-				// Add cache headers
-				c.SetHeader("X-Cache", "HIT")
-				c.SetHeader("Age", strconv.FormatInt(int64(time.Since(entry.LastModified).Seconds()), 10))
-
-				// Write status and body
-				c.Status(entry.StatusCode)
-				w := c.Writer
-				if _, err := w.Write(entry.Body); err != nil {
-					log.Printf("Error writing cached response: %v", err)
-				}
-
+				// Serve the cached response
+				serveFromCache(c, entry)
 				return
 			}
 
@@ -285,41 +343,14 @@ func WithConfig(config CacheConfig) router.Middleware {
 			// Call the next handler
 			next(c)
 
-			// Don't cache errors
-			if responseWriter.Status() >= 400 {
-				return
-			}
-
-			// Check response size
-			if int64(len(responseWriter.Body())) > config.MaxBodySize {
+			// Don't cache errors or oversized responses
+			if responseWriter.Status() >= 400 || int64(len(responseWriter.Body())) > config.MaxBodySize {
 				return
 			}
 
 			// Create cache entry
 			now := time.Now()
-			headers := make(map[string][]string)
-
-			// Copy headers that should be cached
-			for name, values := range c.Writer.Header() {
-				// Skip hop-by-hop headers
-				if isHopByHopHeader(name) {
-					continue
-				}
-				headers[name] = values
-			}
-
-			// Generate ETag
-			body := responseWriter.Body()
-			hash := md5.Sum(body)
-			etag := hex.EncodeToString(hash[:])
-
-			entry := &CacheEntry{
-				Body:         body,
-				StatusCode:   responseWriter.Status(),
-				Headers:      headers,
-				LastModified: now,
-				ETag:         etag,
-			}
+			entry, etag := createCacheEntry(responseWriter, now)
 
 			// Add cache headers to response
 			c.SetHeader("ETag", etag)

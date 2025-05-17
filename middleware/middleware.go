@@ -124,53 +124,87 @@ func CORS(allowOrigin string) router.Middleware {
 	return CORSWithConfig(config)
 }
 
+// determineAllowedOrigin checks if the request origin is allowed by CORS config
+func determineAllowedOrigin(origin string, allowedOrigins []string) string {
+	if origin == "" && contains(allowedOrigins, "*") {
+		return "*"
+	}
+
+	for _, allowed := range allowedOrigins {
+		if allowed == "*" || allowed == origin {
+			return origin
+		}
+	}
+
+	return ""
+}
+
+// setCORSHeaders applies all configured CORS headers to the response
+func setCORSHeaders(c *context.Context, config CORSConfig) {
+	origin := c.GetHeader("Origin")
+	allowedOrigin := determineAllowedOrigin(origin, config.AllowOrigins)
+
+	// Set the allowed origin if valid
+	if allowedOrigin != "" {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+	}
+
+	// Set standard CORS headers
+	setStandardCORSHeaders(c, config)
+}
+
+// setStandardCORSHeaders sets the standard CORS headers based on configuration
+func setStandardCORSHeaders(c *context.Context, config CORSConfig) {
+	headers := c.Writer.Header()
+
+	// Set allowed methods
+	if len(config.AllowMethods) > 0 {
+		headers.Set("Access-Control-Allow-Methods", strings.Join(config.AllowMethods, ", "))
+	}
+
+	// Set allowed headers
+	if len(config.AllowHeaders) > 0 {
+		headers.Set("Access-Control-Allow-Headers", strings.Join(config.AllowHeaders, ", "))
+	}
+
+	// Set expose headers
+	if len(config.ExposeHeaders) > 0 {
+		headers.Set("Access-Control-Expose-Headers", strings.Join(config.ExposeHeaders, ", "))
+	}
+
+	// Set remaining CORS headers
+	setExtendedCORSHeaders(headers, config)
+}
+
+// setExtendedCORSHeaders sets the additional CORS headers
+func setExtendedCORSHeaders(headers http.Header, config CORSConfig) {
+	// Set allow credentials
+	if config.AllowCredentials {
+		headers.Set("Access-Control-Allow-Credentials", "true")
+	}
+
+	// Set max age
+	if config.MaxAge > 0 {
+		headers.Set("Access-Control-Max-Age", strconv.Itoa(config.MaxAge))
+	}
+}
+
+// contains checks if a string exists in a slice
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
 // CORSWithConfig handles Cross-Origin Resource Sharing with custom configuration
 func CORSWithConfig(config CORSConfig) router.Middleware {
 	return func(next router.HandlerFunc) router.HandlerFunc {
 		return func(c *context.Context) {
-			// Set CORS headers
-			origin := c.GetHeader("Origin")
-
-			// Check if the origin is allowed
-			allowedOrigin := ""
-			for _, o := range config.AllowOrigins {
-				if o == "*" || o == origin {
-					allowedOrigin = origin
-					if o == "*" && origin == "" {
-						allowedOrigin = "*"
-					}
-					break
-				}
-			}
-
-			if allowedOrigin != "" {
-				c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-			}
-
-			// Set allowed methods
-			if len(config.AllowMethods) > 0 {
-				c.Writer.Header().Set("Access-Control-Allow-Methods", strings.Join(config.AllowMethods, ", "))
-			}
-
-			// Set allowed headers
-			if len(config.AllowHeaders) > 0 {
-				c.Writer.Header().Set("Access-Control-Allow-Headers", strings.Join(config.AllowHeaders, ", "))
-			}
-
-			// Set expose headers
-			if len(config.ExposeHeaders) > 0 {
-				c.Writer.Header().Set("Access-Control-Expose-Headers", strings.Join(config.ExposeHeaders, ", "))
-			}
-
-			// Set allow credentials
-			if config.AllowCredentials {
-				c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-			}
-
-			// Set max age
-			if config.MaxAge > 0 {
-				c.Writer.Header().Set("Access-Control-Max-Age", strconv.Itoa(config.MaxAge))
-			}
+			// Apply all CORS headers
+			setCORSHeaders(c, config)
 
 			// Handle preflight requests
 			if c.Request.Method == http.MethodOptions {
@@ -178,6 +212,7 @@ func CORSWithConfig(config CORSConfig) router.Middleware {
 				return
 			}
 
+			// Process the actual request
 			next(c)
 		}
 	}

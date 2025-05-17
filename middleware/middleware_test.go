@@ -10,6 +10,28 @@ import (
 	"github.com/lamboktulussimamora/gra/router"
 )
 
+// Test error message constants to avoid duplication
+const (
+	testUserID                  = "123"
+	testRole                    = "admin"
+	claimsKey                   = "user"
+	errExpectedHandlerCalled    = "Expected handler to be called, but it wasn't"
+	errExpectedHandlerNotCalled = "Expected handler not to be called, but it was"
+	errStatusCodeMismatch       = "Expected status code %d, got %d"
+	errClaimsNotAdded           = "Expected claims to be added to context, but they weren't"
+	errClaimsWrongType          = "Claims not of expected type"
+	errUserIDMismatch           = "Expected userID %v, got %v"
+	errHeaderMismatch           = "Expected %s to be %s, got %s"
+)
+
+// Constants for authorization headers
+const (
+	bearerTokenPrefix   = "Bearer "
+	validTokenHeader    = bearerTokenPrefix + "valid-token"
+	invalidFormatHeader = "InvalidFormat token"
+	invalidTokenHeader  = bearerTokenPrefix + "invalid-token"
+)
+
 // MockJWTAuthenticator is a mock implementation of JWTAuthenticator
 type MockJWTAuthenticator struct {
 	ShouldSucceed bool
@@ -17,39 +39,17 @@ type MockJWTAuthenticator struct {
 }
 
 func (m *MockJWTAuthenticator) ValidateToken(tokenString string) (any, error) {
+	// This implementation ignores the actual token string value
+	// as we're only testing based on the ShouldSucceed flag
 	if !m.ShouldSucceed {
 		return nil, errors.New("invalid token")
 	}
 	return m.Claims, nil
 }
 
+// TestAuth tests the Auth middleware functionality
 func TestAuth(t *testing.T) {
-	// Create mock JWT authenticator
-	claims := map[string]any{
-		"userId": "123",
-		"role":   "admin",
-	}
-
-	mockJWT := &MockJWTAuthenticator{
-		ShouldSucceed: true,
-		Claims:        claims,
-	}
-
-	// Create a handler to verify the auth middleware
-	handlerCalled := false
-	var capturedClaims any
-	testHandler := func(c *context.Context) {
-		handlerCalled = true
-		capturedClaims = c.Value("user")
-		c.Status(http.StatusOK).JSON(http.StatusOK, map[string]string{
-			"status": "success",
-		})
-	}
-
-	// Create the auth middleware
-	authMiddleware := Auth(mockJWT, "user")
-	wrappedHandler := authMiddleware(testHandler)
-
+	// Set up test cases
 	testCases := []struct {
 		name           string
 		authHeader     string
@@ -58,7 +58,7 @@ func TestAuth(t *testing.T) {
 	}{
 		{
 			name:           "Valid token",
-			authHeader:     "Bearer valid-token",
+			authHeader:     validTokenHeader,
 			shouldSucceed:  true,
 			expectedStatus: http.StatusOK,
 		},
@@ -70,67 +70,125 @@ func TestAuth(t *testing.T) {
 		},
 		{
 			name:           "Invalid header format",
-			authHeader:     "InvalidFormat token",
+			authHeader:     invalidFormatHeader,
 			shouldSucceed:  true,
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
 			name:           "Invalid token",
-			authHeader:     "Bearer invalid-token",
+			authHeader:     invalidTokenHeader,
 			shouldSucceed:  false,
 			expectedStatus: http.StatusUnauthorized,
 		},
 	}
 
+	// Set up test claims
+	claims := map[string]any{
+		"userID": testUserID,
+		"role":   testRole,
+	}
+
+	// Run each test case
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Reset test variables
-			handlerCalled = false
-			capturedClaims = nil
-			mockJWT.ShouldSucceed = tc.shouldSucceed
-
-			// Create test request and response
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("GET", "/protected", nil)
-
-			if tc.authHeader != "" {
-				r.Header.Set("Authorization", tc.authHeader)
-			}
-
-			c := context.New(w, r)
-
-			// Execute middleware and handler
-			wrappedHandler(c)
-
-			// Check status code
-			if w.Code != tc.expectedStatus {
-				t.Errorf("Expected status code %d, got %d", tc.expectedStatus, w.Code)
-			}
-
-			// Check if handler was called when expected
-			shouldCallHandler := tc.expectedStatus == http.StatusOK
-			if shouldCallHandler && !handlerCalled {
-				t.Error("Expected handler to be called, but it wasn't")
-			}
-
-			if !shouldCallHandler && handlerCalled {
-				t.Error("Expected handler not to be called, but it was")
-			}
-
-			// Verify claims were passed when handler was called
-			if handlerCalled {
-				if capturedClaims == nil {
-					t.Error("Expected claims to be added to context, but they weren't")
-				} else {
-					claimsMap, ok := capturedClaims.(map[string]any)
-					if !ok {
-						t.Error("Claims not of expected type")
-					} else if claimsMap["userId"] != claims["userId"] {
-						t.Errorf("Expected userId %v, got %v", claims["userId"], claimsMap["userId"])
-					}
-				}
-			}
+			runAuthTest(t, tc.authHeader, tc.shouldSucceed, tc.expectedStatus, claims)
 		})
+	}
+}
+
+// runAuthTest executes a single Auth middleware test case
+func runAuthTest(t *testing.T, authHeader string, shouldSucceed bool, expectedStatus int, claims map[string]any) {
+	// Create test variables
+	handlerCalled := false
+	var capturedClaims any
+
+	// Create mock JWT authenticator
+	mockJWT := &MockJWTAuthenticator{
+		ShouldSucceed: shouldSucceed,
+		Claims:        claims,
+	}
+
+	// Create test handler
+	testHandler := func(c *context.Context) {
+		handlerCalled = true
+		capturedClaims = c.Value(claimsKey)
+		c.Status(http.StatusOK).JSON(http.StatusOK, map[string]string{
+			"status": "success",
+		})
+	}
+
+	// Create auth middleware
+	authMiddleware := Auth(mockJWT, claimsKey)
+	wrappedHandler := authMiddleware(testHandler)
+
+	// Create request and response
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/protected", nil)
+
+	// Set auth header if provided
+	if authHeader != "" {
+		r.Header.Set("Authorization", authHeader)
+	}
+
+	// Execute middleware
+	c := context.New(w, r)
+	wrappedHandler(c)
+
+	// Verify response status code
+	if w.Code != expectedStatus {
+		t.Errorf(errStatusCodeMismatch, expectedStatus, w.Code)
+	}
+
+	// Verify handler execution
+	verifyHandlerExecution(t, expectedStatus, handlerCalled)
+
+	// Verify claims if handler was called
+	if handlerCalled {
+		verifyClaims(t, capturedClaims, claims)
+	}
+}
+
+// verifyHandlerExecution checks if the handler was called when expected
+func verifyHandlerExecution(t *testing.T, expectedStatus int, handlerCalled bool) {
+	t.Helper()
+	shouldCallHandler := expectedStatus == http.StatusOK
+
+	if shouldCallHandler && !handlerCalled {
+		t.Error(errExpectedHandlerCalled)
+	}
+	if !shouldCallHandler && handlerCalled {
+		t.Error(errExpectedHandlerNotCalled)
+	}
+}
+
+// verifyCORSHandlerExecution checks if the handler was called when expected for CORS tests
+func verifyCORSHandlerExecution(t *testing.T, handlerShouldRun bool, handlerCalled bool) {
+	t.Helper()
+
+	if handlerShouldRun && !handlerCalled {
+		t.Error(errExpectedHandlerCalled)
+	}
+	if !handlerShouldRun && handlerCalled {
+		t.Error(errExpectedHandlerNotCalled)
+	}
+}
+
+// verifyClaims checks if the expected claims were passed to the context
+func verifyClaims(t *testing.T, capturedClaims any, expectedClaims map[string]any) {
+	t.Helper()
+	if capturedClaims == nil {
+		t.Error(errClaimsNotAdded)
+		return
+	}
+
+	claimsMap, ok := capturedClaims.(map[string]any)
+	if !ok {
+		t.Error(errClaimsWrongType)
+		return
+	}
+
+	if claimsMap["userID"] != expectedClaims["userID"] {
+		t.Errorf(errUserIDMismatch, expectedClaims["userID"], claimsMap["userID"])
 	}
 }
 
@@ -156,12 +214,12 @@ func TestLogger(t *testing.T) {
 
 	// Check if handler was called
 	if !handlerCalled {
-		t.Error("Expected handler to be called, but it wasn't")
+		t.Error(errExpectedHandlerCalled)
 	}
 
 	// Check status code
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
+		t.Errorf(errStatusCodeMismatch, http.StatusOK, w.Code)
 	}
 }
 
@@ -206,7 +264,7 @@ func TestRecovery(t *testing.T) {
 
 			// Check status code
 			if w.Code != tc.expectedStatus {
-				t.Errorf("Expected status code %d, got %d", tc.expectedStatus, w.Code)
+				t.Errorf(errStatusCodeMismatch, tc.expectedStatus, w.Code)
 			}
 		})
 	}
@@ -233,6 +291,16 @@ func TestCORS(t *testing.T) {
 		},
 	}
 
+	// Constants for CORS header validation
+	const (
+		allowOrigin        = "*"
+		allowMethods       = "GET, POST, PUT, DELETE, OPTIONS"
+		allowHeaders       = "Authorization, Content-Type"
+		headerAllowOrigin  = "Access-Control-Allow-Origin"
+		headerAllowMethods = "Access-Control-Allow-Methods"
+		headerAllowHeaders = "Access-Control-Allow-Headers"
+	)
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Track if handler was called
@@ -243,7 +311,6 @@ func TestCORS(t *testing.T) {
 			}
 
 			// Create the CORS middleware
-			allowOrigin := "*"
 			corsMiddleware := CORS(allowOrigin)
 			wrappedHandler := corsMiddleware(testHandler)
 
@@ -255,43 +322,37 @@ func TestCORS(t *testing.T) {
 			// Execute middleware and handler
 			wrappedHandler(c)
 
-			// Check if handler was called when expected
-			if tc.handlerShouldRun && !handlerCalled {
-				t.Error("Expected handler to be called, but it wasn't")
-			}
+			// Verify handler execution
+			verifyCORSHandlerExecution(t, tc.handlerShouldRun, handlerCalled)
 
-			if !tc.handlerShouldRun && handlerCalled {
-				t.Error("Expected handler not to be called, but it was")
-			}
-
-			// Check status code
+			// Verify status code
 			if w.Code != tc.expectedStatus {
-				t.Errorf("Expected status code %d, got %d", tc.expectedStatus, w.Code)
+				t.Errorf(errStatusCodeMismatch, tc.expectedStatus, w.Code)
 			}
 
-			// Check CORS headers
+			// Verify CORS headers
 			headers := w.Header()
-
-			if headers.Get("Access-Control-Allow-Origin") != allowOrigin {
-				t.Errorf("Expected Access-Control-Allow-Origin to be %s, got %s",
-					allowOrigin, headers.Get("Access-Control-Allow-Origin"))
+			if headers.Get(headerAllowOrigin) != allowOrigin {
+				t.Errorf(errHeaderMismatch,
+					headerAllowOrigin, allowOrigin, headers.Get(headerAllowOrigin))
 			}
 
-			if headers.Get("Access-Control-Allow-Methods") != "GET, POST, PUT, DELETE, OPTIONS" {
-				t.Errorf("Expected Access-Control-Allow-Methods to be %s, got %s",
-					"GET, POST, PUT, DELETE, OPTIONS", headers.Get("Access-Control-Allow-Methods"))
+			if headers.Get(headerAllowMethods) != allowMethods {
+				t.Errorf(errHeaderMismatch,
+					headerAllowMethods, allowMethods, headers.Get(headerAllowMethods))
 			}
 
-			if headers.Get("Access-Control-Allow-Headers") != "Authorization, Content-Type" {
-				t.Errorf("Expected Access-Control-Allow-Headers to be %s, got %s",
-					"Authorization, Content-Type", headers.Get("Access-Control-Allow-Headers"))
+			if headers.Get(headerAllowHeaders) != allowHeaders {
+				t.Errorf(errHeaderMismatch,
+					headerAllowHeaders, allowHeaders, headers.Get(headerAllowHeaders))
 			}
 		})
 	}
 }
 
-// Header name constants for testing
+// Header name and value constants for testing
 const (
+	// Header names
 	headerXSSProtection       = "X-XSS-Protection"
 	headerContentTypeOptions  = "X-Content-Type-Options"
 	headerFrameOptions        = "X-Frame-Options"
@@ -299,16 +360,31 @@ const (
 	headerCSP                 = "Content-Security-Policy"
 	headerHSTS                = "Strict-Transport-Security"
 	headerCrossOriginResource = "Cross-Origin-Resource-Policy"
+
+	// Header default values
+	valueXSSProtection       = "1; mode=block"
+	valueContentTypeOptions  = "nosniff"
+	valueFrameOptions        = "SAMEORIGIN"
+	valueReferrerPolicy      = "no-referrer"
+	valueSameOrigin          = "same-origin"
+	valueCrossOriginResource = valueSameOrigin
+
+	// Error message format for header value mismatch
+	errHeaderValueMismatch = "Expected %s header to be '%s', got '%s'"
 )
+
+// verifySecureHeader checks if a security header has the expected value
+func verifySecureHeader(t *testing.T, headers http.Header, headerName string, expectedValue string) {
+	t.Helper()
+	if headers.Get(headerName) != expectedValue {
+		t.Errorf(errHeaderValueMismatch, headerName, expectedValue, headers.Get(headerName))
+	}
+}
 
 func TestSecureHeaders(t *testing.T) {
 	// Create a request with a method and URL
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-
-	// Create a response recorder
 	w := httptest.NewRecorder()
-
-	// Create a context
 	c := context.New(w, req)
 
 	// Create handler function
@@ -329,51 +405,41 @@ func TestSecureHeaders(t *testing.T) {
 	// Assert headers
 	headers := w.Result().Header
 
-	// Check X-XSS-Protection header
-	if headers.Get(headerXSSProtection) != "1; mode=block" {
-		t.Errorf("Expected X-XSS-Protection header to be '1; mode=block', got '%s'", headers.Get(headerXSSProtection))
-	}
-
-	// Check X-Content-Type-Options header
-	if headers.Get(headerContentTypeOptions) != "nosniff" {
-		t.Errorf("Expected X-Content-Type-Options header to be 'nosniff', got '%s'", headers.Get(headerContentTypeOptions))
-	}
-
-	// Check X-Frame-Options header
-	if headers.Get(headerFrameOptions) != "SAMEORIGIN" {
-		t.Errorf("Expected X-Frame-Options header to be 'SAMEORIGIN', got '%s'", headers.Get(headerFrameOptions))
-	}
-
-	// Check Referrer-Policy header
-	if headers.Get(headerReferrerPolicy) != "no-referrer" {
-		t.Errorf("Expected Referrer-Policy header to be 'no-referrer', got '%s'", headers.Get(headerReferrerPolicy))
-	}
-
-	// Check Cross-Origin-Resource-Policy header
-	if headers.Get(headerCrossOriginResource) != "same-origin" {
-		t.Errorf("Expected Cross-Origin-Resource-Policy header to be 'same-origin', got '%s'", headers.Get(headerCrossOriginResource))
-	}
+	// Check security headers with helper function
+	verifySecureHeader(t, headers, headerXSSProtection, valueXSSProtection)
+	verifySecureHeader(t, headers, headerContentTypeOptions, valueContentTypeOptions)
+	verifySecureHeader(t, headers, headerFrameOptions, valueFrameOptions)
+	verifySecureHeader(t, headers, headerReferrerPolicy, valueReferrerPolicy)
+	verifySecureHeader(t, headers, headerCrossOriginResource, valueCrossOriginResource)
 }
 
 func TestSecureHeadersWithConfig(t *testing.T) {
+	// Custom values for the test
+	const (
+		customXSSProtection         = "0"
+		customXFrameOptions         = "DENY"
+		customCSP                   = "default-src 'self'"
+		customReferrerPolicy        = valueSameOrigin
+		customHSTSMaxAge            = 300
+		customHSTSMaxAgeHeaderValue = "max-age=300; includeSubDomains"
+		customCrossOriginResource   = valueSameOrigin
+	)
+
 	// Create a custom config
 	config := SecureHeadersConfig{
-		XSSProtection:         "0",
-		ContentTypeNosniff:    "nosniff",
-		XFrameOptions:         "DENY",
-		HSTSMaxAge:            300,
-		HSTSIncludeSubdomains: true,
-		ContentSecurityPolicy: "default-src 'self'",
-		ReferrerPolicy:        "same-origin",
+		XSSProtection:             customXSSProtection,
+		ContentTypeNosniff:        valueContentTypeOptions,
+		XFrameOptions:             customXFrameOptions,
+		HSTSMaxAge:                customHSTSMaxAge,
+		HSTSIncludeSubdomains:     true,
+		ContentSecurityPolicy:     customCSP,
+		ReferrerPolicy:            customReferrerPolicy,
+		CrossOriginResourcePolicy: customCrossOriginResource,
 	}
 
 	// Create a request with a method and URL
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-
-	// Create a response recorder
 	w := httptest.NewRecorder()
-
-	// Create a context
 	c := context.New(w, req)
 
 	// Create handler function
@@ -394,24 +460,12 @@ func TestSecureHeadersWithConfig(t *testing.T) {
 	// Assert headers
 	headers := w.Result().Header
 
-	// Check X-XSS-Protection header
-	if headers.Get(headerXSSProtection) != "0" {
-		t.Errorf("Expected X-XSS-Protection header to be '0', got '%s'", headers.Get(headerXSSProtection))
-	}
-
-	// Check X-Frame-Options header
-	if headers.Get(headerFrameOptions) != "DENY" {
-		t.Errorf("Expected X-Frame-Options header to be 'DENY', got '%s'", headers.Get(headerFrameOptions))
-	}
-
-	// Check Content-Security-Policy header
-	if headers.Get(headerCSP) != "default-src 'self'" {
-		t.Errorf("Expected Content-Security-Policy header to be \"default-src 'self'\", got '%s'", headers.Get(headerCSP))
-	}
-
-	// Check HSTS header
-	expectedHSTS := "max-age=300; includeSubDomains"
-	if headers.Get(headerHSTS) != expectedHSTS {
-		t.Errorf("Expected Strict-Transport-Security header to be '%s', got '%s'", expectedHSTS, headers.Get(headerHSTS))
-	}
+	// Check security headers with custom values
+	verifySecureHeader(t, headers, headerXSSProtection, customXSSProtection)
+	verifySecureHeader(t, headers, headerContentTypeOptions, valueContentTypeOptions)
+	verifySecureHeader(t, headers, headerFrameOptions, customXFrameOptions)
+	verifySecureHeader(t, headers, headerCSP, customCSP)
+	verifySecureHeader(t, headers, headerReferrerPolicy, customReferrerPolicy)
+	verifySecureHeader(t, headers, headerHSTS, customHSTSMaxAgeHeaderValue)
+	verifySecureHeader(t, headers, headerCrossOriginResource, valueCrossOriginResource)
 }

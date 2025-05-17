@@ -9,13 +9,31 @@ import (
 	"github.com/lamboktulussimamora/gra/router"
 )
 
+const (
+	// Test constants
+	testEndpoint     = "/test"
+	testMethod       = "GET"
+	testMessageKey   = "message"
+	testMessageValue = "success"
+	testContextKey   = "key"
+	testContextValue = "value"
+
+	// Error messages
+	errHandlerNotCalled = "Handler function was not called"
+	errStatusCode       = "Expected status code %d, got %d"
+	errExecutionSteps   = "Expected 2 execution steps, got %d"
+	errExecutionOrder   = "Expected %s to execute %s, got %s"
+	errMiddlewareValue  = "Expected middleware to set context value '%s', got %v"
+	errWrongHandlerType = "AsHTTPHandler should return a HandlerAdapter"
+)
+
 func TestHTTPHandler(t *testing.T) {
 	// Create a test router.HandlerFunc
 	handlerCalled := false
 	testHandler := func(c *context.Context) {
 		handlerCalled = true
 		c.Status(http.StatusOK).JSON(http.StatusOK, map[string]string{
-			"message": "success",
+			testMessageKey: testMessageValue,
 		})
 	}
 
@@ -24,29 +42,29 @@ func TestHTTPHandler(t *testing.T) {
 
 	// Create a test request and response recorder
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/test", nil)
+	r := httptest.NewRequest(testMethod, testEndpoint, nil)
 
 	// Call the handler
 	httpHandlerFunc(w, r)
 
 	// Verify it was called
 	if !handlerCalled {
-		t.Error("Handler function was not called")
+		t.Error(errHandlerNotCalled)
 	}
 
 	// Verify response
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
+		t.Errorf(errStatusCode, http.StatusOK, w.Code)
 	}
 }
 
-func TestHandlerAdapter_ServeHTTP(t *testing.T) {
+func TestHandlerAdapterServeHTTP(t *testing.T) {
 	// Create a test router.HandlerFunc
 	handlerCalled := false
 	testHandler := func(c *context.Context) {
 		handlerCalled = true
 		c.Status(http.StatusOK).JSON(http.StatusOK, map[string]string{
-			"message": "success",
+			testMessageKey: testMessageValue,
 		})
 	}
 
@@ -55,19 +73,19 @@ func TestHandlerAdapter_ServeHTTP(t *testing.T) {
 
 	// Create a test request and response recorder
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/test", nil)
+	r := httptest.NewRequest(testMethod, testEndpoint, nil)
 
 	// Call ServeHTTP
 	adapter.ServeHTTP(w, r)
 
 	// Verify the handler was called
 	if !handlerCalled {
-		t.Error("Handler function was not called")
+		t.Error(errHandlerNotCalled)
 	}
 
 	// Verify response
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
+		t.Errorf(errStatusCode, http.StatusOK, w.Code)
 	}
 }
 
@@ -77,7 +95,7 @@ func TestAsHTTPHandler(t *testing.T) {
 	testHandler := func(c *context.Context) {
 		handlerCalled = true
 		c.Status(http.StatusOK).JSON(http.StatusOK, map[string]string{
-			"message": "success",
+			testMessageKey: testMessageValue,
 		})
 	}
 
@@ -86,25 +104,25 @@ func TestAsHTTPHandler(t *testing.T) {
 
 	// Create a test request and response recorder
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/test", nil)
+	r := httptest.NewRequest(testMethod, testEndpoint, nil)
 
 	// Call ServeHTTP
 	httpHandler.ServeHTTP(w, r)
 
 	// Verify the handler was called
 	if !handlerCalled {
-		t.Error("Handler function was not called")
+		t.Error(errHandlerNotCalled)
 	}
 
 	// Verify response
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
+		t.Errorf(errStatusCode, http.StatusOK, w.Code)
 	}
 
 	// Verify that AsHTTPHandler returns a HandlerAdapter
 	_, ok := httpHandler.(HandlerAdapter)
 	if !ok {
-		t.Error("AsHTTPHandler should return a HandlerAdapter")
+		t.Error(errWrongHandlerType)
 	}
 }
 
@@ -115,7 +133,7 @@ func TestHandlerChain(t *testing.T) {
 	// Create middleware
 	middleware := func(c *context.Context) {
 		executionOrder = append(executionOrder, "middleware")
-		c.WithValue("key", "value")
+		c.WithValue(testContextKey, testContextValue)
 	}
 
 	// Create a test router.HandlerFunc
@@ -123,13 +141,13 @@ func TestHandlerChain(t *testing.T) {
 		executionOrder = append(executionOrder, "handler")
 
 		// Check if middleware data was passed correctly
-		value := c.Value("key")
-		if value != "value" {
-			t.Errorf("Expected middleware to set context value 'value', got %v", value)
+		value := c.Value(testContextKey)
+		if value != testContextValue {
+			t.Errorf(errMiddlewareValue, testContextValue, value)
 		}
 
 		c.Status(http.StatusOK).JSON(http.StatusOK, map[string]string{
-			"message": "success",
+			testMessageKey: testMessageValue,
 		})
 	}
 
@@ -148,26 +166,26 @@ func TestHandlerChain(t *testing.T) {
 
 	// Create a test request and response recorder
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/test", nil)
+	r := httptest.NewRequest(testMethod, testEndpoint, nil)
 
 	// Call ServeHTTP
 	httpHandler.ServeHTTP(w, r)
 
 	// Verify execution order
 	if len(executionOrder) != 2 {
-		t.Errorf("Expected 2 execution steps, got %d", len(executionOrder))
+		t.Errorf(errExecutionSteps, len(executionOrder))
 	}
 
 	if len(executionOrder) >= 1 && executionOrder[0] != "middleware" {
-		t.Errorf("Expected middleware to execute first, got %s", executionOrder[0])
+		t.Errorf(errExecutionOrder, "middleware", "first", executionOrder[0])
 	}
 
 	if len(executionOrder) >= 2 && executionOrder[1] != "handler" {
-		t.Errorf("Expected handler to execute second, got %s", executionOrder[1])
+		t.Errorf(errExecutionOrder, "handler", "second", executionOrder[1])
 	}
 
 	// Verify response
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
+		t.Errorf(errStatusCode, http.StatusOK, w.Code)
 	}
 }

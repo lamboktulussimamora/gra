@@ -9,7 +9,7 @@ const (
 	fieldName        = "name"
 	fieldEmail       = "email"
 	fieldPrice       = "price"
-	fieldUserID      = "userId"
+	fieldUserID      = "userID"
 	fieldPhone       = "phone"
 	fieldAge         = "age"
 	fieldPassword    = "password"
@@ -99,8 +99,8 @@ func TestRequiredValidation(t *testing.T) {
 		{
 			name: "Valid User",
 			input: TestUser{
-				Name:     "John Doe",
-				Email:    "john@example.com",
+				Name:     testName,
+				Email:    testUserEmail,
 				Age:      30,
 				Password: "password123",
 			},
@@ -109,7 +109,7 @@ func TestRequiredValidation(t *testing.T) {
 		{
 			name: "Missing Name",
 			input: TestUser{
-				Email:    "john@example.com",
+				Email:    testUserEmail,
 				Age:      30,
 				Password: "password123",
 			},
@@ -118,7 +118,7 @@ func TestRequiredValidation(t *testing.T) {
 		{
 			name: "Missing Email",
 			input: TestUser{
-				Name:     "John Doe",
+				Name:     testName,
 				Age:      30,
 				Password: "password123",
 			},
@@ -307,7 +307,7 @@ func TestRequiredEdgeCases(t *testing.T) {
 
 			// Error should be for the expected field
 			if errors[0].Field != tc.fieldName {
-				t.Errorf("Expected error for field '%s', got error for '%s'", tc.fieldName, errors[0].Field)
+				t.Errorf(msgInvalidField, tc.fieldName, errors[0].Field)
 			}
 		})
 	}
@@ -664,7 +664,7 @@ func TestMaxValidationEdgeCases(t *testing.T) {
 
 			// Error should be for the expected field
 			if errors[0].Field != tc.fieldName {
-				t.Errorf("Expected error for field '%s', got error for '%s'", tc.fieldName, errors[0].Field)
+				t.Errorf(msgInvalidField, tc.fieldName, errors[0].Field)
 			}
 		})
 	}
@@ -682,8 +682,8 @@ func TestNestedStructValidation(t *testing.T) {
 			input: TestNestedStruct{
 				Title: "Test Title",
 				User: TestUser{
-					Name:     "John Doe",
-					Email:    "john@example.com",
+					Name:     testName,
+					Email:    testUserEmail,
 					Age:      30,
 					Password: "password123",
 				},
@@ -694,8 +694,8 @@ func TestNestedStructValidation(t *testing.T) {
 			name: "Missing Title",
 			input: TestNestedStruct{
 				User: TestUser{
-					Name:     "John Doe",
-					Email:    "john@example.com",
+					Name:     testName,
+					Email:    testUserEmail,
 					Age:      30,
 					Password: "password123",
 				},
@@ -708,7 +708,7 @@ func TestNestedStructValidation(t *testing.T) {
 				Title: "Test Title",
 				User: TestUser{
 					Name:     "", // Missing required field
-					Email:    "john@example.com",
+					Email:    testUserEmail,
 					Age:      30,
 					Password: "password123",
 				},
@@ -779,11 +779,11 @@ func TestArrayOfNestedStructs(t *testing.T) {
 	validOrder := Order{
 		ID: 101,
 		Products: []Product{
-			{ID: 1, Name: "Product 1", Price: 19.99, Description: "Description 1"},
-			{ID: 2, Name: "Product 2", Price: 29.99, Description: "Description 2"},
+			{ID: 1, Name: testProductName, Price: testPrice1, Description: testDescription},
+			{ID: 2, Name: testProduct2, Price: testPrice2, Description: testDesc2},
 		},
 		ShippingAddresses: []Address{
-			{Street: "123 Main St", City: "New York", Country: "USA", ZipCode: "10001"},
+			{Street: testAddress, City: testCity, Country: testCountry, ZipCode: testZipCode},
 		},
 	}
 
@@ -796,11 +796,11 @@ func TestArrayOfNestedStructs(t *testing.T) {
 	invalidProductOrder := Order{
 		ID: 102,
 		Products: []Product{
-			{ID: 1, Name: "Product 1", Price: 19.99, Description: "Description 1"},
-			{ID: 2, Name: "", Price: 29.99, Description: "Description 2"}, // Missing name
+			{ID: 1, Name: testProductName, Price: testPrice1, Description: testDescription},
+			{ID: 2, Name: "", Price: testPrice2, Description: testDesc2}, // Missing name
 		},
 		ShippingAddresses: []Address{
-			{Street: "123 Main St", City: "New York", Country: "USA", ZipCode: "10001"},
+			{Street: testAddress, City: testCity, Country: testCountry, ZipCode: testZipCode},
 		},
 	}
 
@@ -813,10 +813,10 @@ func TestArrayOfNestedStructs(t *testing.T) {
 	invalidAddressOrder := Order{
 		ID: 103,
 		Products: []Product{
-			{ID: 1, Name: "Product 1", Price: 19.99, Description: "Description 1"},
+			{ID: 1, Name: testProductName, Price: testPrice1, Description: testDescription},
 		},
 		ShippingAddresses: []Address{
-			{Street: "123 Main St", City: "", Country: "USA", ZipCode: "10001"}, // Missing city
+			{Street: testAddress, City: "", Country: testCountry, ZipCode: testZipCode}, // Missing city
 		},
 	}
 
@@ -885,13 +885,6 @@ func validateRegexpFields(t *testing.T, errors []ValidationError, invalidFields 
 		}
 	}
 }
-
-// Constants for regexp validation messages
-const (
-	msgPhoneRegexp    = "phoneNumber must match the pattern ^[0-9]{10}$"
-	msgPostalRegexp   = "postalCode must match the pattern ^[A-Z][0-9][A-Z] [0-9][A-Z][0-9]$"
-	msgUsernameRegexp = "username must match the pattern ^[a-zA-Z0-9_]{3,20}$"
-)
 
 // checkFieldHasError checks if a field has validation errors
 func checkFieldHasError(errors []ValidationError, field string) bool {
@@ -1150,8 +1143,8 @@ func TestBatchValidation(t *testing.T) {
 func TestPointerStructValidation(t *testing.T) {
 	// Valid case - pointer to struct with all fields valid
 	validUser := &TestUser{
-		Name:     "John Doe",
-		Email:    "john@example.com",
+		Name:     testName,
+		Email:    testUserEmail,
 		Age:      30,
 		Password: "password123",
 		Balance:  100.0,
@@ -1159,7 +1152,7 @@ func TestPointerStructValidation(t *testing.T) {
 
 	// Invalid case - pointer to struct with missing required field
 	invalidUser := &TestUser{
-		Email:    "john@example.com",
+		Email:    testUserEmail,
 		Age:      30,
 		Password: "password123",
 		Balance:  100.0,
@@ -1205,6 +1198,22 @@ func TestPointerStructValidation(t *testing.T) {
 	})
 }
 
+// checkErrorCount validates that the expected number of validation errors occurred
+func checkErrorCount(t *testing.T, errors []ValidationError, expectedCount int) {
+	t.Helper()
+	if len(errors) != expectedCount {
+		t.Errorf(msgErrorCount, expectedCount, len(errors), errors)
+	}
+}
+
+// checkFieldHasValidationError checks if a specific field has a validation error
+func checkFieldHasValidationError(t *testing.T, errors []ValidationError, fieldName string) {
+	t.Helper()
+	if !checkFieldHasError(errors, fieldName) {
+		t.Errorf(msgFieldNoError, fieldName)
+	}
+}
+
 // TestEmbeddedStructValidation tests validation of structs with embedded fields
 func TestEmbeddedStructValidation(t *testing.T) {
 	// Create a struct with embedded fields
@@ -1220,6 +1229,9 @@ func TestEmbeddedStructValidation(t *testing.T) {
 		Tags     []string `json:"tags"` // No validation
 	}
 
+	// Create a validator once for all subtests
+	v := New()
+
 	t.Run("Valid Product with Embedded Struct", func(t *testing.T) {
 		// Valid case
 		product := ProductWithEmbedded{
@@ -1228,16 +1240,12 @@ func TestEmbeddedStructValidation(t *testing.T) {
 				CreatedBy: "Admin",
 			},
 			Name:  "Test Product",
-			Price: 29.99,
+			Price: testPrice2,
 			Tags:  []string{"test", "product"},
 		}
 
-		v := New()
 		errors := v.Validate(product)
-
-		if len(errors) > 0 {
-			t.Errorf("Expected no errors, got %d errors: %v", len(errors), errors)
-		}
+		checkErrorCount(t, errors, 0)
 	})
 
 	t.Run("Missing Field in Embedded Struct", func(t *testing.T) {
@@ -1248,28 +1256,13 @@ func TestEmbeddedStructValidation(t *testing.T) {
 				// CreatedBy is missing
 			},
 			Name:  "Test Product",
-			Price: 29.99,
+			Price: testPrice2,
 			Tags:  []string{"test", "product"},
 		}
 
-		v := New()
 		errors := v.Validate(product)
-
-		if len(errors) != 1 {
-			t.Errorf("Expected 1 error, got %d errors: %v", len(errors), errors)
-		}
-
-		hasCreatedByError := false
-		for _, err := range errors {
-			if err.Field == "createdBy" {
-				hasCreatedByError = true
-				break
-			}
-		}
-
-		if !hasCreatedByError {
-			t.Error("Expected validation error for 'createdBy', but none found")
-		}
+		checkErrorCount(t, errors, 1)
+		checkFieldHasValidationError(t, errors, "createdBy")
 	})
 
 	t.Run("Missing Field in Main Struct", func(t *testing.T) {
@@ -1280,28 +1273,13 @@ func TestEmbeddedStructValidation(t *testing.T) {
 				CreatedBy: "Admin",
 			},
 			// Name is missing
-			Price: 29.99,
+			Price: testPrice2,
 			Tags:  []string{"test", "product"},
 		}
 
-		v := New()
 		errors := v.Validate(product)
-
-		if len(errors) != 1 {
-			t.Errorf("Expected 1 error, got %d errors: %v", len(errors), errors)
-		}
-
-		hasNameError := false
-		for _, err := range errors {
-			if err.Field == "name" {
-				hasNameError = true
-				break
-			}
-		}
-
-		if !hasNameError {
-			t.Error("Expected validation error for 'name', but none found")
-		}
+		checkErrorCount(t, errors, 1)
+		checkFieldHasValidationError(t, errors, "name")
 	})
 }
 

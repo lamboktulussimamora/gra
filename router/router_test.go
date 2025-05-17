@@ -8,6 +8,12 @@ import (
 	"github.com/lamboktulussimamora/gra/context"
 )
 
+// Test route paths
+const (
+	userProfilePath = "/users/profile"
+	userIDPath      = "/users/123"
+)
+
 func TestNew(t *testing.T) {
 	r := New()
 
@@ -35,7 +41,13 @@ func TestNew(t *testing.T) {
 func TestHandleAndHTTPMethods(t *testing.T) {
 	r := New()
 
-	dummyHandler := func(c *context.Context) {}
+	// dummyHandler is intentionally empty (no-op handler) as these tests
+	// focus on verifying router registration logic and route matching,
+	// not the handler's execution behavior. It serves as a placeholder
+	// that allows us to test if routes are properly registered.
+	dummyHandler := func(c *context.Context) {
+		// This function is intentionally empty as we're only testing route registration
+	}
 
 	// Test Handle method
 	r.Handle("GET", "/test", dummyHandler)
@@ -88,12 +100,14 @@ func TestUse(t *testing.T) {
 
 	middleware1 := func(next HandlerFunc) HandlerFunc {
 		return func(c *context.Context) {
+			// Simply pass the context to the next handler
 			next(c)
 		}
 	}
 
 	middleware2 := func(next HandlerFunc) HandlerFunc {
 		return func(c *context.Context) {
+			// Simply pass the context to the next handler
 			next(c)
 		}
 	}
@@ -169,35 +183,35 @@ func TestPathMatch(t *testing.T) {
 	}{
 		{
 			name:           "Exact match",
-			routePath:      "/users/profile",
-			requestPath:    "/users/profile",
+			routePath:      userProfilePath,
+			requestPath:    userProfilePath,
 			shouldMatch:    true,
 			expectedParams: map[string]string{},
 		},
 		{
 			name:           "Single parameter",
 			routePath:      "/users/:id",
-			requestPath:    "/users/123",
+			requestPath:    userIDPath,
 			shouldMatch:    true,
 			expectedParams: map[string]string{"id": "123"},
 		},
 		{
 			name:           "Multiple parameters",
-			routePath:      "/users/:id/posts/:postId",
+			routePath:      "/users/:id/posts/:postID",
 			requestPath:    "/users/123/posts/456",
 			shouldMatch:    true,
-			expectedParams: map[string]string{"id": "123", "postId": "456"},
+			expectedParams: map[string]string{"id": "123", "postID": "456"},
 		},
 		{
 			name:           "No match - different segment count",
-			routePath:      "/users/profile",
-			requestPath:    "/users/profile/settings",
+			routePath:      userProfilePath,
+			requestPath:    userProfilePath + "/settings",
 			shouldMatch:    false,
 			expectedParams: nil,
 		},
 		{
 			name:           "No match - different path",
-			routePath:      "/users/profile",
+			routePath:      userProfilePath,
 			requestPath:    "/users/settings",
 			shouldMatch:    false,
 			expectedParams: nil,
@@ -206,26 +220,30 @@ func TestPathMatch(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			match, params := pathMatch(tc.routePath, tc.requestPath)
-
-			if match != tc.shouldMatch {
-				t.Errorf("Expected match to be %v, got %v", tc.shouldMatch, match)
-			}
-
-			if !match {
-				return
-			}
-
-			if len(params) != len(tc.expectedParams) {
-				t.Errorf("Expected %d parameters, got %d", len(tc.expectedParams), len(params))
-			}
-
-			for key, expectedValue := range tc.expectedParams {
-				if value, ok := params[key]; !ok || value != expectedValue {
-					t.Errorf("Expected param %s to be %s, got %s", key, expectedValue, value)
-				}
-			}
+			assertPathMatch(t, tc.routePath, tc.requestPath, tc.shouldMatch, tc.expectedParams)
 		})
+	}
+}
+
+func assertPathMatch(t *testing.T, routePath, requestPath string, shouldMatch bool, expectedParams map[string]string) {
+	match, params := pathMatch(routePath, requestPath)
+
+	if match != shouldMatch {
+		t.Errorf("Expected match to be %v, got %v", shouldMatch, match)
+	}
+
+	if !match {
+		return
+	}
+
+	if len(params) != len(expectedParams) {
+		t.Errorf("Expected %d parameters, got %d", len(expectedParams), len(params))
+	}
+
+	for key, expectedValue := range expectedParams {
+		if value, ok := params[key]; !ok || value != expectedValue {
+			t.Errorf("Expected param %s to be %s, got %s", key, expectedValue, value)
+		}
 	}
 }
 
@@ -325,7 +343,7 @@ func TestServeHTTP(t *testing.T) {
 		{
 			name:            "Exact route match",
 			method:          "GET",
-			path:            "/users/123",
+			path:            userIDPath,
 			expectedStatus:  http.StatusOK,
 			expectedHandler: &handlerExecuted,
 			expectedParams:  map[string]string{"id": "123"},
@@ -340,7 +358,7 @@ func TestServeHTTP(t *testing.T) {
 		{
 			name:            "Method not allowed",
 			method:          "PUT",
-			path:            "/users/123",
+			path:            userIDPath,
 			expectedStatus:  http.StatusMethodNotAllowed,
 			expectedHandler: &methodNotAllowedExecuted,
 		},
@@ -430,99 +448,92 @@ func TestServeHTTPWithMiddleware(t *testing.T) {
 
 // TestComplexParametersRouting tests routing with multiple path parameters
 func TestComplexParametersRouting(t *testing.T) {
-	const expectedStatus = 200
-	r := New()
+	const expectedStatus = http.StatusOK
 
-	// Define a handler that captures path parameters
-	var capturedParams map[string]string
-	handler := func(c *context.Context) {
-		capturedParams = c.Params
-		c.Writer.WriteHeader(http.StatusOK)
+	// Define test cases with different parameter patterns
+	testCases := []struct {
+		name        string
+		path        string
+		url         string
+		paramChecks map[string]string
+	}{
+		{
+			name:        "Simple parameter",
+			path:        "/api/users/:id",
+			url:         "/api/users/123",
+			paramChecks: map[string]string{"id": "123"},
+		},
+		{
+			name:        "Multiple parameters",
+			path:        "/api/users/:id/posts/:postID",
+			url:         "/api/users/456/posts/789",
+			paramChecks: map[string]string{"id": "456", "postID": "789"},
+		},
+		{
+			name: "Three parameters",
+			path: "/api/categories/:category/tags/:tag/posts/:postID",
+			url:  "/api/categories/tech/tags/golang/posts/101",
+			paramChecks: map[string]string{
+				"category": "tech",
+				"tag":      "golang",
+				"postID":   "101",
+			},
+		},
+		{
+			name: "Four parameters",
+			path: "/api/:version/resources/:resourceType/:resourceID/subresources/:subID",
+			url:  "/api/v1/resources/databases/mysql-01/subresources/table1",
+			paramChecks: map[string]string{
+				"version":      "v1",
+				"resourceType": "databases",
+				"resourceID":   "mysql-01",
+				"subID":        "table1",
+			},
+		},
 	}
 
-	// Register routes with complex parameter combinations
-	r.GET("/api/users/:id", handler)
-	r.GET("/api/users/:id/posts/:postId", handler)
-	r.GET("/api/categories/:category/tags/:tag/posts/:postId", handler)
-	r.GET("/api/:version/resources/:resourceType/:resourceId/subresources/:subId", handler)
+	// Run tests for each case using subtests
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup router and handler for each subtest
+			r := New()
+			var capturedParams map[string]string
 
-	// Test case 1: Simple parameter
-	req1 := httptest.NewRequest("GET", "/api/users/123", nil)
-	w1 := httptest.NewRecorder()
+			handler := func(c *context.Context) {
+				capturedParams = c.Params
+				c.Writer.WriteHeader(expectedStatus)
+			}
 
-	r.ServeHTTP(w1, req1)
+			// Register the route for this test case
+			r.GET(tc.path, handler)
 
-	if w1.Code != expectedStatus {
-		t.Errorf("Expected status %d, got %d", expectedStatus, w1.Code)
+			// Make the request
+			req := httptest.NewRequest(http.MethodGet, tc.url, nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			// Verify response status
+			if w.Code != expectedStatus {
+				t.Errorf("Expected status %d, got %d", expectedStatus, w.Code)
+			}
+
+			// Check that all expected parameters were captured correctly
+			assertParamsMatch(t, tc.paramChecks, capturedParams)
+		})
 	}
+}
 
-	if capturedParams["id"] != "123" {
-		t.Errorf("Expected id='123', got %s", capturedParams["id"])
-	}
+// assertParamsMatch is a helper function for parameter validation
+func assertParamsMatch(t *testing.T, expected, actual map[string]string) {
+	for key, expectedValue := range expected {
+		actualValue, exists := actual[key]
+		if !exists {
+			t.Errorf("Parameter %s not found in captured parameters", key)
+			continue
+		}
 
-	// Test case 2: Multiple parameters
-	req2 := httptest.NewRequest("GET", "/api/users/456/posts/789", nil)
-	w2 := httptest.NewRecorder()
-
-	r.ServeHTTP(w2, req2)
-
-	if w2.Code != expectedStatus {
-		t.Errorf("Expected status %d, got %d", expectedStatus, w2.Code)
-	}
-
-	if capturedParams["id"] != "456" {
-		t.Errorf("Expected id='456', got %s", capturedParams["id"])
-	}
-
-	if capturedParams["postId"] != "789" {
-		t.Errorf("Expected postId='789', got %s", capturedParams["postId"])
-	}
-
-	// Test case 3: Three parameters
-	req3 := httptest.NewRequest("GET", "/api/categories/tech/tags/golang/posts/101", nil)
-	w3 := httptest.NewRecorder()
-
-	r.ServeHTTP(w3, req3)
-
-	if w3.Code != expectedStatus {
-		t.Errorf("Expected status %d, got %d", expectedStatus, w3.Code)
-	}
-
-	if capturedParams["category"] != "tech" {
-		t.Errorf("Expected category='tech', got %s", capturedParams["category"])
-	}
-
-	if capturedParams["tag"] != "golang" {
-		t.Errorf("Expected tag='golang', got %s", capturedParams["tag"])
-	}
-
-	if capturedParams["postId"] != "101" {
-		t.Errorf("Expected postId='101', got %s", capturedParams["postId"])
-	}
-
-	// Test case 4: Four parameters
-	req4 := httptest.NewRequest("GET", "/api/v1/resources/databases/mysql-01/subresources/table1", nil)
-	w4 := httptest.NewRecorder()
-
-	r.ServeHTTP(w4, req4)
-
-	if w4.Code != expectedStatus {
-		t.Errorf("Expected status %d, got %d", expectedStatus, w4.Code)
-	}
-
-	if capturedParams["version"] != "v1" {
-		t.Errorf("Expected version='v1', got %s", capturedParams["version"])
-	}
-
-	if capturedParams["resourceType"] != "databases" {
-		t.Errorf("Expected resourceType='databases', got %s", capturedParams["resourceType"])
-	}
-
-	if capturedParams["resourceId"] != "mysql-01" {
-		t.Errorf("Expected resourceId='mysql-01', got %s", capturedParams["resourceId"])
-	}
-
-	if capturedParams["subId"] != "table1" {
-		t.Errorf("Expected subId='table1', got %s", capturedParams["subId"])
+		if actualValue != expectedValue {
+			t.Errorf("Expected %s='%s', got '%s'", key, expectedValue, actualValue)
+		}
 	}
 }

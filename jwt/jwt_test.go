@@ -7,6 +7,35 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// Test constants
+const (
+	testRoleAdmin    = "admin"
+	testUserID       = "user-456"
+	testTokenID      = "token-id-123"
+	testUserIDCommon = "user-123"
+	testSecretKey    = "test-secret-key"
+	testName         = "John Doe"
+	testDifferentKey = "different-key"
+	testInvalidToken = "invalid.token.string"
+	testApiAudience  = "api"
+	testWebAudience  = "web"
+
+	// Error message templates
+	errMsgNoError         = "Expected no error, got %v"
+	errMsgInvalidToken    = "Expected ErrInvalidToken, got %v"
+	errMsgExpectedRole    = "Expected role to be '%s', got %v"
+	errMsgExpectedSub     = "Expected sub to be '%s', got %v"
+	errMsgExpectedSubject = "Expected subject to be '%s', got %v"
+	errMsgExpectedJTI     = "Expected jti to be '%s', got %v"
+	errMsgExpectedName    = "Expected name to be '%s', got %v"
+	errMsgExpiredToken    = "Expected ErrExpiredToken, got %v"
+	errMsgMissingKey      = "Expected ErrMissingKey, got %v"
+	errMsgMissingSubject  = "Expected ErrMissingSubject, got %v"
+	errServiceNil         = "Expected service to be created, got nil"
+	errTokenEmpty         = "Expected token to be generated, got empty string"
+	errTokenNotDifferent  = "Expected new token to be different from original token"
+)
+
 func TestNewService(t *testing.T) {
 	t.Run("should return error when signing key is missing", func(t *testing.T) {
 		config := DefaultConfig()
@@ -14,38 +43,38 @@ func TestNewService(t *testing.T) {
 
 		_, err := NewService(config)
 		if err != ErrMissingKey {
-			t.Errorf("Expected ErrMissingKey, got %v", err)
+			t.Errorf(errMsgMissingKey, err)
 		}
 	})
 
 	t.Run("should create service with valid config", func(t *testing.T) {
 		config := DefaultConfig()
-		config.SigningKey = []byte("test-secret-key")
+		config.SigningKey = []byte(testSecretKey)
 
 		service, err := NewService(config)
 		if err != nil {
-			t.Errorf("Expected no error, got %v", err)
+			t.Errorf(errMsgNoError, err)
 		}
 		if service == nil {
-			t.Error("Expected service to be created, got nil")
+			t.Error(errServiceNil)
 		}
 	})
 }
 
 func TestNewServiceWithKey(t *testing.T) {
 	t.Run("should create service with key", func(t *testing.T) {
-		service, err := NewServiceWithKey([]byte("test-secret-key"))
+		service, err := NewServiceWithKey([]byte(testSecretKey))
 		if err != nil {
-			t.Errorf("Expected no error, got %v", err)
+			t.Errorf(errMsgNoError, err)
 		}
 		if service == nil {
-			t.Error("Expected service to be created, got nil")
+			t.Error(errServiceNil)
 		}
 	})
 }
 
 func TestGenerateToken(t *testing.T) {
-	service, _ := NewServiceWithKey([]byte("test-secret-key"))
+	service, _ := NewServiceWithKey([]byte(testSecretKey))
 
 	t.Run("should return error when subject is missing", func(t *testing.T) {
 		claims := StandardClaims{
@@ -54,72 +83,72 @@ func TestGenerateToken(t *testing.T) {
 
 		_, err := service.GenerateToken(claims)
 		if err != ErrMissingSubject {
-			t.Errorf("Expected ErrMissingSubject, got %v", err)
+			t.Errorf(errMsgMissingSubject, err)
 		}
 	})
 
 	t.Run("should generate valid token", func(t *testing.T) {
 		claims := StandardClaims{
-			Subject: "user-123",
+			Subject: testUserIDCommon,
 			Custom: map[string]interface{}{
-				"name":  "John Doe",
+				"name":  testName,
 				"admin": true,
 			},
 		}
 
 		token, err := service.GenerateToken(claims)
 		if err != nil {
-			t.Errorf("Expected no error, got %v", err)
+			t.Errorf(errMsgNoError, err)
 		}
 		if token == "" {
-			t.Error("Expected token to be generated, got empty string")
+			t.Error(errTokenEmpty)
 		}
 	})
 
 	t.Run("should include optional claims", func(t *testing.T) {
 		claims := StandardClaims{
-			ID:       "token-id-123",
-			Subject:  "user-456",
-			Audience: []string{"api", "web"},
+			ID:       testTokenID,
+			Subject:  testUserID,
+			Audience: []string{testApiAudience, testWebAudience},
 			Custom: map[string]interface{}{
-				"role": "admin",
+				"role": testRoleAdmin,
 			},
 		}
 
 		token, err := service.GenerateToken(claims)
 		if err != nil {
-			t.Errorf("Expected no error, got %v", err)
+			t.Errorf(errMsgNoError, err)
 		}
 
 		// Parse and validate token
 		parsedToken, _ := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
-			return []byte("test-secret-key"), nil
+			return []byte(testSecretKey), nil
 		})
 
 		parsedClaims := parsedToken.Claims.(jwt.MapClaims)
 
-		if parsedClaims["sub"] != "user-456" {
-			t.Errorf("Expected sub to be 'user-456', got %v", parsedClaims["sub"])
+		if parsedClaims["sub"] != testUserID {
+			t.Errorf(errMsgExpectedSub, testUserID, parsedClaims["sub"])
 		}
-		if parsedClaims["jti"] != "token-id-123" {
-			t.Errorf("Expected jti to be 'token-id-123', got %v", parsedClaims["jti"])
+		if parsedClaims["jti"] != testTokenID {
+			t.Errorf(errMsgExpectedJTI, testTokenID, parsedClaims["jti"])
 		}
-		if parsedClaims["role"] != "admin" {
-			t.Errorf("Expected role to be 'admin', got %v", parsedClaims["role"])
+		if parsedClaims["role"] != testRoleAdmin {
+			t.Errorf(errMsgExpectedRole, testRoleAdmin, parsedClaims["role"])
 		}
 	})
 }
 
 func TestValidateToken(t *testing.T) {
-	service, _ := NewServiceWithKey([]byte("test-secret-key"))
+	service, _ := NewServiceWithKey([]byte(testSecretKey))
 
 	t.Run("should validate valid token", func(t *testing.T) {
 		// Generate a token first
 		claims := StandardClaims{
-			Subject: "user-123",
+			Subject: testUserIDCommon,
 			Custom: map[string]interface{}{
-				"name": "John Doe",
-				"role": "admin",
+				"name": testName,
+				"role": testRoleAdmin,
 			},
 		}
 
@@ -128,67 +157,66 @@ func TestValidateToken(t *testing.T) {
 		// Validate the token
 		parsedClaims, err := service.ValidateToken(token)
 		if err != nil {
-			t.Errorf("Expected no error, got %v", err)
+			t.Errorf(errMsgNoError, err)
 		}
 
-		if parsedClaims["sub"] != "user-123" {
-			t.Errorf("Expected subject to be 'user-123', got %v", parsedClaims["sub"])
+		if parsedClaims["sub"] != testUserIDCommon {
+			t.Errorf(errMsgExpectedSubject, testUserIDCommon, parsedClaims["sub"])
 		}
-		if parsedClaims["name"] != "John Doe" {
-			t.Errorf("Expected name to be 'John Doe', got %v", parsedClaims["name"])
+		if parsedClaims["name"] != testName {
+			t.Errorf(errMsgExpectedName, testName, parsedClaims["name"])
 		}
-		if parsedClaims["role"] != "admin" {
-			t.Errorf("Expected role to be 'admin', got %v", parsedClaims["role"])
+		if parsedClaims["role"] != testRoleAdmin {
+			t.Errorf(errMsgExpectedRole, testRoleAdmin, parsedClaims["role"])
 		}
 	})
 
 	t.Run("should reject invalid token", func(t *testing.T) {
-		invalidToken := "invalid.token.string"
-		_, err := service.ValidateToken(invalidToken)
+		_, err := service.ValidateToken(testInvalidToken)
 		if err != ErrInvalidToken {
-			t.Errorf("Expected ErrInvalidToken, got %v", err)
+			t.Errorf(errMsgInvalidToken, err)
 		}
 	})
 
 	t.Run("should reject token signed with different method", func(t *testing.T) {
 		// Create a token with a different signing method
 		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-			"sub": "user-123",
+			"sub": testUserIDCommon,
 		})
 
-		tokenString, _ := token.SignedString([]byte("different-key"))
+		tokenString, _ := token.SignedString([]byte(testDifferentKey))
 
 		_, err := service.ValidateToken(tokenString)
 		if err != ErrInvalidToken {
-			t.Errorf("Expected ErrInvalidToken, got %v", err)
+			t.Errorf(errMsgInvalidToken, err)
 		}
 	})
 
 	t.Run("should reject expired token", func(t *testing.T) {
 		// Create a token with expired claims
 		expiredToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-			"sub": "user-123",
+			"sub": testUserIDCommon,
 			"exp": time.Now().Add(-time.Hour).Unix(), // Expired 1 hour ago
 		})
 
-		tokenString, _ := expiredToken.SignedString([]byte("test-secret-key"))
+		tokenString, _ := expiredToken.SignedString([]byte(testSecretKey))
 
 		_, err := service.ValidateToken(tokenString)
 		if err != ErrExpiredToken {
-			t.Errorf("Expected ErrExpiredToken, got %v", err)
+			t.Errorf(errMsgExpiredToken, err)
 		}
 	})
 }
 
 func TestRefreshToken(t *testing.T) {
-	service, _ := NewServiceWithKey([]byte("test-secret-key"))
+	service, _ := NewServiceWithKey([]byte(testSecretKey))
 
 	t.Run("should refresh valid token", func(t *testing.T) {
 		// Generate a token first
 		claims := StandardClaims{
-			Subject: "user-123",
+			Subject: testUserIDCommon,
 			Custom: map[string]interface{}{
-				"role": "admin",
+				"role": testRoleAdmin,
 			},
 		}
 
@@ -197,27 +225,26 @@ func TestRefreshToken(t *testing.T) {
 		// Refresh the token
 		newToken, err := service.RefreshToken(token)
 		if err != nil {
-			t.Errorf("Expected no error, got %v", err)
+			t.Errorf(errMsgNoError, err)
 		}
 		if newToken == token {
-			t.Error("Expected new token to be different from original token")
+			t.Error(errTokenNotDifferent)
 		}
 
 		// Validate the new token
 		newClaims, _ := service.ValidateToken(newToken)
-		if newClaims["sub"] != "user-123" {
-			t.Errorf("Expected subject to be 'user-123', got %v", newClaims["sub"])
+		if newClaims["sub"] != testUserIDCommon {
+			t.Errorf(errMsgExpectedSubject, testUserIDCommon, newClaims["sub"])
 		}
-		if newClaims["role"] != "admin" {
-			t.Errorf("Expected role to be 'admin', got %v", newClaims["role"])
+		if newClaims["role"] != testRoleAdmin {
+			t.Errorf(errMsgExpectedRole, testRoleAdmin, newClaims["role"])
 		}
 	})
 
 	t.Run("should reject invalid token for refresh", func(t *testing.T) {
-		invalidToken := "invalid.token.string"
-		_, err := service.RefreshToken(invalidToken)
+		_, err := service.RefreshToken(testInvalidToken)
 		if err != ErrInvalidToken {
-			t.Errorf("Expected ErrInvalidToken, got %v", err)
+			t.Errorf(errMsgInvalidToken, err)
 		}
 	})
 

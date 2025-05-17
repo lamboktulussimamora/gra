@@ -66,6 +66,10 @@ clean:
 	@echo "Cleaning up..."
 	@rm -f $(COVERAGE_FILE) $(COVERAGE_HTML) $(BENCH_FILE)
 	@rm -rf gh-pages
+	@rm -f *.out *.test *.prof
+	@find . -name "*.bak" -o -name "*.new" -o -name "*.tmp" -o -name "*~" -o -name "*.swp" -delete
+	@find ./examples -type f -perm +111 -not -name "*.sh" -not -name "*.go" -not -name "*.md" -delete
+	@echo "Project cleaned up successfully!"
 
 # Help command
 .PHONY: help
@@ -77,5 +81,5 @@ help:
 	@echo "  make race      - Run tests with race detector"
 	@echo "  make pages     - Generate GitHub Pages content"
 	@echo "  make verify    - Verify code quality (fmt, vet, lint)"
-	@echo "  make clean     - Clean up generated files"
+	@echo "  make clean     - Clean up generated files, backups, and binaries"
 	@echo "  make help      - Show this help message"

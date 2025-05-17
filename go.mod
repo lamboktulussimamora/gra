@@ -2,4 +2,4 @@ module github.com/lamboktulussimamora/gra
 
 go 1.21
 
-require github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
+require github.com/golang-jwt/jwt/v5 v5.2.2
