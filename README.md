@@ -529,6 +529,65 @@ func getUserProfile(c *context.Context) {
 }
 ```
 
+## Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Make your changes
+4. Run tests (`make test`)
+5. Commit your changes (`git commit -am 'Add my feature'`)
+6. Push to the branch (`git push origin feature/my-feature`)
+7. Create a new Pull Request
+
+### Code Quality
+
+Before submitting your code, please:
+
+1. Run `make verify` to check code formatting and detect issues
+2. Ensure all tests pass with `make test`
+3. Run `make clean` to clean up any temporary files
+
+## Development
+
+### Prerequisites
+
+- Go 1.21 or later
+- Make
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run tests with race detection
+make race
+
+# Generate coverage report
+make coverage
+```
+
+### Project Cleanup
+
+The project includes a cleanup system to maintain a clean codebase:
+
+```bash
+# Clean up generated files, backups, and binaries
+make clean
+
+# For a more thorough cleanup before release
+./scripts/clean_project.sh
+```
+
+The cleanup removes:
+- Coverage output files (*.out)
+- Benchmark results
+- Temporary files (*.bak, *.new, *.tmp)
+- Compiled binaries in the examples directory
+- Editor backup files
+
 ## License
 
 MIT
