@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.0.6 (2025-05-17)
+
+### Go Version Update
+
+#### Changes:
+- Updated minimum Go version requirement from 1.21 to 1.24
+- Updated all go.mod files in main project and example applications
+- Updated documentation to reflect new Go version requirements
+- Ensured compatibility with Go 1.24 across all components
+
 ## v1.0.5 (2025-05-15)
 
 ### Bug Fixes and Improvements

@@ -556,6 +556,17 @@ Before submitting your code, please:
 - Go 1.24 or later
 - Make
 
+> **Note:** As of v1.0.6 (May 2025), GRA framework requires Go 1.24 or later. Previous versions required Go 1.21+. The framework takes advantage of the latest Go features and improvements for better performance and security.
+
+### Go Version Compatibility
+
+GRA framework follows these compatibility principles:
+
+- **Minimum Go Version:** Each release specifies the minimum Go version required
+- **Testing:** All components are continuously tested against the minimum supported Go version
+- **New Feature Adoption:** We adopt new Go language features when they provide significant benefits
+- **Migration Path:** Major version changes are documented in release notes with clear migration steps
+
 ### Running Tests
 
 ```bash
