@@ -3,8 +3,8 @@
 # GRA Framework Release Script
 # This script helps with publishing the GRA framework to GitHub
 
-VERSION="v1.0.5"
-RELEASE_DATE="2025-05-15"
+VERSION="v1.0.6"
+RELEASE_DATE="2025-05-17"
 REPO_URL="github.com/lamboktulussimamora/gra"
 REPO_SSH="git@github.com:lamboktulussimamora/gra.git"
 REPO_HTTPS="https://github.com/lamboktulussimamora/gra.git"
