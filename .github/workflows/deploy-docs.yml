@@ -13,7 +13,7 @@ on:
 
 # Sets permissions of the GITHUB_TOKEN
 permissions:
-  contents: read
+  contents: write  # Changed from 'read' to 'write' to allow commits
   pages: write
   id-token: write
 
@@ -24,22 +24,16 @@ concurrency:
 
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v3
-      
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
         with:
-          path: './docs'
-      
+          fetch-depth: 0  # Fetch all history for proper deployment
+
       - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v2
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: docs  # The folder containing the content to deploy
+          branch: gh-pages  # The branch to deploy to
+          clean: true  # Clean the deployment branch of files not in the source folder
