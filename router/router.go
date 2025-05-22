@@ -1,4 +1,22 @@
-// Package router provides HTTP routing capabilities.
+// Package router provides HTTP routing capabilities for the GRA framework.
+//
+// The router package is responsible for matching incoming HTTP requests to registered
+// handler functions. It supports route parameters, middleware chains, and route grouping.
+//
+// Example usage:
+//
+//	r := router.New()
+//	r.GET("/users/:id", func(c *context.Context) {
+//	    id := c.GetParam("id")
+//	    c.Success(http.StatusOK, "User found", map[string]any{"id": id})
+//	})
+//
+//	// Add middleware
+//	r.Use(LoggerMiddleware, AuthMiddleware)
+//
+//	// Create route groups
+//	api := r.Group("/api/v1")
+//	api.GET("/products", ListProductsHandler)
 package router
 
 import (
