@@ -61,7 +61,7 @@
 				
 				<option value="file2">github.com/lamboktulussimamora/gra/context/context.go (67.6%)</option>
 				
-				<option value="file3">github.com/lamboktulussimamora/gra/gra.go (20.0%)</option>
+				<option value="file3">github.com/lamboktulussimamora/gra/gra.go (60.0%)</option>
 				
 				<option value="file4">github.com/lamboktulussimamora/gra/jwt/jwt.go (90.6%)</option>
 				
@@ -721,7 +721,7 @@ const (
 )
 
 // Run starts the HTTP server with the given router and default timeouts
-func Run(addr string, r *router.Router) error <span class="cov0" title="0">{
+func Run(addr string, r *router.Router) error <span class="cov8" title="1">{
         srv := &amp;http.Server{
                 Addr:         addr,
                 Handler:      r,
@@ -1762,7 +1762,25 @@ func CSP(builder *CSPBuilder) router.Middleware <span class="cov0" title="0">{
 }</span>
 </pre>
 		
-		<pre class="file" id="file7" style="display: none">// Package router provides HTTP routing capabilities.
+		<pre class="file" id="file7" style="display: none">// Package router provides HTTP routing capabilities for the GRA framework.
+//
+// The router package is responsible for matching incoming HTTP requests to registered
+// handler functions. It supports route parameters, middleware chains, and route grouping.
+//
+// Example usage:
+//
+//        r := router.New()
+//        r.GET("/users/:id", func(c *context.Context) {
+//            id := c.GetParam("id")
+//            c.Success(http.StatusOK, "User found", map[string]any{"id": id})
+//        })
+//
+//        // Add middleware
+//        r.Use(LoggerMiddleware, AuthMiddleware)
+//
+//        // Create route groups
+//        api := r.Group("/api/v1")
+//        api.GET("/products", ListProductsHandler)
 package router
 
 import (
