@@ -3,6 +3,9 @@
 [![Test and Coverage](https://github.com/lamboktulussimamora/gra/actions/workflows/test.yml/badge.svg)](https://github.com/lamboktulussimamora/gra/actions/workflows/test.yml)
 [![Coverage Status](https://coveralls.io/repos/github/lamboktulussimamora/gra/badge.svg?branch=main)](https://coveralls.io/github/lamboktulussimamora/gra?branch=main)
 [![Go Report Card](https://goreportcard.com/badge/github.com/lamboktulussimamora/gra)](https://goreportcard.com/report/github.com/lamboktulussimamora/gra)
+[![Go Reference](https://pkg.go.dev/badge/github.com/lamboktulussimamora/gra.svg)](https://pkg.go.dev/github.com/lamboktulussimamora/gra)
+[![GitHub release](https://img.shields.io/github/release/lamboktulussimamora/gra.svg)](https://GitHub.com/lamboktulussimamora/gra/releases/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A lightweight HTTP framework for building web applications in Go, inspired by Gin.
 
@@ -49,6 +52,14 @@ func main() {
 	gra.Run(":8080", r)
 }
 ```
+
+## Documentation
+
+Full documentation is available at [https://lamboktulussimamora.github.io/gra/](https://lamboktulussimamora.github.io/gra/)
+
+- [Getting Started Guide](https://lamboktulussimamora.github.io/gra/getting-started/)
+- [API Reference](https://lamboktulussimamora.github.io/gra/api-reference/)
+- [Examples](https://lamboktulussimamora.github.io/gra/examples/)
 
 ## Context
 
@@ -596,6 +607,33 @@ The cleanup removes:
 - Coverage output files (*.out)
 - Benchmark results
 - Temporary files (*.bak, *.new, *.tmp)
+
+## Benchmarks
+
+GRA framework is designed with performance in mind. Here are some benchmark results from our testing:
+
+```
+BenchmarkRouterSimple/SimpleRoute-8         	  368399	      3249 ns/op
+BenchmarkRouterSimple/ParameterizedRoute-8  	  293060	      4102 ns/op
+BenchmarkRouterComplex/ManyRoutes_Simple-8  	  230602	      5204 ns/op
+BenchmarkRouterComplex/ManyRoutes_WithParameter-8 	  183795	      6518 ns/op
+BenchmarkRouterComplex/DeepNestedParameters-8    	  147219	      8142 ns/op
+```
+
+To run the benchmarks yourself:
+
+```bash
+cd router
+go test -bench=. -benchmem
+```
+
+## Community and Support
+
+- **GitHub Discussions**: Ask questions and share ideas
+- **Issue Tracker**: Report bugs or request features
+- **Pull Requests**: Contributions are welcome following our guidelines
+
+Join our community to help shape the future of GRA framework!
 - Compiled binaries in the examples directory
 - Editor backup files
 
