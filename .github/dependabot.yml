@@ -1,0 +1,39 @@
+version: 2
+updates:
+  # Enable version updates for Go modules
+  - package-ecosystem: "gomod"
+    # Look for `go.mod` files in the root directory
+    directory: "/"
+    # Check for updates once a week (on Monday)
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    # Group all dependencies into a single PR
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
+    # Limit to 5 open pull requests for version updates
+    open-pull-requests-limit: 5
+    # Allow up to 10 pull requests for security updates
+    pull-request-security-limit: 10
+    # Add reviewers
+    reviewers:
+      - "lamboktulussimamora"
+    # Labels on pull requests for version updates
+    labels:
+      - "dependencies"
+      - "automated"
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Add reviewers
+    reviewers:
+      - "lamboktulussimamora"
+    # Labels on pull requests for GitHub Actions
+    labels:
+      - "ci-cd"
+      - "automated"

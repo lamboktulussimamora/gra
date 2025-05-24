@@ -1,0 +1,79 @@
+name: Generate Badges
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0' # Run at midnight every Sunday
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Calculate code metrics
+        id: metrics
+        run: |
+          # Calculate test coverage
+          go test -coverprofile=coverage.out ./...
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
+          # Remove % sign
+          COVERAGE=${COVERAGE%\%}
+          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          
+          # Count exported functions
+          EXPORTED_FUNCS=$(grep -r "^func [A-Z]" --include="*.go" . | grep -v "_test.go" | wc -l)
+          echo "exported_funcs=$EXPORTED_FUNCS" >> $GITHUB_OUTPUT
+          
+          # Count packages
+          PACKAGES=$(go list ./... | wc -l)
+          echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
+          
+          # Calculate lines of code
+          LOC=$(find . -name "*.go" -not -path "*/vendor/*" -not -path "*/\.*" | xargs cat | wc -l)
+          echo "loc=$LOC" >> $GITHUB_OUTPUT
+
+      - name: Create coverage badge
+        uses: schneegans/dynamic-badges-action@v1.6.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: 5c18b1281973ca14071d289b8a6f3dda
+          filename: gra_coverage.json
+          label: Coverage
+          message: ${{ steps.metrics.outputs.coverage }}%
+          color: ${{ steps.metrics.outputs.coverage >= 80 && 'green' || steps.metrics.outputs.coverage >= 60 && 'yellow' || 'red' }}
+
+      - name: Create exported functions badge
+        uses: schneegans/dynamic-badges-action@v1.6.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: 7d8be3a173f0c5fc685c41bd097a4823
+          filename: gra_functions.json
+          label: API Functions
+          message: ${{ steps.metrics.outputs.exported_funcs }}
+          color: blue
+
+      - name: Create packages badge
+        uses: schneegans/dynamic-badges-action@v1.6.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: 3f89e524c628d09e9096cf0632efb5aa
+          filename: gra_packages.json
+          label: Packages
+          message: ${{ steps.metrics.outputs.packages }}
+          color: blueviolet
+
+      - name: Create code size badge
+        uses: schneegans/dynamic-badges-action@v1.6.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: 9c1ed8547416ac92c98f0371aa820d8d
+          filename: gra_loc.json
+          label: Lines of Code
+          message: ${{ steps.metrics.outputs.loc }}
+          color: informational

@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          PREV_TAG=$(git describe --tags --abbrev=0 ${TAG}^ 2>/dev/null || echo "")
+          
+          if [ -z "$PREV_TAG" ]; then
+            # First release
+            echo "CHANGES<<EOF" >> $GITHUB_OUTPUT
+            git log --pretty=format:"* %s (%h)" ${TAG} >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "CHANGES<<EOF" >> $GITHUB_OUTPUT
+            echo "Changes since $PREV_TAG:" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_OUTPUT
+            git log --pretty=format:"* %s (%h)" ${PREV_TAG}..${TAG} >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+          
+          # Extract version without 'v' prefix
+          VERSION=${TAG#v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          
+          # Generate list of contributors for this release
+          echo "CONTRIBUTORS<<EOF" >> $GITHUB_OUTPUT
+          if [ -z "$PREV_TAG" ]; then
+            git log --format="%an" ${TAG} | sort -u >> $GITHUB_OUTPUT
+          else
+            git log --format="%an" ${PREV_TAG}..${TAG} | sort -u >> $GITHUB_OUTPUT
+          fi
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          body: |
+            ## GRA Framework ${{ github.ref_name }}
+            
+            ### Changes
+            
+            ${{ steps.changelog.outputs.CHANGES }}
+            
+            ### Installation
+            
+            ```bash
+            go get github.com/lamboktulussimamora/gra@${{ github.ref_name }}
+            ```
+            
+            ### Documentation
+            
+            Full documentation is available at [https://lamboktulussimamora.github.io/gra/](https://lamboktulussimamora.github.io/gra/)
+            
+            ### Contributors
+            
+            Special thanks to all contributors who made this release possible:
+            
+            ${{ steps.changelog.outputs.CONTRIBUTORS }}
+
+      - name: Update version file
+        run: echo "const Version = \"${{ steps.changelog.outputs.VERSION }}\"" > version.go
+
+      - name: Update module version
+        run: |
+          go mod tidy
+          go mod verify
+          
+      - name: Update documentation version
+        run: |
+          echo "Updating documentation for version ${{ steps.changelog.outputs.VERSION }}"
+          if [ -f "docs/README.md" ]; then
+            sed -i "s/Current version: .*/Current version: ${{ steps.changelog.outputs.VERSION }}/" docs/README.md
+            sed -i "s/Latest (.*)/Latest (${{ steps.changelog.outputs.VERSION }})/" docs/README.md
+          fi
+          
+          # Generate CHANGELOG.md if it doesn't exist or update it
+          if [ ! -f "CHANGELOG.md" ]; then
+            echo "# Changelog" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+          fi
+          
+          # Prepend new release to CHANGELOG.md
+          TEMP_CHANGELOG=$(mktemp)
+          echo "# Changelog" > "$TEMP_CHANGELOG"
+          echo "" >> "$TEMP_CHANGELOG"
+          echo "## ${{ github.ref_name }} ($(date '+%Y-%m-%d'))" >> "$TEMP_CHANGELOG"
+          echo "" >> "$TEMP_CHANGELOG"
+          echo "${{ steps.changelog.outputs.CHANGES }}" >> "$TEMP_CHANGELOG"
+          echo "" >> "$TEMP_CHANGELOG"
+          tail -n +2 CHANGELOG.md >> "$TEMP_CHANGELOG"
+          mv "$TEMP_CHANGELOG" CHANGELOG.md
+          
+      - name: Commit version updates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add version.go CHANGELOG.md docs/README.md
+          git commit -m "Update version to ${{ steps.changelog.outputs.VERSION }}" || echo "No changes to commit"
+          git push || echo "No changes to push"
+          
+      - name: Trigger docs deployment
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: update-docs
+          client-payload: '{"version": "${{ steps.changelog.outputs.VERSION }}", "tag": "${{ github.ref_name }}"}'

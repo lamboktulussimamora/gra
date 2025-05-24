@@ -1,0 +1,56 @@
+name: Update Documentation Versions
+
+on:
+  repository_dispatch:
+    types: [update-docs]
+
+jobs:
+  update-docs:
+    name: Update Documentation Versions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up version information
+        run: |
+          echo "Updating documentation for version ${{ github.event.client_payload.version }}"
+          echo "Tag: ${{ github.event.client_payload.tag }}"
+          
+      - name: Create version directory
+        run: |
+          VERSION="${{ github.event.client_payload.version }}"
+          TAG="${{ github.event.client_payload.tag }}"
+          
+          # Create version-specific directory
+          mkdir -p "docs/versions/${VERSION}"
+          
+          # Copy current docs to version directory
+          cp -r docs/core-concepts docs/versions/${VERSION}/
+          cp -r docs/api-reference docs/versions/${VERSION}/
+          cp -r docs/middleware docs/versions/${VERSION}/
+          cp -r docs/examples docs/versions/${VERSION}/
+          cp -r docs/getting-started docs/versions/${VERSION}/
+          cp docs/README.md docs/versions/${VERSION}/
+          
+          # Update version-specific info
+          sed -i "s/Current version: .*/Current version: ${VERSION} (${TAG})/" docs/versions/${VERSION}/README.md
+          
+          # Update version list in main README
+          if ! grep -q "${VERSION}" docs/README.md; then
+            sed -i "/## Documentation Sections/i \\\n## Available Versions\\\n\\\n- [Latest (${VERSION})](./)\\\n- [v${VERSION}](versions/${VERSION}/)\\\n" docs/README.md
+          fi
+      
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/
+          git commit -m "Update documentation for version ${{ github.event.client_payload.version }}" || echo "No changes to commit"
+          git push
+          
+      - name: Deploy documentation
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: docs
+          branch: gh-pages
