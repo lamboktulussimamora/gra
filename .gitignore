@@ -16,8 +16,16 @@ examples/*/versioning-and-cache
 coverage.out
 coverage.html
 
+# npm logs and debugging
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
 # Dependency directories (remove the comment below if you want to ignore vendor directory)
 # vendor/
+node_modules/
 
 # Go workspace file
 go.work
