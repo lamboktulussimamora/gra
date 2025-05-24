@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="700" height="500" xmlns="http://www.w3.org/2000/svg">
+  <!-- GRA Framework Architecture Diagram -->
+  
+  <!-- Background -->
+  <rect x="0" y="0" width="700" height="500" fill="#f8fafc" rx="5" ry="5" />
+  
+  <!-- Title -->
+  <text x="350" y="30" font-family="Arial" font-size="24" font-weight="bold" fill="#1e40af" text-anchor="middle">GRA Framework Architecture</text>
+  
+  <!-- HTTP Request arrow -->
+  <path d="M50,100 L150,100" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" />
+  <text x="100" y="90" font-family="Arial" font-size="12" fill="#64748b" text-anchor="middle">HTTP Request</text>
+  
+  <!-- Main Router Box -->
+  <rect x="150" y="60" width="120" height="80" rx="5" ry="5" fill="#dbeafe" stroke="#3b82f6" stroke-width="2" />
+  <text x="210" y="85" font-family="Arial" font-size="14" font-weight="bold" fill="#1e40af" text-anchor="middle">Router</text>
+  <text x="210" y="105" font-family="Arial" font-size="12" fill="#1e40af" text-anchor="middle">Route Matching</text>
+  <text x="210" y="125" font-family="Arial" font-size="12" fill="#1e40af" text-anchor="middle">Path Parameters</text>
+  
+  <!-- Middleware Chain -->
+  <rect x="330" y="60" width="120" height="80" rx="5" ry="5" fill="#e0f2fe" stroke="#0ea5e9" stroke-width="2" />
+  <text x="390" y="85" font-family="Arial" font-size="14" font-weight="bold" fill="#0369a1" text-anchor="middle">Middleware</text>
+  <text x="390" y="105" font-family="Arial" font-size="12" fill="#0369a1" text-anchor="middle">Logger</text>
+  <text x="390" y="120" font-family="Arial" font-size="12" fill="#0369a1" text-anchor="middle">Recovery</text>
+  <text x="390" y="135" font-family="Arial" font-size="12" fill="#0369a1" text-anchor="middle">Auth/CORS</text>
+  
+  <!-- Context -->
+  <rect x="330" y="180" width="120" height="80" rx="5" ry="5" fill="#f0fdf4" stroke="#22c55e" stroke-width="2" />
+  <text x="390" y="205" font-family="Arial" font-size="14" font-weight="bold" fill="#166534" text-anchor="middle">Context</text>
+  <text x="390" y="225" font-family="Arial" font-size="12" fill="#166534" text-anchor="middle">Request Data</text>
+  <text x="390" y="240" font-family="Arial" font-size="12" fill="#166534" text-anchor="middle">Response Methods</text>
+  <text x="390" y="255" font-family="Arial" font-size="12" fill="#166534" text-anchor="middle">State Management</text>
+  
+  <!-- Handler -->
+  <rect x="510" y="60" width="120" height="80" rx="5" ry="5" fill="#fef3c7" stroke="#f59e0b" stroke-width="2" />
+  <text x="570" y="85" font-family="Arial" font-size="14" font-weight="bold" fill="#92400e" text-anchor="middle">Handlers</text>
+  <text x="570" y="105" font-family="Arial" font-size="12" fill="#92400e" text-anchor="middle">Business Logic</text>
+  <text x="570" y="120" font-family="Arial" font-size="12" fill="#92400e" text-anchor="middle">Request Processing</text>
+  <text x="570" y="135" font-family="Arial" font-size="12" fill="#92400e" text-anchor="middle">Response Generation</text>
+  
+  <!-- Services and Utilities -->
+  <rect x="200" y="300" width="130" height="60" rx="5" ry="5" fill="#f3e8ff" stroke="#a855f7" stroke-width="2" />
+  <text x="265" y="325" font-family="Arial" font-size="14" font-weight="bold" fill="#7e22ce" text-anchor="middle">JWT</text>
+  <text x="265" y="345" font-family="Arial" font-size="12" fill="#7e22ce" text-anchor="middle">Authentication</text>
+  
+  <rect x="350" y="300" width="130" height="60" rx="5" ry="5" fill="#fce7f3" stroke="#ec4899" stroke-width="2" />
+  <text x="415" y="325" font-family="Arial" font-size="14" font-weight="bold" fill="#be185d" text-anchor="middle">Validator</text>
+  <text x="415" y="345" font-family="Arial" font-size="12" fill="#be185d" text-anchor="middle">Input Validation</text>
+  
+  <rect x="500" y="300" width="130" height="60" rx="5" ry="5" fill="#fff7ed" stroke="#f97316" stroke-width="2" />
+  <text x="565" y="325" font-family="Arial" font-size="14" font-weight="bold" fill="#c2410c" text-anchor="middle">Cache</text>
+  <text x="565" y="345" font-family="Arial" font-size="12" fill="#c2410c" text-anchor="middle">Response Caching</text>
+  
+  <rect x="60" y="300" width="120" height="60" rx="5" ry="5" fill="#fef2f2" stroke="#ef4444" stroke-width="2" />
+  <text x="120" y="325" font-family="Arial" font-size="14" font-weight="bold" fill="#991b1b" text-anchor="middle">Logger</text>
+  <text x="120" y="345" font-family="Arial" font-size="12" fill="#991b1b" text-anchor="middle">Structured Logging</text>
+  
+  <rect x="200" y="380" width="130" height="60" rx="5" ry="5" fill="#eff6ff" stroke="#3b82f6" stroke-width="2" />
+  <text x="265" y="405" font-family="Arial" font-size="14" font-weight="bold" fill="#1e40af" text-anchor="middle">Versioning</text>
+  <text x="265" y="425" font-family="Arial" font-size="12" fill="#1e40af" text-anchor="middle">API Versioning</text>
+  
+  <rect x="350" y="380" width="130" height="60" rx="5" ry="5" fill="#f0f9ff" stroke="#0ea5e9" stroke-width="2" />
+  <text x="415" y="405" font-family="Arial" font-size="14" font-weight="bold" fill="#0369a1" text-anchor="middle">Adapter</text>
+  <text x="415" y="425" font-family="Arial" font-size="12" fill="#0369a1" text-anchor="middle">Handler Adapters</text>
+  
+  <!-- Connection lines -->
+  <path d="M270,100 L330,100" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" />
+  <path d="M450,100 L510,100" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" />
+  <path d="M390,140 L390,180" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" />
+  <path d="M510,110 L460,180" stroke="#64748b" stroke-width="2" stroke-dasharray="5,5" fill="none" marker-end="url(#arrowhead)" />
+  
+  <!-- Response arrow -->
+  <path d="M150,140 L50,140" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrowhead)" />
+  <text x="100" y="160" font-family="Arial" font-size="12" fill="#64748b" text-anchor="middle">HTTP Response</text>
+  
+  <!-- Service connectors -->
+  <path d="M320,220 L120,300" stroke="#64748b" stroke-width="1" stroke-dasharray="3,3" fill="none" />
+  <path d="M350,260 L265,300" stroke="#64748b" stroke-width="1" stroke-dasharray="3,3" fill="none" />
+  <path d="M390,260 L390,300" stroke="#64748b" stroke-width="1" stroke-dasharray="3,3" fill="none" />
+  <path d="M430,260 L540,300" stroke="#64748b" stroke-width="1" stroke-dasharray="3,3" fill="none" />
+  <path d="M330,240 L265,380" stroke="#64748b" stroke-width="1" stroke-dasharray="3,3" fill="none" />
+  <path d="M390,260 L415,380" stroke="#64748b" stroke-width="1" stroke-dasharray="3,3" fill="none" />
+  
+  <!-- Arrow definition -->
+  <defs>
+    <marker
+      id="arrowhead"
+      markerWidth="10"
+      markerHeight="7"
+      refX="9"
+      refY="3.5"
+      orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+    </marker>
+  </defs>
+</svg>
