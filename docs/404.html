@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Page Not Found - GRA Framework Documentation</title>
+  <link rel="icon" href="/assets/images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/css/style.css">
+  <style>
+    .error-container {
+      text-align: center;
+      padding: 100px 20px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    
+    .error-code {
+      font-size: 120px;
+      font-weight: bold;
+      color: #2563eb;
+      margin: 0;
+      line-height: 1;
+    }
+    
+    .error-message {
+      font-size: 24px;
+      margin: 20px 0;
+    }
+    
+    .error-description {
+      margin-bottom: 30px;
+      color: #64748b;
+    }
+    
+    .home-link {
+      display: inline-block;
+      background-color: #2563eb;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-weight: bold;
+      transition: background-color 0.2s;
+    }
+    
+    .home-link:hover {
+      background-color: #1e40af;
+      text-decoration: none;
+    }
+    
+    .search-suggestion {
+      margin-top: 50px;
+      padding: 20px;
+      background-color: #f8fafc;
+      border-radius: 4px;
+    }
+    
+    .search-suggestion h3 {
+      margin-top: 0;
+    }
+    
+    #pageSearchInput {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="error-container">
+    <p class="error-code">404</p>
+    <h1 class="error-message">Page Not Found</h1>
+    <p class="error-description">
+      Sorry, the page you're looking for doesn't exist or has been moved.
+    </p>
+    
+    <a href="/" class="home-link">Go to Documentation Home</a>
+    
+    <div class="search-suggestion">
+      <h3>Try searching for what you need:</h3>
+      <input type="text" id="pageSearchInput" placeholder="Search the documentation...">
+      <div id="searchResults"></div>
+    </div>
+    
+    <p>Or check these popular sections:</p>
+    <ul style="text-align: left; display: inline-block;">
+      <li><a href="/getting-started/">Getting Started</a></li>
+      <li><a href="/core-concepts/">Core Concepts</a></li>
+      <li><a href="/api-reference/">API Reference</a></li>
+      <li><a href="/examples/">Examples</a></li>
+    </ul>
+  </div>
+  
+  <script src="/assets/js/lunr.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const searchInput = document.getElementById('pageSearchInput');
+      const searchResults = document.getElementById('searchResults');
+      
+      // Load search index
+      fetch('/assets/search-index.json')
+        .then(response => response.json())
+        .then(data => {
+          const idx = lunr.Index.load(data.index);
+          const docs = data.documents;
+          
+          searchInput.addEventListener('input', function() {
+            const query = this.value.trim();
+            
+            if (!query || query.length < 2) {
+              searchResults.innerHTML = '';
+              return;
+            }
+            
+            // Search
+            try {
+              const results = idx.search(query);
+              
+              if (results.length === 0) {
+                searchResults.innerHTML = '<p>No results found.</p>';
+                return;
+              }
+              
+              let html = '<ul>';
+              results.slice(0, 5).forEach(result => {
+                const doc = docs[result.ref];
+                if (doc) {
+                  html += `<li><a href="${doc.url}">${doc.title}</a></li>`;
+                }
+              });
+              html += '</ul>';
+              
+              searchResults.innerHTML = html;
+            } catch (error) {
+              console.error('Search error:', error);
+              searchResults.innerHTML = '<p>Error performing search.</p>';
+            }
+          });
+        })
+        .catch(error => {
+          console.error('Error loading search index:', error);
+          searchResults.innerHTML = '<p>Search functionality is currently unavailable.</p>';
+        });
+    });
+  </script>
+</body>
+</html>

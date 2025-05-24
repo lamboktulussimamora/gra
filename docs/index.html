@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GRA Framework - Documentation</title>
+  <meta name="description" content="GRA is a lightweight HTTP framework for building web applications in Go, inspired by Gin but with a focus on simplicity, performance, and developer experience.">
+  
+  <!-- Favicon -->
+  <link rel="icon" href="assets/images/favicon.png" type="image/png">
+  
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/css/style.css">
+  
+  <!-- Preload JavaScript -->
+  <link rel="preload" href="assets/js/lunr.min.js" as="script">
+  <link rel="preload" href="assets/js/search-enhancements.js" as="script">
+  <link rel="preload" href="assets/js/docs.js" as="script">
+</head>
+<body>
+  <div class="header-container">
+    <h1>GRA Framework</h1>
+    <p>A lightweight HTTP framework for building web applications in Go</p>
+    
+    <div class="badges">
+      <a href="https://github.com/lamboktulussimamora/gra/actions/workflows/test.yml" target="_blank" rel="noopener">
+        <img src="https://github.com/lamboktulussimamora/gra/actions/workflows/test.yml/badge.svg" alt="Test and Coverage">
+      </a>
+      <a href="https://coveralls.io/github/lamboktulussimamora/gra?branch=main" target="_blank" rel="noopener">
+        <img src="https://coveralls.io/repos/github/lamboktulussimamora/gra/badge.svg?branch=main" alt="Coverage Status">
+      </a>
+      <a href="https://goreportcard.com/report/github.com/lamboktulussimamora/gra" target="_blank" rel="noopener">
+        <img src="https://goreportcard.com/badge/github.com/lamboktulussimamora/gra" alt="Go Report Card">
+      </a>
+      <a href="https://github.com/lamboktulussimamora/gra/releases" target="_blank" rel="noopener">
+        <img src="https://img.shields.io/github/release/lamboktulussimamora/gra.svg" alt="GitHub release">
+      </a>
+      <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener">
+        <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
+      </a>
+      <a href="https://pkg.go.dev/github.com/lamboktulussimamora/gra" target="_blank" rel="noopener">
+        <img src="https://pkg.go.dev/badge/github.com/lamboktulussimamora/gra.svg" alt="Go Reference">
+      </a>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <div id="content">
+      <!-- The README.md content will be inserted here -->
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="assets/js/marked.min.js"></script>
+  <script src="assets/js/lunr.min.js"></script>
+  <script src="assets/js/search-enhancements.js"></script>
+  <script src="assets/js/docs.js"></script>
+  
+  <script>
+    // Load README.md content
+    fetch('README.md')
+      .then(response => response.text())
+      .then(text => {
+        // Remove front matter and other non-markdown content
+        const cleanContent = text.replace(/<!-- filepath:[^>]+-->/g, '');
+        
+        // Convert markdown to HTML
+        document.getElementById('content').innerHTML = marked(cleanContent);
+        
+        // Initialize docs functionality
+        if (typeof docsInit === 'function') {
+          docsInit();
+        }
+      })
+      .catch(error => {
+        console.error('Error loading documentation:', error);
+        document.getElementById('content').innerHTML = '<p>Error loading documentation content. Please try again later.</p>';
+      });
+  </script>
+</body>
+</html>

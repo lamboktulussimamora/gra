@@ -12,9 +12,12 @@ examples/*/versioning-and-cache
 
 # Output of the go coverage tool
 *.out
-*.html
 coverage.out
 coverage.html
+# Ignore HTML files except in docs
+*.html
+!docs/*.html
+!docs/**/*.html
 
 # npm logs and debugging
 npm-debug.log*
