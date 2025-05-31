@@ -12,6 +12,10 @@ examples/*/enhanced-demo
 examples/*/auth-and-security
 examples/*/versioning-and-cache
 
+# Migration tool binaries
+tools/migration/direct_runner
+tools/migration/test_runner
+
 # Database files
 *.db
 *.sqlite
