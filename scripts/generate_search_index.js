@@ -52,7 +52,6 @@ function processMarkdown(content, filePath) {
     
   // Extract meaningful sections for content snippets
   const sections = [];
-  let currentSection = '';
   const headings = [];
   
   // Extract headings for section context
@@ -221,8 +220,9 @@ function main() {
   }
   
   // Create assets directory if it doesn't exist
-  if (!fs.existsSync(path.dirname(outputFile))) {
-    fs.mkdirSync(path.dirname(outputFile), { recursive: true });
+  const outputDir = path.dirname(outputFile);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
   }
   
   // Process all documentation files
