@@ -1,0 +1,535 @@
+// Package dbcontext provides Entity Framework Core-inspired database context functionality
+package dbcontext
+
+import (
+	"database/sql"
+	"fmt"
+	"reflect"
+	"strings"
+	"time"
+)
+
+// detectDatabaseDriver detects the database driver type
+func detectDatabaseDriver(db *sql.DB) string {
+	// Test queries to detect database type
+	if _, err := db.Query("SELECT 1::integer"); err == nil {
+		return "postgres"
+	}
+	if _, err := db.Query("SELECT sqlite_version()"); err == nil {
+		return "sqlite3"
+	}
+	if _, err := db.Query("SELECT VERSION()"); err == nil {
+		return "mysql"
+	}
+	// Default to sqlite3 if detection fails
+	return "sqlite3"
+}
+
+// convertQueryPlaceholders converts query placeholders based on database driver
+func convertQueryPlaceholders(query string, driver string) string {
+	if driver != "postgres" {
+		return query // SQLite and MySQL use ? placeholders
+	}
+
+	// Convert ? placeholders to $1, $2, $3 for PostgreSQL
+	count := 0
+	result := ""
+	for _, char := range query {
+		if char == '?' {
+			count++
+			result += fmt.Sprintf("$%d", count)
+		} else {
+			result += string(char)
+		}
+	}
+	return result
+}
+
+// EntityState represents the state of an entity in the change tracker
+type EntityState int
+
+const (
+	// Unchanged - Entity exists in database and has not been modified
+	Unchanged EntityState = iota
+	// Added - Entity is new and should be inserted into the database
+	Added
+	// Modified - Entity exists in database and has been modified
+	Modified
+	// Deleted - Entity exists in database and should be deleted
+	Deleted
+)
+
+func (s EntityState) String() string {
+	switch s {
+	case Unchanged:
+		return "Unchanged"
+	case Added:
+		return "Added"
+	case Modified:
+		return "Modified"
+	case Deleted:
+		return "Deleted"
+	default:
+		return "Unknown"
+	}
+}
+
+// EntityEntry tracks the state and changes of an entity
+type EntityEntry struct {
+	Entity         interface{}
+	State          EntityState
+	OriginalValues map[string]interface{}
+	CurrentValues  map[string]interface{}
+}
+
+// ChangeTracker tracks changes to entities
+type ChangeTracker struct {
+	entries map[uintptr]*EntityEntry
+}
+
+// NewChangeTracker creates a new change tracker
+func NewChangeTracker() *ChangeTracker {
+	return &ChangeTracker{
+		entries: make(map[uintptr]*EntityEntry),
+	}
+}
+
+// Track begins tracking an entity with the specified state
+func (ct *ChangeTracker) Track(entity interface{}, state EntityState) {
+	ptr := reflect.ValueOf(entity).Pointer()
+
+	entry := &EntityEntry{
+		Entity:         entity,
+		State:          state,
+		OriginalValues: make(map[string]interface{}),
+		CurrentValues:  make(map[string]interface{}),
+	}
+
+	// Capture current values
+	ct.captureValues(entity, entry)
+
+	ct.entries[ptr] = entry
+}
+
+// GetEntityState returns the state of an entity
+func (ct *ChangeTracker) GetEntityState(entity interface{}) EntityState {
+	ptr := reflect.ValueOf(entity).Pointer()
+	if entry, exists := ct.entries[ptr]; exists {
+		return entry.State
+	}
+	return Unchanged
+}
+
+// SetEntityState sets the state of an entity
+func (ct *ChangeTracker) SetEntityState(entity interface{}, state EntityState) {
+	ptr := reflect.ValueOf(entity).Pointer()
+	if entry, exists := ct.entries[ptr]; exists {
+		entry.State = state
+	} else {
+		ct.Track(entity, state)
+	}
+}
+
+// DetectChanges detects changes in tracked entities
+func (ct *ChangeTracker) DetectChanges() {
+	for _, entry := range ct.entries {
+		if entry.State == Unchanged {
+			if ct.hasChanges(entry) {
+				entry.State = Modified
+			}
+		}
+	}
+}
+
+// GetChangedEntities returns all entities that have changes
+func (ct *ChangeTracker) GetChangedEntities() []*EntityEntry {
+	var changed []*EntityEntry
+	for _, entry := range ct.entries {
+		if entry.State == Added || entry.State == Modified || entry.State == Deleted {
+			changed = append(changed, entry)
+		}
+	}
+	return changed
+}
+
+// Clear removes all tracked entities
+func (ct *ChangeTracker) Clear() {
+	ct.entries = make(map[uintptr]*EntityEntry)
+}
+
+// captureValues captures the current values of an entity
+func (ct *ChangeTracker) captureValues(entity interface{}, entry *EntityEntry) {
+	val := reflect.ValueOf(entity)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	typ := val.Type()
+	for i := 0; i < val.NumField(); i++ {
+		field := typ.Field(i)
+		fieldValue := val.Field(i)
+
+		if !fieldValue.CanInterface() {
+			continue
+		}
+
+		dbTag := field.Tag.Get("db")
+		if dbTag == "" || dbTag == "-" {
+			continue
+		}
+
+		entry.CurrentValues[field.Name] = fieldValue.Interface()
+		if entry.State == Unchanged {
+			entry.OriginalValues[field.Name] = fieldValue.Interface()
+		}
+	}
+}
+
+// hasChanges checks if an entity has changes compared to its original values
+func (ct *ChangeTracker) hasChanges(entry *EntityEntry) bool {
+	ct.captureValues(entry.Entity, entry)
+
+	for field, currentValue := range entry.CurrentValues {
+		if originalValue, exists := entry.OriginalValues[field]; exists {
+			if !reflect.DeepEqual(currentValue, originalValue) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Database provides database access functionality
+type Database struct {
+	DB *sql.DB
+	tx *sql.Tx
+}
+
+// NewDatabase creates a new Database instance
+func NewDatabase(db *sql.DB) *Database {
+	return &Database{DB: db}
+}
+
+// Begin starts a database transaction
+func (d *Database) Begin() (*sql.Tx, error) {
+	return d.DB.Begin()
+}
+
+// EnhancedDbContext provides Entity Framework Core-like functionality
+type EnhancedDbContext struct {
+	Database      *Database
+	ChangeTracker *ChangeTracker
+	tx            *sql.Tx
+	dbDriver      string
+}
+
+// NewEnhancedDbContext creates a new enhanced database context
+func NewEnhancedDbContext(db *sql.DB) *EnhancedDbContext {
+	return &EnhancedDbContext{
+		Database:      NewDatabase(db),
+		ChangeTracker: NewChangeTracker(),
+	}
+}
+
+// NewEnhancedDbContextWithTx creates a new enhanced database context with an existing transaction
+func NewEnhancedDbContextWithTx(tx *sql.Tx) *EnhancedDbContext {
+	return &EnhancedDbContext{
+		Database:      &Database{tx: tx},
+		ChangeTracker: NewChangeTracker(),
+		tx:            tx,
+	}
+}
+
+// Add marks an entity as added (to be inserted)
+func (ctx *EnhancedDbContext) Add(entity interface{}) error {
+	// Set timestamps for new entities
+	if err := ctx.setTimestamps(entity, true); err != nil {
+		return err
+	}
+
+	ctx.ChangeTracker.Track(entity, Added)
+	return nil
+}
+
+// Update marks an entity as modified (to be updated)
+func (ctx *EnhancedDbContext) Update(entity interface{}) error {
+	// Set updated timestamp
+	if err := ctx.setTimestamps(entity, false); err != nil {
+		return err
+	}
+
+	ctx.ChangeTracker.SetEntityState(entity, Modified)
+	return nil
+}
+
+// Delete marks an entity as deleted (to be deleted)
+func (ctx *EnhancedDbContext) Delete(entity interface{}) error {
+	ctx.ChangeTracker.SetEntityState(entity, Deleted)
+	return nil
+}
+
+// SaveChanges persists all tracked changes to the database
+func (ctx *EnhancedDbContext) SaveChanges() error {
+	ctx.ChangeTracker.DetectChanges()
+
+	changes := ctx.ChangeTracker.GetChangedEntities()
+	if len(changes) == 0 {
+		return nil
+	}
+
+	// Use transaction if not already in one
+	var tx *sql.Tx
+	var err error
+
+	if ctx.tx != nil {
+		tx = ctx.tx
+	} else {
+		tx, err = ctx.Database.Begin()
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction: %w", err)
+		}
+		defer func() {
+			if err != nil {
+				tx.Rollback()
+			} else {
+				tx.Commit()
+			}
+		}()
+	}
+
+	// Process changes in order: Inserts, Updates, Deletes
+	for _, entry := range changes {
+		switch entry.State {
+		case Added:
+			err = ctx.insertEntity(tx, entry.Entity)
+		case Modified:
+			err = ctx.updateEntity(tx, entry.Entity)
+		case Deleted:
+			err = ctx.deleteEntity(tx, entry.Entity)
+		}
+
+		if err != nil {
+			return err
+		}
+
+		// Update entity state after successful save
+		if entry.State != Deleted {
+			ctx.ChangeTracker.SetEntityState(entry.Entity, Unchanged)
+		}
+	}
+
+	return nil
+}
+
+// setTimestamps sets CreatedAt and UpdatedAt timestamps on entities
+func (ctx *EnhancedDbContext) setTimestamps(entity interface{}, isNew bool) error {
+	val := reflect.ValueOf(entity)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if !val.CanSet() {
+		return nil
+	}
+
+	now := time.Now()
+
+	// Set UpdatedAt
+	if updatedAtField := val.FieldByName("UpdatedAt"); updatedAtField.IsValid() && updatedAtField.CanSet() {
+		updatedAtField.Set(reflect.ValueOf(now))
+	}
+
+	// Set CreatedAt only for new entities
+	if isNew {
+		if createdAtField := val.FieldByName("CreatedAt"); createdAtField.IsValid() && createdAtField.CanSet() {
+			if createdAtField.Interface().(time.Time).IsZero() {
+				createdAtField.Set(reflect.ValueOf(now))
+			}
+		}
+	}
+
+	return nil
+}
+
+// insertEntity inserts a new entity into the database
+func (ctx *EnhancedDbContext) insertEntity(tx *sql.Tx, entity interface{}) error {
+	tableName := ctx.getTableName(entity)
+	columns, values, placeholders := ctx.getInsertData(entity)
+
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		tableName,
+		strings.Join(columns, ", "),
+		strings.Join(placeholders, ", "))
+
+	result, err := tx.Exec(query, values...)
+	if err != nil {
+		return fmt.Errorf("failed to insert entity: %w", err)
+	}
+
+	// Set the ID for entities with auto-increment primary keys
+	if id, err := result.LastInsertId(); err == nil {
+		ctx.setEntityID(entity, id)
+	}
+
+	return nil
+}
+
+// updateEntity updates an existing entity in the database
+func (ctx *EnhancedDbContext) updateEntity(tx *sql.Tx, entity interface{}) error {
+	tableName := ctx.getTableName(entity)
+	setParts, values := ctx.getUpdateData(entity)
+	id := ctx.getEntityID(entity)
+
+	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?",
+		tableName,
+		strings.Join(setParts, ", "))
+
+	values = append(values, id)
+
+	_, err := tx.Exec(query, values...)
+	if err != nil {
+		return fmt.Errorf("failed to update entity: %w", err)
+	}
+
+	return nil
+}
+
+// deleteEntity deletes an entity from the database
+func (ctx *EnhancedDbContext) deleteEntity(tx *sql.Tx, entity interface{}) error {
+	tableName := ctx.getTableName(entity)
+	id := ctx.getEntityID(entity)
+
+	query := fmt.Sprintf("DELETE FROM %s WHERE id = ?", tableName)
+
+	_, err := tx.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete entity: %w", err)
+	}
+
+	return nil
+}
+
+// Helper methods for entity operations
+
+// getTableName gets the table name for an entity
+func (ctx *EnhancedDbContext) getTableName(entity interface{}) string {
+	// Check if entity has TableName method
+	if tn, ok := entity.(interface{ TableName() string }); ok {
+		return tn.TableName()
+	}
+
+	// Default to struct name in lowercase
+	val := reflect.ValueOf(entity)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	typeName := val.Type().Name()
+	return strings.ToLower(typeName) + "s"
+}
+
+// getInsertData extracts column names, values, and placeholders for insert
+func (ctx *EnhancedDbContext) getInsertData(entity interface{}) ([]string, []interface{}, []string) {
+	var columns []string
+	var values []interface{}
+	var placeholders []string
+
+	val := reflect.ValueOf(entity)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	typ := val.Type()
+	for i := 0; i < val.NumField(); i++ {
+		field := typ.Field(i)
+		fieldValue := val.Field(i)
+
+		dbTag := field.Tag.Get("db")
+		if dbTag == "" || dbTag == "-" {
+			continue
+		}
+
+		// Skip auto-increment ID fields
+		if dbTag == "id" && field.Tag.Get("autoIncrement") == "true" {
+			continue
+		}
+
+		if !fieldValue.CanInterface() {
+			continue
+		}
+
+		columns = append(columns, dbTag)
+		values = append(values, fieldValue.Interface())
+		placeholders = append(placeholders, "?")
+	}
+
+	return columns, values, placeholders
+}
+
+// getUpdateData extracts SET clause parts and values for update
+func (ctx *EnhancedDbContext) getUpdateData(entity interface{}) ([]string, []interface{}) {
+	var setParts []string
+	var values []interface{}
+
+	val := reflect.ValueOf(entity)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	typ := val.Type()
+	for i := 0; i < val.NumField(); i++ {
+		field := typ.Field(i)
+		fieldValue := val.Field(i)
+
+		dbTag := field.Tag.Get("db")
+		if dbTag == "" || dbTag == "-" || dbTag == "id" {
+			continue
+		}
+
+		if !fieldValue.CanInterface() {
+			continue
+		}
+
+		setParts = append(setParts, dbTag+" = ?")
+		values = append(values, fieldValue.Interface())
+	}
+
+	return setParts, values
+}
+
+// getEntityID gets the ID value from an entity
+func (ctx *EnhancedDbContext) getEntityID(entity interface{}) interface{} {
+	val := reflect.ValueOf(entity)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	idField := val.FieldByName("ID")
+	if idField.IsValid() && idField.CanInterface() {
+		return idField.Interface()
+	}
+
+	return nil
+}
+
+// setEntityID sets the ID value on an entity
+func (ctx *EnhancedDbContext) setEntityID(entity interface{}, id int64) {
+	val := reflect.ValueOf(entity)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if !val.CanSet() {
+		return
+	}
+
+	idField := val.FieldByName("ID")
+	if idField.IsValid() && idField.CanSet() {
+		switch idField.Kind() {
+		case reflect.Int64:
+			idField.SetInt(id)
+		case reflect.Uint, reflect.Uint64:
+			idField.SetUint(uint64(id))
+		}
+	}
+}

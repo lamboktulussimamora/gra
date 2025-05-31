@@ -21,6 +21,11 @@ A lightweight HTTP framework for building web applications in Go, inspired by Gi
 - Request validation
 - Standardized API responses
 - Structured logging
+- **Enhanced Entity Framework Core-like ORM**
+- **Automatic database migrations**
+- **LINQ-style querying with generics**
+- **Change tracking and entity states**
+- **Transaction management**
 - Clean architecture friendly
 
 ## Installation
@@ -539,6 +544,294 @@ func getUserProfile(c *context.Context) {
     // ...
 }
 ```
+
+## Enhanced ORM System
+
+GRA includes a comprehensive Entity Framework Core-inspired ORM system that provides advanced database operations with automatic migrations, change tracking, and LINQ-style querying.
+
+### Key Features
+
+- **Entity Framework Core-like architecture** with DbContext and DbSet patterns
+- **Automatic database migrations** based on struct definitions
+- **LINQ-style querying** with Go generics support
+- **Change tracking** with entity states (Added, Modified, Deleted, Unchanged)
+- **Transaction management** with SaveChanges pattern
+- **Fluent query interface** (Where, OrderBy, Take, Skip, Include)
+- **Advanced query execution** (First, FirstOrDefault, Single, Any, ToList, Count)
+- **Read-only queries** with AsNoTracking support
+- **Relationship management** with foreign key support
+
+### Quick Start
+
+```go
+import (
+    "github.com/lamboktulussimamora/gra/orm/dbcontext"
+    "github.com/lamboktulussimamora/gra/orm/models"
+    "github.com/lamboktulussimamora/gra/orm/migrations"
+)
+
+// Define your entities (already included)
+type User struct {
+    models.BaseEntity
+    FirstName string `db:"first_name"`
+    LastName  string `db:"last_name"`
+    Email     string `db:"email"`
+    IsActive  bool   `db:"is_active"`
+}
+
+// Initialize database context
+db, err := sql.Open("sqlite3", "app.db")
+if err != nil {
+    log.Fatal(err)
+}
+
+ctx := dbcontext.NewEnhancedDbContext(db)
+
+// Run automatic migrations
+migrationRunner := migrations.NewMigrationRunner(db)
+err = migrationRunner.AutoMigrate(
+    &models.User{},
+    &models.Product{},
+    &models.Category{},
+    // ... other entities
+)
+if err != nil {
+    log.Fatal("Migration failed:", err)
+}
+```
+
+### Basic CRUD Operations
+
+```go
+// Create new entities
+user := &models.User{
+    FirstName: "John",
+    LastName:  "Doe",
+    Email:     "john.doe@example.com",
+    IsActive:  true,
+}
+
+// Add to context (tracks as "Added")
+err := ctx.Add(user)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Save changes to database
+err = ctx.SaveChanges()
+if err != nil {
+    log.Fatal(err)
+}
+
+// Read operations
+userSet := dbcontext.EnhancedSet[models.User](ctx)
+
+// Find by ID
+foundUser, err := userSet.Where("id = ?", user.ID).FirstOrDefault()
+if err != nil {
+    log.Fatal(err)
+}
+
+// Update entity
+foundUser.Email = "newemail@example.com"
+err = ctx.Update(foundUser)
+err = ctx.SaveChanges()
+
+// Delete entity
+err = ctx.Delete(foundUser)
+err = ctx.SaveChanges()
+```
+
+### Advanced Querying
+
+```go
+userSet := dbcontext.EnhancedSet[models.User](ctx)
+
+// LINQ-style querying with method chaining
+activeUsers, err := userSet.
+    Where("is_active = ?", true).
+    OrderBy("first_name").
+    Take(10).
+    ToList()
+
+// Complex queries with multiple conditions
+specificUsers, err := userSet.
+    Where("is_active = ? AND email LIKE ?", true, "%@company.com").
+    OrderByDescending("created_at").
+    Skip(20).
+    Take(10).
+    ToList()
+
+// Check existence
+hasActiveUsers, err := userSet.
+    Where("is_active = ?", true).
+    Any()
+
+// Count records
+totalUsers, err := userSet.Count()
+activeUserCount, err := userSet.
+    Where("is_active = ?", true).
+    Count()
+
+// Single record operations
+firstUser, err := userSet.
+    OrderBy("created_at").
+    First() // Throws error if no results
+
+firstUserOrNil, err := userSet.
+    Where("email = ?", "specific@email.com").
+    FirstOrDefault() // Returns nil if no results
+```
+
+### Change Tracking
+
+```go
+// Enable change tracking (default)
+user, err := userSet.Where("id = ?", 1).First()
+
+// Modify entity
+user.Email = "updated@example.com"
+user.IsActive = false
+
+// Context automatically tracks changes
+fmt.Printf("Entity State: %v\n", ctx.ChangeTracker.GetEntityState(user))
+// Output: Modified
+
+// Save all tracked changes
+err = ctx.SaveChanges()
+
+// Read-only queries (no change tracking)
+readOnlyUsers, err := userSet.
+    AsNoTracking().
+    Where("is_active = ?", true).
+    ToList()
+// These entities won't be tracked for changes
+```
+
+### Transaction Management
+
+```go
+// Begin transaction
+tx, err := ctx.Database.Begin()
+if err != nil {
+    log.Fatal(err)
+}
+
+// Create transaction context
+txCtx := dbcontext.NewEnhancedDbContextWithTx(tx)
+
+// Perform operations within transaction
+user1 := &models.User{FirstName: "User", LastName: "One", Email: "user1@example.com"}
+user2 := &models.User{FirstName: "User", LastName: "Two", Email: "user2@example.com"}
+
+err = txCtx.Add(user1)
+if err != nil {
+    tx.Rollback()
+    log.Fatal(err)
+}
+
+err = txCtx.Add(user2)
+if err != nil {
+    tx.Rollback()
+    log.Fatal(err)
+}
+
+// Save all changes in transaction
+err = txCtx.SaveChanges()
+if err != nil {
+    tx.Rollback()
+    log.Fatal(err)
+}
+
+// Commit transaction
+err = tx.Commit()
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### Migration System
+
+The migration system automatically creates and updates database tables based on your entity definitions:
+
+```go
+// Create migration runner
+migrationRunner := migrations.NewMigrationRunner(db)
+
+// Register entities for migration
+entities := []interface{}{
+    &models.User{},
+    &models.Product{},
+    &models.Category{},
+    &models.Order{},
+    &models.OrderItem{},
+    &models.Review{},
+    &models.Role{},
+    &models.UserRole{},
+}
+
+// Run automatic migrations
+err := migrationRunner.AutoMigrate(entities...)
+if err != nil {
+    log.Fatal("Migration failed:", err)
+}
+```
+
+### Entity Relationships
+
+Define relationships using struct tags and foreign keys:
+
+```go
+type Order struct {
+    models.BaseEntity
+    UserID     uint           `db:"user_id" fk:"users(id)"`
+    User       *User          `db:"-"` // Navigation property
+    OrderItems []OrderItem    `db:"-"` // Collection navigation
+    Total      float64        `db:"total"`
+    Status     string         `db:"status"`
+}
+
+type OrderItem struct {
+    models.BaseEntity
+    OrderID   uint    `db:"order_id" fk:"orders(id)"`
+    ProductID uint    `db:"product_id" fk:"products(id)"`
+    Order     *Order  `db:"-"`
+    Product   *Product `db:"-"`
+    Quantity  int     `db:"quantity"`
+    Price     float64 `db:"price"`
+}
+```
+
+### Backward Compatibility
+
+The enhanced ORM maintains compatibility with existing code through a compatibility wrapper:
+
+```go
+// Legacy usage still works
+ctx := dbcontext.NewDbContext(db)
+userDbSet := ctx.Set(&models.User{})
+
+users, err := userDbSet.Where("is_active = ?", true).ToList()
+```
+
+### Complete Example
+
+See the comprehensive example at `examples/comprehensive-orm-demo/` for a full demonstration including:
+
+- Database setup and migrations
+- CRUD operations with change tracking
+- Advanced querying scenarios
+- Transaction management
+- Error handling patterns
+- Performance optimization with AsNoTracking
+
+```bash
+# Run the comprehensive demo
+cd examples/comprehensive-orm-demo
+go run main.go
+```
+
+For detailed implementation examples and advanced usage patterns, refer to the example documentation in the `examples/comprehensive-orm-demo/README.md` file.
 
 ## Contributing
 
