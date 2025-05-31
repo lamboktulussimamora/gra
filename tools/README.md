@@ -6,20 +6,18 @@ This directory contains utility tools for the GRA framework.
 
 The `migration/` directory contains database migration utilities:
 
-- **`direct_runner.go`** - Complete migration runner with up/down/status commands
-- **`test_runner.go`** - Simple migration test utility
-- **`direct_runner`** - Compiled binary of direct_runner
-- **`test_runner`** - Compiled binary of test_runner
+- **`direct/direct_runner.go`** - Complete migration runner with up/down/status commands
+- **`test/test_runner.go`** - Simple migration test utility
 
 ### Usage
 
 #### Building Tools
 ```bash
 # Build direct runner
-go build -o tools/migration/direct_runner tools/migration/direct_runner.go
+go build -o tools/migration/direct_runner tools/migration/direct/direct_runner.go
 
 # Build test runner  
-go build -o tools/migration/test_runner tools/migration/test_runner.go
+go build -o tools/migration/test_runner tools/migration/test/test_runner.go
 ```
 
 #### Running Migrations
