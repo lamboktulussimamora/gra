@@ -4,8 +4,18 @@
 *.dll
 *.so
 *.dylib
+
+# Example demo executables
+examples/*/basic-demo
+examples/*/comprehensive-demo
+examples/*/enhanced-demo
 examples/*/auth-and-security
 examples/*/versioning-and-cache
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
 
 # Test binary, built with `go test -c`
 *.test
