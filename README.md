@@ -750,55 +750,6 @@ if err != nil {
 }
 ```
 
-### EF Migration CLI Tool
-
-GRA includes a powerful command-line tool for managing database migrations similar to Entity Framework Core. The tool now supports PostgreSQL connections with individual parameters, eliminating manual password entry.
-
-#### Installation
-```bash
-# Build the CLI tool
-go build -o bin/ef-migrate tools/ef-migrate/main.go
-```
-
-#### Connection Methods
-
-**Method 1: Individual Parameters (Recommended)**
-```bash
-ef-migrate -host localhost -user postgres -password MyPassword_123 -database gra status
-```
-
-**Method 2: Connection String**
-```bash
-ef-migrate -connection "postgres://postgres:MyPassword_123@localhost:5432/gra?sslmode=disable" status
-```
-
-#### Available Commands
-```bash
-# Check migration status
-ef-migrate -host localhost -user postgres -password MyPassword_123 -database gra status
-
-# Apply pending migrations
-ef-migrate -host localhost -user postgres -password MyPassword_123 -database gra update-database
-
-# Create new migration
-ef-migrate -host localhost -user postgres -password MyPassword_123 -database gra add-migration CreateUsersTable
-
-# List all migrations
-ef-migrate -host localhost -user postgres -password MyPassword_123 -database gra list
-
-# Rollback migration
-ef-migrate -host localhost -user postgres -password MyPassword_123 -database gra rollback CreateUsersTable
-```
-
-#### Features
-- ✅ **Password Support**: No manual password entry required
-- ✅ **PostgreSQL Integration**: Full support for PostgreSQL databases
-- ✅ **Migration Lifecycle**: Create, apply, rollback, and list migrations
-- ✅ **Automation Friendly**: Perfect for CI/CD pipelines
-- ✅ **Backward Compatible**: Existing connection strings still work
-
-For detailed documentation, see [EF Migration Password Support](docs/EF_MIGRATION_PASSWORD_SUPPORT.md).
-
 ### Migration System
 
 The migration system automatically creates and updates database tables based on your entity definitions:

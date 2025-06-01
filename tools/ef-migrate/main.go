@@ -422,6 +422,27 @@ func saveMigrationToFile(migration *migrations.Migration, dir string) error {
 	return err
 }
 
+// buildPostgreSQLConnectionString builds a PostgreSQL connection string from individual parameters
+func buildPostgreSQLConnectionString(config CLIConfig) string {
+	host := config.Host
+	if host == "" {
+		host = "localhost"
+	}
+	
+	port := config.Port
+	if port == "" {
+		port = "5432"
+	}
+	
+	sslmode := config.SSLMode
+	if sslmode == "" {
+		sslmode = "disable"
+	}
+	
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		config.User, config.Password, host, port, config.Database, sslmode)
+}
+
 func printUsage() {
 	fmt.Println(`🚀 GRA Entity Framework Core-like Migration Tool`)
 	fmt.Println(`===============================================`)
@@ -429,18 +450,18 @@ func printUsage() {
 	fmt.Println(`USAGE:`)
 	fmt.Println(`  ef-migrate [options] <command> [arguments]`)
 	fmt.Println()
-	fmt.Println(`CONNECTION OPTIONS:`)
-	fmt.Println(`  -connection <string>    Complete database connection string`)
+	fmt.Println(`OPTIONS:`)
+	fmt.Println(`  -connection <string>    Database connection string`)
+	fmt.Println(`  -migrations-dir <path>  Directory for migration files (default: ./migrations)`)
+	fmt.Println(`  -verbose               Enable verbose logging`)
+	fmt.Println()
+	fmt.Println(`PostgreSQL Connection Options:`)
 	fmt.Println(`  -host <string>         Database host (default: localhost)`)
 	fmt.Println(`  -port <string>         Database port (default: 5432)`)
 	fmt.Println(`  -user <string>         Database user`)
 	fmt.Println(`  -password <string>     Database password`)
 	fmt.Println(`  -database <string>     Database name`)
 	fmt.Println(`  -sslmode <string>      SSL mode (default: disable)`)
-	fmt.Println()
-	fmt.Println(`OTHER OPTIONS:`)
-	fmt.Println(`  -migrations-dir <path>  Directory for migration files (default: ./migrations)`)
-	fmt.Println(`  -verbose               Enable verbose logging`)
 	fmt.Println()
 	fmt.Println(`COMMANDS:`)
 	fmt.Println()
@@ -456,20 +477,32 @@ func printUsage() {
 	fmt.Println(`  script [target]                     Generate SQL script`)
 	fmt.Println()
 	fmt.Println(`EXAMPLES:`)
+	fmt.Println()
+	fmt.Println(`Connection Examples:`)
+	fmt.Println(`  # Using individual PostgreSQL parameters`)
+	fmt.Println(`  ef-migrate -host localhost -user postgres -password MyPass123 -database gra status`)
+	fmt.Println()
 	fmt.Println(`  # Using connection string`)
-	fmt.Println(`  ef-migrate -connection "postgres://postgres:MyPassword_123@localhost:5432/mydb?sslmode=disable" status`)
+	fmt.Println(`  ef-migrate -connection "postgres://user:pass@localhost:5432/gra?sslmode=disable" status`)
 	fmt.Println()
-	fmt.Println(`  # Using individual parameters (no manual password entry)`)
-	fmt.Println(`  ef-migrate -host localhost -user postgres -password MyPassword_123 -database gra status`)
-	fmt.Println()
+	fmt.Println(`Migration Examples:`)
 	fmt.Println(`  # Create a new migration`)
-	fmt.Println(`  ef-migrate add-migration CreateUsersTable "Initial user table"`)
+	fmt.Println(`  ef-migrate -host localhost -user postgres -password MyPass123 -database gra add-migration CreateUsersTable "Initial user table"`)
 	fmt.Println()
 	fmt.Println(`  # Apply all pending migrations`)
-	fmt.Println(`  ef-migrate update-database`)
+	fmt.Println(`  ef-migrate -host localhost -user postgres -password MyPass123 -database gra update-database`)
+	fmt.Println()
+	fmt.Println(`  # Apply migrations up to a specific one`)
+	fmt.Println(`  ef-migrate -host localhost -user postgres -password MyPass123 -database gra update-database CreateUsersTable`)
 	fmt.Println()
 	fmt.Println(`  # Rollback to a specific migration`)
-	fmt.Println(`  ef-migrate rollback InitialMigration`)
+	fmt.Println(`  ef-migrate -host localhost -user postgres -password MyPass123 -database gra rollback InitialMigration`)
+	fmt.Println()
+	fmt.Println(`  # View migration status`)
+	fmt.Println(`  ef-migrate -host localhost -user postgres -password MyPass123 -database gra status`)
+	fmt.Println()
+	fmt.Println(`  # List all migrations`)
+	fmt.Println(`  ef-migrate -host localhost -user postgres -password MyPass123 -database gra get-migration`)
 	fmt.Println()
 	fmt.Println(`ENVIRONMENT:`)
 	fmt.Println(`  DATABASE_URL    Default database connection string`)
@@ -594,42 +627,4 @@ func parseMigrationContent(content string) (upSQL, downSQL string) {
 	}
 
 	return upSQL, downSQL
-}
-
-// buildPostgreSQLConnectionString builds a PostgreSQL connection string from individual parameters
-func buildPostgreSQLConnectionString(config CLIConfig) string {
-	// Use postgres:// URL format for PostgreSQL
-	var connStr strings.Builder
-	connStr.WriteString("postgres://")
-
-	// Add user and password
-	if config.User != "" {
-		connStr.WriteString(config.User)
-		if config.Password != "" {
-			connStr.WriteString(":")
-			connStr.WriteString(config.Password)
-		}
-		connStr.WriteString("@")
-	}
-
-	// Add host and port
-	connStr.WriteString(config.Host)
-	if config.Port != "" {
-		connStr.WriteString(":")
-		connStr.WriteString(config.Port)
-	}
-
-	// Add database name
-	if config.Database != "" {
-		connStr.WriteString("/")
-		connStr.WriteString(config.Database)
-	}
-
-	// Add SSL mode
-	if config.SSLMode != "" {
-		connStr.WriteString("?sslmode=")
-		connStr.WriteString(config.SSLMode)
-	}
-
-	return connStr.String()
 }
