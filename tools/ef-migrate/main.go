@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +30,13 @@ type CLIConfig struct {
 	ConnectionString string
 	MigrationsDir    string
 	Verbose          bool
+	// Individual connection parameters for PostgreSQL
+	Host     string
+	Port     string
+	User     string
+	Password string
+	Database string
+	SSLMode  string
 }
 
 func main() {
@@ -36,6 +46,15 @@ func main() {
 	flag.StringVar(&config.ConnectionString, "connection", "", "Database connection string")
 	flag.StringVar(&config.MigrationsDir, "migrations-dir", "./migrations", "Directory to store migration files")
 	flag.BoolVar(&config.Verbose, "verbose", false, "Enable verbose logging")
+
+	// PostgreSQL specific flags
+	flag.StringVar(&config.Host, "host", "", "Database host (PostgreSQL only)")
+	flag.StringVar(&config.Port, "port", "5432", "Database port (PostgreSQL only)")
+	flag.StringVar(&config.User, "user", "", "Database user (PostgreSQL only)")
+	flag.StringVar(&config.Password, "password", "", "Database password (PostgreSQL only)")
+	flag.StringVar(&config.Database, "database", "", "Database name (PostgreSQL only)")
+	flag.StringVar(&config.SSLMode, "sslmode", "disable", "SSL mode (PostgreSQL only)")
+
 	flag.Parse()
 
 	// Get command
@@ -57,7 +76,13 @@ func main() {
 	if config.ConnectionString == "" {
 		config.ConnectionString = os.Getenv("DATABASE_URL")
 		if config.ConnectionString == "" {
-			log.Fatal("❌ Database connection string required. Use -connection flag or DATABASE_URL env var")
+			// Try to build PostgreSQL connection string from individual parameters
+			if config.Host != "" && config.User != "" && config.Database != "" {
+				config.ConnectionString = buildPostgreSQLConnectionString(config)
+				fmt.Printf("🔗 Built connection string from parameters for database: %s\n", config.Database)
+			} else {
+				log.Fatal("❌ Database connection required. Use -connection flag, DATABASE_URL env var, or provide -host, -user, -database flags")
+			}
 		}
 	}
 
@@ -91,6 +116,11 @@ func main() {
 	// Initialize schema if needed
 	if err := manager.EnsureSchema(); err != nil {
 		log.Fatal("❌ Failed to initialize migration schema:", err)
+	}
+
+	// Load migrations from filesystem before executing commands
+	if err := loadMigrationsFromFilesystem(manager, config.MigrationsDir); err != nil {
+		log.Fatal("❌ Failed to load migrations from filesystem:", err)
 	}
 
 	// Execute command
@@ -399,8 +429,16 @@ func printUsage() {
 	fmt.Println(`USAGE:`)
 	fmt.Println(`  ef-migrate [options] <command> [arguments]`)
 	fmt.Println()
-	fmt.Println(`OPTIONS:`)
-	fmt.Println(`  -connection <string>    Database connection string`)
+	fmt.Println(`CONNECTION OPTIONS:`)
+	fmt.Println(`  -connection <string>    Complete database connection string`)
+	fmt.Println(`  -host <string>         Database host (default: localhost)`)
+	fmt.Println(`  -port <string>         Database port (default: 5432)`)
+	fmt.Println(`  -user <string>         Database user`)
+	fmt.Println(`  -password <string>     Database password`)
+	fmt.Println(`  -database <string>     Database name`)
+	fmt.Println(`  -sslmode <string>      SSL mode (default: disable)`)
+	fmt.Println()
+	fmt.Println(`OTHER OPTIONS:`)
 	fmt.Println(`  -migrations-dir <path>  Directory for migration files (default: ./migrations)`)
 	fmt.Println(`  -verbose               Enable verbose logging`)
 	fmt.Println()
@@ -418,26 +456,180 @@ func printUsage() {
 	fmt.Println(`  script [target]                     Generate SQL script`)
 	fmt.Println()
 	fmt.Println(`EXAMPLES:`)
+	fmt.Println(`  # Using connection string`)
+	fmt.Println(`  ef-migrate -connection "postgres://postgres:MyPassword_123@localhost:5432/mydb?sslmode=disable" status`)
+	fmt.Println()
+	fmt.Println(`  # Using individual parameters (no manual password entry)`)
+	fmt.Println(`  ef-migrate -host localhost -user postgres -password MyPassword_123 -database gra status`)
+	fmt.Println()
 	fmt.Println(`  # Create a new migration`)
 	fmt.Println(`  ef-migrate add-migration CreateUsersTable "Initial user table"`)
 	fmt.Println()
 	fmt.Println(`  # Apply all pending migrations`)
 	fmt.Println(`  ef-migrate update-database`)
 	fmt.Println()
-	fmt.Println(`  # Apply migrations up to a specific one`)
-	fmt.Println(`  ef-migrate update-database CreateUsersTable`)
-	fmt.Println()
 	fmt.Println(`  # Rollback to a specific migration`)
 	fmt.Println(`  ef-migrate rollback InitialMigration`)
-	fmt.Println()
-	fmt.Println(`  # View migration status`)
-	fmt.Println(`  ef-migrate status`)
-	fmt.Println()
-	fmt.Println(`  # List all migrations`)
-	fmt.Println(`  ef-migrate get-migration`)
 	fmt.Println()
 	fmt.Println(`ENVIRONMENT:`)
 	fmt.Println(`  DATABASE_URL    Default database connection string`)
 	fmt.Println()
 	fmt.Println(`📚 More info: https://github.com/your-org/gra/docs/migrations`)
+}
+
+// loadMigrationsFromFilesystem loads migration files from the filesystem
+func loadMigrationsFromFilesystem(manager *migrations.EFMigrationManager, migrationsDir string) error {
+	// Check if migrations directory exists
+	if _, err := os.Stat(migrationsDir); os.IsNotExist(err) {
+		return nil // No migrations directory, no error
+	}
+
+	// Get all .sql files in the migrations directory
+	files, err := filepath.Glob(filepath.Join(migrationsDir, "*.sql"))
+	if err != nil {
+		return fmt.Errorf("failed to scan migrations directory: %w", err)
+	}
+
+	// Regular expression to parse migration filename: VERSION_NAME.sql
+	migrationRegex := regexp.MustCompile(`^(\d+)_(.+)\.sql$`)
+
+	for _, file := range files {
+		filename := filepath.Base(file)
+		matches := migrationRegex.FindStringSubmatch(filename)
+
+		if len(matches) != 3 {
+			continue // Skip files that don't match the pattern
+		}
+
+		versionStr := matches[1]
+		name := matches[2]
+
+		version, err := strconv.ParseInt(versionStr, 10, 64)
+		if err != nil {
+			continue // Skip files with invalid version
+		}
+
+		// Read migration file content
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return fmt.Errorf("failed to read migration file %s: %w", file, err)
+		}
+
+		// Parse migration content to extract UP and DOWN SQL
+		upSQL, downSQL := parseMigrationContent(string(content))
+
+		// Create migration ID
+		migrationID := fmt.Sprintf("%d_%s", version, name)
+
+		// Add migration to manager
+		migration := migrations.Migration{
+			ID:          migrationID,
+			Name:        strings.ReplaceAll(name, "_", " "),
+			Version:     version,
+			Description: fmt.Sprintf("Migration loaded from %s", filename),
+			UpSQL:       upSQL,
+			DownSQL:     downSQL,
+			State:       migrations.MigrationStatePending,
+		}
+
+		// Add to manager's pending migrations if not already applied
+		manager.AddLoadedMigration(migration)
+	}
+
+	return nil
+}
+
+// parseMigrationContent parses migration file content to extract UP and DOWN SQL
+func parseMigrationContent(content string) (upSQL, downSQL string) {
+	lines := strings.Split(content, "\n")
+	var upLines, downLines []string
+	var inDownSection bool
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Skip comments and empty lines for section detection
+		if strings.HasPrefix(trimmed, "--") {
+			if strings.Contains(strings.ToLower(trimmed), "down migration") ||
+				strings.Contains(strings.ToLower(trimmed), "rollback") {
+				inDownSection = true
+				continue
+			}
+			if strings.Contains(strings.ToLower(trimmed), "up migration") {
+				inDownSection = false
+				continue
+			}
+		}
+
+		// Add lines to appropriate section
+		if inDownSection {
+			downLines = append(downLines, line)
+		} else {
+			// Skip header comments for UP section
+			if !strings.HasPrefix(trimmed, "--") || strings.Contains(trimmed, "Migration:") || strings.Contains(trimmed, "Description:") || strings.Contains(trimmed, "Created:") || strings.Contains(trimmed, "Version:") {
+				if !strings.HasPrefix(trimmed, "--") {
+					upLines = append(upLines, line)
+				}
+			} else {
+				upLines = append(upLines, line)
+			}
+		}
+	}
+
+	upSQL = strings.TrimSpace(strings.Join(upLines, "\n"))
+	downSQL = strings.TrimSpace(strings.Join(downLines, "\n"))
+
+	// Remove comment prefixes from DOWN SQL
+	if downSQL != "" {
+		downLines = strings.Split(downSQL, "\n")
+		var cleanDownLines []string
+		for _, line := range downLines {
+			if strings.HasPrefix(strings.TrimSpace(line), "-- ") {
+				cleanDownLines = append(cleanDownLines, strings.TrimPrefix(strings.TrimSpace(line), "-- "))
+			} else {
+				cleanDownLines = append(cleanDownLines, line)
+			}
+		}
+		downSQL = strings.TrimSpace(strings.Join(cleanDownLines, "\n"))
+	}
+
+	return upSQL, downSQL
+}
+
+// buildPostgreSQLConnectionString builds a PostgreSQL connection string from individual parameters
+func buildPostgreSQLConnectionString(config CLIConfig) string {
+	// Use postgres:// URL format for PostgreSQL
+	var connStr strings.Builder
+	connStr.WriteString("postgres://")
+
+	// Add user and password
+	if config.User != "" {
+		connStr.WriteString(config.User)
+		if config.Password != "" {
+			connStr.WriteString(":")
+			connStr.WriteString(config.Password)
+		}
+		connStr.WriteString("@")
+	}
+
+	// Add host and port
+	connStr.WriteString(config.Host)
+	if config.Port != "" {
+		connStr.WriteString(":")
+		connStr.WriteString(config.Port)
+	}
+
+	// Add database name
+	if config.Database != "" {
+		connStr.WriteString("/")
+		connStr.WriteString(config.Database)
+	}
+
+	// Add SSL mode
+	if config.SSLMode != "" {
+		connStr.WriteString("?sslmode=")
+		connStr.WriteString(config.SSLMode)
+	}
+
+	return connStr.String()
 }

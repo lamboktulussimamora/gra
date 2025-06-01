@@ -63,6 +63,7 @@ type EFMigrationManager struct {
 	snapshotTable     string
 	autoMigrate       bool
 	pendingMigrations []Migration
+	loadedMigrations  map[string]Migration // Store all loaded migrations with their SQL
 }
 
 // EFMigrationConfig configures the migration manager
@@ -99,6 +100,7 @@ func NewEFMigrationManager(db *sql.DB, config *EFMigrationConfig) *EFMigrationMa
 		snapshotTable:     config.SnapshotTable,
 		autoMigrate:       config.AutoMigrate,
 		pendingMigrations: make([]Migration, 0),
+		loadedMigrations:  make(map[string]Migration),
 	}
 }
 
@@ -218,6 +220,39 @@ func (em *EFMigrationManager) AddMigration(name, description string, upSQL, down
 	em.logger.Printf("✓ Added migration: %s", migrationID)
 
 	return &migration
+}
+
+// AddLoadedMigration adds a migration loaded from filesystem
+func (em *EFMigrationManager) AddLoadedMigration(migration Migration) {
+	// Store the loaded migration with its SQL content
+	em.loadedMigrations[migration.ID] = migration
+
+	// Check if migration is already applied by querying the database
+	var query string
+	dbType := em.detectDatabaseType()
+	if dbType == "postgres" {
+		query = fmt.Sprintf(`
+			SELECT COUNT(*) FROM %s WHERE migration_id = $1
+		`, em.historyTable)
+	} else {
+		query = fmt.Sprintf(`
+			SELECT COUNT(*) FROM %s WHERE migration_id = ?
+		`, em.historyTable)
+	}
+
+	var count int
+	err := em.db.QueryRow(query, migration.ID).Scan(&count)
+	if err != nil {
+		// If error querying, assume it's pending
+		em.pendingMigrations = append(em.pendingMigrations, migration)
+		return
+	}
+
+	// Only add to pending if not already applied
+	if count == 0 {
+		em.pendingMigrations = append(em.pendingMigrations, migration)
+		em.logger.Printf("✓ Loaded migration from file: %s", migration.ID)
+	}
 }
 
 // GetMigrationHistory retrieves complete migration history (like Get-Migration)
@@ -415,8 +450,17 @@ func (em *EFMigrationManager) RollbackMigration(targetMigration string) error {
 	em.logger.Printf("Rolling back %d migration(s)...", len(toRollback))
 
 	for _, migration := range toRollback {
-		if err := em.rollbackMigration(migration); err != nil {
-			return fmt.Errorf("failed to rollback migration %s: %w", migration.ID, err)
+		// Get the loaded migration with DOWN SQL from filesystem
+		if loadedMigration, exists := em.loadedMigrations[migration.ID]; exists {
+			// Use the loaded migration which has the DOWN SQL
+			if err := em.rollbackMigration(loadedMigration); err != nil {
+				return fmt.Errorf("failed to rollback migration %s: %w", migration.ID, err)
+			}
+		} else {
+			// Fallback to the migration from history (might not have DOWN SQL)
+			if err := em.rollbackMigration(migration); err != nil {
+				return fmt.Errorf("failed to rollback migration %s: %w", migration.ID, err)
+			}
 		}
 	}
 
