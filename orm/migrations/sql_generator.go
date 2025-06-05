@@ -683,7 +683,3 @@ func (sg *SQLGenerator) quoteIdentifiers(identifiers []string) []string {
 	}
 	return quoted
 }
-
-const (
-	foreignKeyConstraintType = "FOREIGN KEY"
-)
