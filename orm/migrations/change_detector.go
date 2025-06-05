@@ -242,7 +242,7 @@ func (cd *ChangeDetector) sortChangesByDependency(changes []MigrationChange) {
 // ValidateMigrationPlan performs validation checks on a migration plan
 func (cd *ChangeDetector) ValidateMigrationPlan(plan *MigrationPlan) error {
 	var errors []string
-	var warnings []string
+	warnings := make([]string, 0, len(plan.Changes))
 
 	// Check for circular dependencies
 	if err := cd.checkCircularDependencies(plan.Changes); err != nil {
