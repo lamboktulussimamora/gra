@@ -500,24 +500,25 @@ func (hm *HybridMigrator) parseMigrationFile(filePath string) (*MigrationFile, e
 		line = strings.TrimSpace(line)
 
 		// Parse metadata from comments
-		if strings.HasPrefix(line, "-- Migration:") {
+		switch {
+		case strings.HasPrefix(line, "-- Migration:"):
 			migration.Name = strings.TrimSpace(strings.TrimPrefix(line, "-- Migration:"))
-		} else if strings.HasPrefix(line, "-- Created:") {
+		case strings.HasPrefix(line, "-- Created:"):
 			timestampStr := strings.TrimSpace(strings.TrimPrefix(line, "-- Created:"))
 			if timestamp, err := time.Parse(time.RFC3339, timestampStr); err == nil {
 				migration.Timestamp = timestamp
 			}
-		} else if strings.HasPrefix(line, "-- Checksum:") {
+		case strings.HasPrefix(line, "-- Checksum:"):
 			migration.Checksum = strings.TrimSpace(strings.TrimPrefix(line, "-- Checksum:"))
-		} else if strings.HasPrefix(line, "-- Mode:") {
+		case strings.HasPrefix(line, "-- Mode:"):
 			modeStr := strings.TrimSpace(strings.TrimPrefix(line, "-- Mode:"))
 			migration.Mode = ParseMigrationMode(modeStr)
-		} else if strings.HasPrefix(line, "-- Has Destructive:") {
+		case strings.HasPrefix(line, "-- Has Destructive:"):
 			// Parse the destructive flag from file metadata
 			destructiveStr := strings.TrimSpace(strings.TrimPrefix(line, "-- Has Destructive:"))
 			hasDestructive := destructiveStr == "true"
 			migration.ParsedHasDestructive = &hasDestructive
-		} else if strings.HasPrefix(line, "-- Requires Review:") {
+		case strings.HasPrefix(line, "-- Requires Review:"):
 			// This is calculated dynamically from Changes and Mode, skip parsing
 		}
 
