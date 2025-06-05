@@ -227,7 +227,11 @@ func (mr *MigrationRunner) GetMigrationStatus() error {
 	if err != nil {
 		return fmt.Errorf("failed to query migrations: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			mr.logger.Printf("Warning: Failed to close rows: %v", closeErr)
+		}
+	}()
 
 	mr.logger.Println("Migration Status:")
 	mr.logger.Println("================")

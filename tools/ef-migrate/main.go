@@ -429,17 +429,17 @@ func buildPostgreSQLConnectionString(config CLIConfig) string {
 	if host == "" {
 		host = "localhost"
 	}
-	
+
 	port := config.Port
 	if port == "" {
 		port = "5432"
 	}
-	
+
 	sslmode := config.SSLMode
 	if sslmode == "" {
 		sslmode = "disable"
 	}
-	
+
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		config.User, config.Password, host, port, config.Database, sslmode)
 }

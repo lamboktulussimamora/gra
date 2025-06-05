@@ -55,7 +55,11 @@ func runMigrations(connectionString string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close database connection: %v", closeErr)
+		}
+	}()
 
 	// Create enhanced database context
 	ctx := dbcontext.NewEnhancedDbContextWithDB(db)
@@ -85,7 +89,11 @@ func demonstrateORM(connectionString string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close database connection: %v", closeErr)
+		}
+	}()
 
 	// Create enhanced database context
 	ctx := dbcontext.NewEnhancedDbContextWithDB(db)
@@ -261,7 +269,9 @@ func demonstrateTransactions(ctx *dbcontext.EnhancedDbContext) error {
 	// Save changes within transaction
 	_, err = txCtx.SaveChanges()
 	if err != nil {
-		tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("Warning: Failed to rollback transaction: %v", rollbackErr)
+		}
 		return fmt.Errorf("failed to save changes in transaction: %w", err)
 	}
 

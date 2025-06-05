@@ -735,7 +735,11 @@ func (mh *HybridMigrationHistory) getAppliedMigrations() ([]*MigrationRecord, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+		}
+	}()
 
 	var records []*MigrationRecord
 	for rows.Next() {

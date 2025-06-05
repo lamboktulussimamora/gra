@@ -239,7 +239,12 @@ func (es *EnhancedSet[T]) ToList() ([]T, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute query: %w", err)
 		}
-		defer rows.Close()
+		defer func() {
+			if closeErr := rows.Close(); closeErr != nil {
+				// Log but don't affect return value
+				fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			}
+		}()
 
 		return es.scanRows(rows)
 	} else {
@@ -249,7 +254,12 @@ func (es *EnhancedSet[T]) ToList() ([]T, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute query: %w", err)
 		}
-		defer rows.Close()
+		defer func() {
+			if closeErr := rows.Close(); closeErr != nil {
+				// Log but don't affect return value
+				fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			}
+		}()
 
 		return es.scanRows(rows)
 	}

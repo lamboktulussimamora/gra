@@ -63,7 +63,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Database connection error: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	// Create migrator
 	driver := getDriver(config.Driver)

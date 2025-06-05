@@ -554,7 +554,6 @@ func (v *Validator) validateRegexp(field reflect.Value, fieldName, pattern, cust
 		pattern = "^[a-zA-Z0-9_]{3,20}$" // Fix for username pattern in tests
 	}
 
-
 	// Fix any truncated or problematic patterns
 	pattern = fixPattern(pattern)
 

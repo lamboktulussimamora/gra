@@ -4,13 +4,13 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	_ "github.com/lib/pq"
 	"log"
 	"os"
-	_ "github.com/lib/pq"
 )
 
 var (
-	up = flag.Bool("up", false, "Apply migrations")
+	up   = flag.Bool("up", false, "Apply migrations")
 	conn = flag.String("conn", "", "Connection string")
 )
 

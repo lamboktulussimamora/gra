@@ -138,7 +138,13 @@ func (am *AutoMigrator) createTable(tableName string, modelType reflect.Type, mi
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			if rollbackErr != sql.ErrTxDone {
+				am.logger("Warning: Failed to rollback transaction: %v", rollbackErr)
+			}
+		}
+	}()
 
 	// Create table
 	_, err = tx.Exec(createSQL)
@@ -182,7 +188,13 @@ func (am *AutoMigrator) updateTableSchema(tableName string, modelType reflect.Ty
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			if rollbackErr != sql.ErrTxDone {
+				am.logger("Warning: Failed to rollback transaction: %v", rollbackErr)
+			}
+		}
+	}()
 
 	// Add new columns
 	for colName, colDef := range newColumns {
@@ -467,7 +479,11 @@ func (am *AutoMigrator) getCurrentTableColumns(tableName string) (map[string]str
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			am.logger("Warning: Failed to close rows: %v", closeErr)
+		}
+	}()
 
 	columns := make(map[string]string)
 

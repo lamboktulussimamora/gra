@@ -18,7 +18,11 @@ func IntegrationDemo() {
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	// 2. Create migrator
 	migrator := NewHybridMigrator(

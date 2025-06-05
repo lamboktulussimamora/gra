@@ -18,7 +18,11 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close database connection: %v", closeErr)
+		}
+	}()
 
 	// Create EF Migration Manager
 	config := migrations.DefaultEFMigrationConfig()

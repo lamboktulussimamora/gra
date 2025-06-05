@@ -153,7 +153,11 @@ func TestModelRegistry(t *testing.T) {
 // Test Change Detection
 func TestChangeDetection(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	// Register models
 	migrator.DbSet(&TestUser{})
@@ -191,7 +195,11 @@ func TestChangeDetection(t *testing.T) {
 // Test SQL Generation
 func TestSQLGeneration(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	migrator.DbSet(&TestUser{})
 
@@ -228,7 +236,11 @@ func TestSQLGeneration(t *testing.T) {
 // Test Migration Creation and Application
 func TestMigrationCreationAndApplication(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	// Register model
 	migrator.DbSet(&TestUser{})
@@ -281,11 +293,18 @@ func TestMigrationCreationAndApplication(t *testing.T) {
 	if err != nil {
 		t.Logf("Failed to query tables: %v", err)
 	} else {
-		defer rows.Close()
+		defer func() {
+			if closeErr := rows.Close(); closeErr != nil {
+				t.Logf("Warning: Failed to close rows: %v", closeErr)
+			}
+		}()
 		t.Log("Tables in database:")
 		for rows.Next() {
 			var name string
-			rows.Scan(&name)
+			if err := rows.Scan(&name); err != nil {
+				t.Logf("Warning: Failed to scan table name: %v", err)
+				continue
+			}
 			t.Logf("  - %s", name)
 		}
 	}
@@ -315,7 +334,11 @@ func TestMigrationCreationAndApplication(t *testing.T) {
 // Test Migration Rollback
 func TestMigrationRollback(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	// Register model and create migration
 	migrator.DbSet(&TestUser{})
@@ -364,7 +387,11 @@ func TestMigrationRollback(t *testing.T) {
 // Test Column Changes
 func TestColumnChanges(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	// Initial model
 	migrator.DbSet(&TestUser{})
@@ -412,7 +439,11 @@ func TestColumnChanges(t *testing.T) {
 // Test Multiple Migration Modes
 func TestMigrationModes(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	migrator.DbSet(&TestUser{})
 
@@ -453,7 +484,11 @@ func TestMigrationModes(t *testing.T) {
 // Test Database Inspector
 func TestDatabaseInspector(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	// Create a table manually
 	_, err := db.Exec(`
@@ -505,7 +540,11 @@ func TestDatabaseInspector(t *testing.T) {
 // Test Error Handling
 func TestErrorHandling(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	// Test adding migration without models
 	_, err := migrator.AddMigration("empty_migration", Interactive)
@@ -568,7 +607,11 @@ func containsMiddle(s, substr string) bool {
 // Integration test
 func TestFullWorkflow(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	// Step 1: Create initial schema
 	migrator.DbSet(&TestUser{})

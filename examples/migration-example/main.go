@@ -139,7 +139,11 @@ func (mr *MigrationRunner) ShowStatus() error {
 	if err != nil {
 		return fmt.Errorf("failed to query migrations: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			mr.logger.Printf("Warning: Failed to close rows: %v", closeErr)
+		}
+	}()
 
 	mr.logger.Println("Migration Status:")
 	mr.logger.Println("================")
@@ -165,7 +169,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create migration runner: %v", err)
 	}
-	defer runner.Close()
+	defer func() {
+		if closeErr := runner.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close migration runner: %v", closeErr)
+		}
+	}()
 
 	log.Println("Starting automatic migration...")
 	if err := runner.AutoMigrate(); err != nil {

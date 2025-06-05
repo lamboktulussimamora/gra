@@ -72,7 +72,11 @@ func (di *DatabaseInspector) getPostgreSQLSchema() (map[string]*TableSchema, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tables: %w", err)
 	}
-	defer tableRows.Close()
+	defer func() {
+		if closeErr := tableRows.Close(); closeErr != nil {
+			fmt.Printf("Warning: Failed to close tableRows: %v\n", closeErr)
+		}
+	}()
 
 	for tableRows.Next() {
 		var tableName string
@@ -135,7 +139,11 @@ func (di *DatabaseInspector) getPostgreSQLColumns(table *TableSchema) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+		}
+	}()
 
 	for rows.Next() {
 		var (
@@ -206,7 +214,11 @@ func (di *DatabaseInspector) getPostgreSQLPrimaryKeys(table *TableSchema) error 
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+		}
+	}()
 
 	for rows.Next() {
 		var columnName string
@@ -238,7 +250,11 @@ func (di *DatabaseInspector) getPostgreSQLIndexes(table *TableSchema) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+		}
+	}()
 
 	for rows.Next() {
 		var (
@@ -311,7 +327,11 @@ func (di *DatabaseInspector) getPostgreSQLConstraints(table *TableSchema) error 
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+		}
+	}()
 
 	constraintMap := make(map[string]*ConstraintInfo)
 
@@ -380,7 +400,11 @@ func (di *DatabaseInspector) getSQLiteSchema() (map[string]*TableSchema, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tables: %w", err)
 	}
-	defer tableRows.Close()
+	defer func() {
+		if closeErr := tableRows.Close(); closeErr != nil {
+			fmt.Printf("Warning: Failed to close tableRows: %v\n", closeErr)
+		}
+	}()
 
 	for tableRows.Next() {
 		var tableName string
@@ -419,7 +443,11 @@ func (di *DatabaseInspector) getSQLiteColumns(table *TableSchema) error {
 	if err != nil {
 		return fmt.Errorf("failed to get column info: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+		}
+	}()
 
 	for rows.Next() {
 		var cid int
@@ -465,7 +493,11 @@ func (di *DatabaseInspector) getSQLiteIndexes(table *TableSchema) error {
 	if err != nil {
 		return fmt.Errorf("failed to get index list: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+		}
+	}()
 
 	for rows.Next() {
 		var seq int
@@ -498,12 +530,14 @@ func (di *DatabaseInspector) getSQLiteIndexes(table *TableSchema) error {
 			var seqno, cid int
 			var colName string
 			if err := colRows.Scan(&seqno, &cid, &colName); err != nil {
-				colRows.Close()
 				return fmt.Errorf("failed to scan index column: %w", err)
 			}
 			columns = append(columns, colName)
 		}
-		colRows.Close()
+		// Error-checked colRows.Close()
+		if closeErr := colRows.Close(); closeErr != nil {
+			fmt.Printf("Warning: Failed to close colRows: %v\n", closeErr)
+		}
 
 		index.Columns = columns
 		table.Indexes[name] = index

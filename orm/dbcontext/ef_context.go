@@ -87,12 +87,12 @@ func (ctx *EFContext) ExtractFieldsForDebug(entity EntityInterface) ([]string, [
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
-	
+
 	var columns []string
 	var values []interface{}
 	var placeholders []string
 	placeholderNum := 1
-	
+
 	ctx.processStructFields(v, &columns, &values, &placeholders, &placeholderNum, "insert")
 	return columns, values
 }
@@ -103,28 +103,28 @@ func (ctx *EFContext) insert(entity EntityInterface) error {
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
-	
+
 	tableName := ctx.getTableNameFromType(v.Type())
-	
+
 	// Extract fields for insert (excluding ID)
 	columns, values, placeholders := ctx.extractFieldsForInsert(v)
-	
+
 	if len(columns) == 0 {
 		return errors.New("no fields to insert")
 	}
-	
+
 	// Set timestamps
 	ctx.setTimestamps(v, true)
-	
+
 	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING id",
 		tableName, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
-	
+
 	var id interface{}
 	err := ctx.db.QueryRow(query, values...).Scan(&id)
 	if err != nil {
 		return fmt.Errorf("insert failed: %w", err)
 	}
-	
+
 	entity.SetID(id)
 	return nil
 }
@@ -132,40 +132,40 @@ func (ctx *EFContext) insert(entity EntityInterface) error {
 // processStructFields recursively processes struct fields for INSERT/UPDATE
 func (ctx *EFContext) processStructFields(v reflect.Value, columns *[]string, values *[]interface{}, placeholders *[]string, placeholderNum *int, operation string) {
 	t := v.Type()
-	
+
 	for i := 0; i < v.NumField(); i++ {
 		field := t.Field(i)
 		fieldValue := v.Field(i)
-		
+
 		// Skip unexported fields
 		if !fieldValue.CanInterface() {
 			continue
 		}
-		
+
 		// Handle embedded structs (like BaseEntity)
 		if field.Anonymous && field.Type.Kind() == reflect.Struct {
 			ctx.processStructFields(fieldValue, columns, values, placeholders, placeholderNum, operation)
 			continue
 		}
-		
+
 		// Skip ID field for inserts
 		if operation == "insert" && (field.Name == "ID" || strings.ToLower(field.Name) == "id") {
 			continue
 		}
-		
+
 		// Skip ID field for updates too
 		if operation == "update" && (field.Name == "ID" || strings.ToLower(field.Name) == "id") {
 			continue
 		}
-		
+
 		// Get column name
 		columnName := ctx.getColumnNameFromField(field)
-		
+
 		// Skip fields marked to be ignored
 		if ctx.shouldSkipField(field) {
 			continue
 		}
-		
+
 		*columns = append(*columns, columnName)
 		*values = append(*values, fieldValue.Interface())
 		*placeholders = append(*placeholders, "$"+strconv.Itoa(*placeholderNum))
@@ -179,7 +179,7 @@ func (ctx *EFContext) extractFieldsForInsert(v reflect.Value) ([]string, []inter
 	var values []interface{}
 	var placeholders []string
 	placeholderNum := 1
-	
+
 	ctx.processStructFields(v, &columns, &values, &placeholders, &placeholderNum, "insert")
 	return columns, values, placeholders
 }
@@ -187,14 +187,14 @@ func (ctx *EFContext) extractFieldsForInsert(v reflect.Value) ([]string, []inter
 // setTimestamps sets created_at and updated_at timestamps
 func (ctx *EFContext) setTimestamps(v reflect.Value, isInsert bool) {
 	now := time.Now()
-	
+
 	// Set CreatedAt for inserts
 	if isInsert {
 		if createdField := v.FieldByName("CreatedAt"); createdField.IsValid() && createdField.CanSet() {
 			createdField.Set(reflect.ValueOf(now))
 		}
 	}
-	
+
 	// Always set UpdatedAt
 	if updatedField := v.FieldByName("UpdatedAt"); updatedField.IsValid() && updatedField.CanSet() {
 		updatedField.Set(reflect.ValueOf(now))
@@ -214,12 +214,12 @@ func (ctx *EFContext) getColumnNameFromField(field reflect.StructField) string {
 	if dbTag := field.Tag.Get("db"); dbTag != "" {
 		return dbTag
 	}
-	
+
 	// Check for json tag
 	if jsonTag := field.Tag.Get("json"); jsonTag != "" {
 		return jsonTag
 	}
-	
+
 	// Convert field name to snake_case
 	return ctx.toSnakeCaseEF(field.Name)
 }
@@ -230,12 +230,12 @@ func (ctx *EFContext) shouldSkipField(field reflect.StructField) bool {
 	if dbTag := field.Tag.Get("db"); dbTag == "-" {
 		return true
 	}
-	
+
 	// Skip fields with json:"-" tag
 	if jsonTag := field.Tag.Get("json"); jsonTag == "-" {
 		return true
 	}
-	
+
 	return false
 }
 

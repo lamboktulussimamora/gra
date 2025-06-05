@@ -3,6 +3,7 @@ package dbcontext
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"reflect"
 	"strconv"
 	"strings"
@@ -452,7 +453,12 @@ func (set *EnhancedDbSet[T]) ToList() ([]*T, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			// Note: this is logged but doesn't affect the return value since we're in a defer
+			log.Printf("Warning: Failed to close rows: %v", closeErr)
+		}
+	}()
 
 	var results []*T
 	for rows.Next() {

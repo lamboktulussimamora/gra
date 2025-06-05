@@ -225,6 +225,11 @@ func (em *EFMigrationManager) EnsureSchema() error {
 		if err != nil {
 			em.logger.Printf("DEBUG: Failed to get table info: %v", err)
 		} else {
+			defer func() {
+				if closeErr := rows.Close(); closeErr != nil {
+					log.Printf("Warning: Failed to close rows: %v", closeErr)
+				}
+			}()
 			em.logger.Println("DEBUG: __migration_history table columns:")
 			for rows.Next() {
 				var cid int
@@ -235,7 +240,6 @@ func (em *EFMigrationManager) EnsureSchema() error {
 					em.logger.Printf("DEBUG:   Column: %s, Type: %s, NotNull: %d, PK: %d", name, dataType, notNull, pk)
 				}
 			}
-			rows.Close()
 		}
 	}
 
@@ -330,7 +334,11 @@ func (em *EFMigrationManager) GetMigrationHistory() (*MigrationHistory, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get migration history: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close rows: %v", closeErr)
+		}
+	}()
 
 	for rows.Next() {
 		var migration Migration
@@ -429,7 +437,13 @@ func (em *EFMigrationManager) applyMigration(migration Migration) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			if rollbackErr != sql.ErrTxDone {
+				em.logger.Printf("Warning: Failed to rollback transaction: %v", rollbackErr)
+			}
+		}
+	}()
 
 	em.logger.Printf("Applying migration: %s", migration.ID)
 
@@ -543,7 +557,13 @@ func (em *EFMigrationManager) rollbackMigration(migration Migration) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			if rollbackErr != sql.ErrTxDone {
+				em.logger.Printf("Warning: Failed to rollback transaction: %v", rollbackErr)
+			}
+		}
+	}()
 
 	em.logger.Printf("Rolling back migration: %s", migration.ID)
 
@@ -590,7 +610,11 @@ func (em *EFMigrationManager) GetAppliedMigrations() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close rows: %v", closeErr)
+		}
+	}()
 
 	var migrations []string
 	for rows.Next() {
