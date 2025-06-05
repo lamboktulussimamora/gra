@@ -117,48 +117,53 @@ func GenerateCreateTableSQLForDriver(entity interface{}, tableName string, drive
 		t = t.Elem()
 	}
 
-	var columns []string
-	var constraints []string
-
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-
-		// Skip embedded structs (like BaseEntity)
-		if field.Anonymous {
-			// Recursively process embedded struct fields
-			embeddedType := field.Type
-			if embeddedType.Kind() == reflect.Ptr {
-				embeddedType = embeddedType.Elem()
-			}
-
-			for j := 0; j < embeddedType.NumField(); j++ {
-				embeddedField := embeddedType.Field(j)
-				if columnDef := ParseFieldToColumnForDriver(embeddedField, driver); columnDef != "" {
-					columns = append(columns, columnDef)
-				}
-			}
-			continue
-		}
-
-		// Skip navigation properties (slices and pointers to other structs)
-		if isNavigationProperty(field) {
-			continue
-		}
-
-		if columnDef := ParseFieldToColumnForDriver(field, driver); columnDef != "" {
-			columns = append(columns, columnDef)
-		}
-	}
+	columns := collectColumnsForDriver(t, driver)
+	constraints := collectConstraintsForDriver(t, driver)
 
 	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n  %s", tableName, strings.Join(columns, ",\n  "))
-
 	if len(constraints) > 0 {
 		sql += ",\n  " + strings.Join(constraints, ",\n  ")
 	}
-
 	sql += "\n);"
-
 	return sql
+}
+
+// collectColumnsForDriver recursively collects column definitions for a struct type
+func collectColumnsForDriver(t reflect.Type, driver DatabaseDriver) []string {
+	var columns []string
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		columns = append(columns, processFieldForDriver(field, driver)...) // returns []string
+	}
+	return columns
+}
+
+// processFieldForDriver processes a struct field for column definitions
+func processFieldForDriver(field reflect.StructField, driver DatabaseDriver) []string {
+	if field.Anonymous {
+		return collectColumnsForDriver(getEmbeddedType(field.Type), driver)
+	}
+	if isNavigationProperty(field) {
+		return nil
+	}
+	if columnDef := ParseFieldToColumnForDriver(field, driver); columnDef != "" {
+		return []string{columnDef}
+	}
+	return nil
+}
+
+// getEmbeddedType returns the underlying type for an embedded field
+func getEmbeddedType(t reflect.Type) reflect.Type {
+	if t.Kind() == reflect.Ptr {
+		return t.Elem()
+	}
+	return t
+}
+
+// collectConstraintsForDriver returns an empty slice (no constraints extracted)
+func collectConstraintsForDriver(t reflect.Type, driver DatabaseDriver) []string {
+	// Constraint extraction not implemented
+	return nil
 }
 
 // parseFieldToColumn converts a struct field to a SQL column definition
@@ -187,56 +192,79 @@ func ParseFieldToColumnForDriver(field reflect.StructField, driver DatabaseDrive
 		}
 	}
 
-	// Parse SQL tags for additional column properties
-	var parts []string
-	parts = append(parts, fmt.Sprintf("%s %s", columnName, sqlType))
+	parts := []string{fmt.Sprintf("%s %s", columnName, sqlType)}
 
-	// Check both sql and migration tags for attributes
-	hasFromSql := func(attr string) bool { return strings.Contains(sqlTag, attr) }
-	hasFromMigration := func(attr string) bool { return strings.Contains(migrationTag, attr) }
-
-	if hasFromSql("primary_key") || hasFromMigration("primary_key") {
+	if hasTagAttr(sqlTag, migrationTag, "primary_key") {
 		parts = append(parts, "PRIMARY KEY")
 	}
 
-	if hasFromSql("auto_increment") || hasFromMigration("auto_increment") {
-		// Handle auto-increment based on database driver
-		switch driver {
-		case PostgreSQL:
-			// PostgreSQL uses SERIAL for auto-increment
-			if strings.Contains(sqlType, "INTEGER") || strings.Contains(sqlType, "BIGINT") {
-				if strings.Contains(sqlType, "BIGINT") {
-					parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "BIGSERIAL", 1)
-				} else {
-					parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "SERIAL", 1)
-				}
-			}
-		case SQLite:
-			// SQLite uses INTEGER PRIMARY KEY AUTOINCREMENT
-			if (hasFromSql("primary_key") || hasFromMigration("primary_key")) && strings.Contains(sqlType, "INTEGER") {
-				parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "INTEGER", 1)
-				// Add AUTOINCREMENT if not already present
-				if !strings.Contains(strings.Join(parts, " "), "AUTOINCREMENT") {
-					parts = append(parts, "AUTOINCREMENT")
-				}
-			}
-		case MySQL:
-			// MySQL uses AUTO_INCREMENT
-			if strings.Contains(sqlType, "INTEGER") || strings.Contains(sqlType, "BIGINT") {
-				parts = append(parts, "AUTO_INCREMENT")
-			}
-		}
-	}
+	parts = handleAutoIncrement(parts, sqlType, driver, sqlTag, migrationTag)
 
-	if hasFromSql("not_null") || hasFromMigration("not_null") {
+	if hasTagAttr(sqlTag, migrationTag, "not_null") {
 		parts = append(parts, "NOT NULL")
 	}
 
-	if hasFromSql("unique") || hasFromMigration("unique") {
+	if hasTagAttr(sqlTag, migrationTag, "unique") {
 		parts = append(parts, "UNIQUE")
 	}
 
-	// Handle default values from both sql and migration tags
+	parts = handleDefaultValue(parts, sqlTag, migrationTag)
+
+	return strings.Join(parts, " ")
+}
+
+// hasTagAttr checks if either sqlTag or migrationTag contains the attribute
+func hasTagAttr(sqlTag, migrationTag, attr string) bool {
+	return strings.Contains(sqlTag, attr) || strings.Contains(migrationTag, attr)
+}
+
+// handleAutoIncrement appends auto-increment logic to parts
+func handleAutoIncrement(parts []string, sqlType string, driver DatabaseDriver, sqlTag, migrationTag string) []string {
+	if !hasTagAttr(sqlTag, migrationTag, "auto_increment") {
+		return parts
+	}
+	switch driver {
+	case PostgreSQL:
+		return handleAutoIncrementPostgres(parts, sqlType)
+	case SQLite:
+		return handleAutoIncrementSQLite(parts, sqlType, sqlTag, migrationTag)
+	case MySQL:
+		return handleAutoIncrementMySQL(parts, sqlType)
+	default:
+		return parts
+	}
+}
+
+func handleAutoIncrementPostgres(parts []string, sqlType string) []string {
+	if strings.Contains(sqlType, "INTEGER") || strings.Contains(sqlType, "BIGINT") {
+		if strings.Contains(sqlType, "BIGINT") {
+			parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "BIGSERIAL", 1)
+		} else {
+			parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "SERIAL", 1)
+		}
+	}
+	return parts
+}
+
+func handleAutoIncrementSQLite(parts []string, sqlType, sqlTag, migrationTag string) []string {
+	if hasTagAttr(sqlTag, migrationTag, "primary_key") && strings.Contains(sqlType, "INTEGER") {
+		parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "INTEGER", 1)
+		if !strings.Contains(strings.Join(parts, " "), "AUTOINCREMENT") {
+			parts = append(parts, "AUTOINCREMENT")
+		}
+	}
+	return parts
+}
+
+func handleAutoIncrementMySQL(parts []string, sqlType string) []string {
+	if strings.Contains(sqlType, "INTEGER") || strings.Contains(sqlType, "BIGINT") {
+		parts = append(parts, "AUTO_INCREMENT")
+	}
+	return parts
+}
+
+// handleDefaultValue appends default value logic to parts
+func handleDefaultValue(parts []string, sqlTag, migrationTag string) []string {
 	var defaultMatch string
 	if sqlTag != "" {
 		defaultMatch = extractSQLValue(sqlTag, "default")
@@ -251,8 +279,7 @@ func ParseFieldToColumnForDriver(field reflect.StructField, driver DatabaseDrive
 			parts = append(parts, fmt.Sprintf("DEFAULT %s", defaultMatch))
 		}
 	}
-
-	return strings.Join(parts, " ")
+	return parts
 }
 
 // goTypeToSQLType converts Go types to PostgreSQL types
