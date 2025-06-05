@@ -1,6 +1,5 @@
 // Package main demonstrates usage examples for the GRA migration system.
 // This file provides example models and migration scenarios for documentation and testing.
-
 package main
 
 import (

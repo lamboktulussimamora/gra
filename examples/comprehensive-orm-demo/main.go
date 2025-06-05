@@ -1,7 +1,6 @@
 // Package main demonstrates a comprehensive ORM usage example for the GRA framework.
 // This example covers migrations, enhanced ORM features, and best practices.
 // Run this file to see a full demonstration of the framework's capabilities.
-
 package main
 
 import (
@@ -15,6 +14,8 @@ import (
 	"github.com/lamboktulussimamora/gra/orm/models"
 	_ "github.com/mattn/go-sqlite3"
 )
+
+const isActiveWhere = "is_active = ?"
 
 func main() {
 	// Database connection string (SQLite for demo)
@@ -208,7 +209,7 @@ func demonstrateAdvancedQuerying(ctx *dbcontext.EnhancedDbContext) error {
 	userSet := dbcontext.NewEnhancedDbSet[models.User](ctx)
 
 	// Query active users
-	activeUsers, err := userSet.Where("is_active = ?", true).ToList()
+	activeUsers, err := userSet.Where(isActiveWhere, true).ToList()
 	if err != nil {
 		return fmt.Errorf("failed to query active users: %w", err)
 	}
@@ -217,7 +218,7 @@ func demonstrateAdvancedQuerying(ctx *dbcontext.EnhancedDbContext) error {
 
 	// Query with ordering and limiting
 	orderedUsers, err := userSet.
-		Where("is_active = ?", true).
+		Where(isActiveWhere, true).
 		OrderBy("first_name").
 		Take(2).
 		ToList()
@@ -233,7 +234,7 @@ func demonstrateAdvancedQuerying(ctx *dbcontext.EnhancedDbContext) error {
 		return fmt.Errorf("failed to count users: %w", err)
 	}
 
-	activeCount, err := userSet.Where("is_active = ?", true).Count()
+	activeCount, err := userSet.Where(isActiveWhere, true).Count()
 	if err != nil {
 		return fmt.Errorf("failed to count active users: %w", err)
 	}
@@ -326,7 +327,7 @@ func demonstrateChangeTracking(ctx *dbcontext.EnhancedDbContext) error {
 
 	// Demo read-only queries (no tracking)
 	userSet := dbcontext.NewEnhancedDbSet[models.User](ctx)
-	readOnlyUsers, err := userSet.AsNoTracking().Where("is_active = ?", true).ToList()
+	readOnlyUsers, err := userSet.AsNoTracking().Where(isActiveWhere, true).ToList()
 	if err != nil {
 		return fmt.Errorf("failed to execute no-tracking query: %w", err)
 	}
