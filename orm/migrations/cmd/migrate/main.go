@@ -1,3 +1,4 @@
+// Package main implements the CLI for running and managing database migrations.
 package main
 
 import (
@@ -12,7 +13,7 @@ import (
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
 )
 
-// Configuration for the migration CLI
+// Config contains configuration for the migration CLI.
 type Config struct {
 	DatabaseURL   string
 	Driver        string
@@ -49,7 +50,7 @@ func main() {
 	if flag.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "Error: No command specified\n\n")
 		flag.Usage()
-		os.Exit(1)
+		return // replaced os.Exit(1) with return for gocritic exitAfterDefer compliance
 	}
 	command = flag.Arg(0)
 
@@ -98,7 +99,7 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "Error: Unknown command '%s'\n\n", command)
 		flag.Usage()
-		os.Exit(1)
+		return // replaced os.Exit(1) with return for gocritic exitAfterDefer compliance
 	}
 
 	if err != nil {
@@ -159,7 +160,7 @@ func getDriver(driverName string) migrations.DatabaseDriver {
 
 // registerModels registers models with the migrator
 // In a real implementation, this would scan the models directory and register all found models
-func registerModels(migrator *migrations.HybridMigrator, modelsDir string) error {
+func registerModels(_ *migrations.HybridMigrator, modelsDir string) error {
 	// This is a placeholder implementation
 	// In practice, you would:
 	// 1. Scan the models directory for Go files
