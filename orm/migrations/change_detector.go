@@ -330,7 +330,8 @@ func (cd *ChangeDetector) hasCycleDFS(
 
 // findOrphanedForeignKeys finds foreign keys that reference tables being dropped
 func (cd *ChangeDetector) findOrphanedForeignKeys(changes []MigrationChange) []string {
-	var orphaned []string
+	// Preallocate with a reasonable guess (number of changes)
+	orphaned := make([]string, 0, len(changes))
 
 	// Find tables being dropped
 	droppedTables := make(map[string]bool)
