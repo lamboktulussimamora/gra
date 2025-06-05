@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const foreignKeyConstraintType = "FOREIGN KEY"
+
 // ChangeDetector detects schema changes between model snapshots and database state
 type ChangeDetector struct {
 	registry  *ModelRegistry
@@ -279,7 +281,7 @@ func (cd *ChangeDetector) checkCircularDependencies(changes []MigrationChange) e
 			// Tables with foreign keys depend on their referenced tables
 			if snapshot, ok := change.NewValue.(*ModelSnapshot); ok {
 				for _, constraint := range snapshot.Constraints {
-					if constraint.Type == "FOREIGN KEY" && constraint.ReferencedTable != "" {
+					if constraint.Type == foreignKeyConstraintType && constraint.ReferencedTable != "" {
 						dependencies[snapshot.TableName] = append(dependencies[snapshot.TableName], constraint.ReferencedTable)
 					}
 				}
@@ -351,7 +353,7 @@ func (cd *ChangeDetector) findOrphanedForeignKeys(changes []MigrationChange) []s
 			}
 
 			for constraintName, constraint := range constraints {
-				if constraint.Type == "FOREIGN KEY" && droppedTables[constraint.ReferencedTable] {
+				if constraint.Type == foreignKeyConstraintType && droppedTables[constraint.ReferencedTable] {
 					orphaned = append(orphaned, constraintName)
 				}
 			}
