@@ -34,7 +34,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if cerr := db.Close(); cerr != nil {
+			log.Printf("Warning: failed to close db: %v", cerr)
+		}
+	}()
 
 	if err := db.Ping(); err != nil {
 		log.Fatalf("Database connection failed: %v", err)
@@ -84,7 +88,11 @@ func getAppliedMigrations(db *sql.DB) (map[int]bool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query applied migrations: %v", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			fmt.Printf("Warning: failed to close rows: %v\n", cerr)
+		}
+	}()
 
 	for rows.Next() {
 		var version int
@@ -196,13 +204,17 @@ func migrateUp(db *sql.DB) error {
 		}
 
 		if _, err := tx.Exec(migration.SQL); err != nil {
-			tx.Rollback()
+			if rerr := tx.Rollback(); rerr != nil {
+				fmt.Printf("Warning: failed to rollback transaction: %v\n", rerr)
+			}
 			return fmt.Errorf("failed to apply migration %d: %v", migration.Version, err)
 		}
 
 		_, err = tx.Exec("INSERT INTO schema_migrations (version) VALUES ($1)", migration.Version)
 		if err != nil {
-			tx.Rollback()
+			if rerr := tx.Rollback(); rerr != nil {
+				fmt.Printf("Warning: failed to rollback transaction: %v\n", rerr)
+			}
 			return fmt.Errorf("failed to record migration %d: %v", migration.Version, err)
 		}
 

@@ -101,7 +101,11 @@ func main() {
 	if err != nil {
 		log.Fatal("❌ Failed to connect to database:", err)
 	}
-	defer db.Close()
+	defer func() {
+		if cerr := db.Close(); cerr != nil {
+			log.Printf("Warning: failed to close db: %v", cerr)
+		}
+	}()
 
 	// Create migration manager
 	migrationConfig := migrations.DefaultEFMigrationConfig()
@@ -397,7 +401,11 @@ func saveMigrationToFile(migration *migrations.Migration, dir string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			log.Printf("Warning: failed to close file: %v", cerr)
+		}
+	}()
 
 	// Write migration content
 	content := fmt.Sprintf(`-- Migration: %s

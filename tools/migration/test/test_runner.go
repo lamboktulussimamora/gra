@@ -25,7 +25,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		if cerr := db.Close(); cerr != nil {
+			log.Printf("Warning: failed to close db: %v", cerr)
+		}
+	}()
 
 	if err := db.Ping(); err != nil {
 		log.Fatal("Connection failed:", err)
