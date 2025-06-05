@@ -355,7 +355,7 @@ func (am *AutoMigrator) generateColumnDefinition(field reflect.StructField, _ st
 func (am *AutoMigrator) createIndexes(tx *sql.Tx, tableName string, modelType reflect.Type) error {
 	return am.processStructFieldsWithError(modelType, func(field reflect.StructField, dbTag string) error {
 		// Create index if specified
-		if field.Tag.Get("index") == "true" {
+		if field.Tag.Get("index") == indexTrueValue {
 			indexName := fmt.Sprintf("idx_%s_%s", tableName, dbTag)
 			indexSQL := fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (%s)", indexName, tableName, dbTag)
 			_, err := tx.Exec(indexSQL)
@@ -365,7 +365,7 @@ func (am *AutoMigrator) createIndexes(tx *sql.Tx, tableName string, modelType re
 		}
 
 		// Create unique index if specified
-		if field.Tag.Get("uniqueIndex") == "true" {
+		if field.Tag.Get("uniqueIndex") == indexTrueValue {
 			indexName := fmt.Sprintf("uidx_%s_%s", tableName, dbTag)
 			indexSQL := fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (%s)", indexName, tableName, dbTag)
 			_, err := tx.Exec(indexSQL)
