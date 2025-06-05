@@ -67,7 +67,7 @@ func (sm *SimpleMigrator) GenerateCreateTableSQL(snapshot *ModelSnapshot) string
 
 	sql.WriteString(fmt.Sprintf("CREATE TABLE %s (\n", snapshot.TableName))
 
-	var columns []string
+	columns := make([]string, 0, len(snapshot.Columns))
 	var primaryKeys []string
 
 	for _, col := range snapshot.Columns {

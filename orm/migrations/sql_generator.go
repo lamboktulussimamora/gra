@@ -69,7 +69,7 @@ type MigrationMetadata struct {
 
 // generateUpScript generates the up migration script
 func (sg *SQLGenerator) generateUpScript(changes []MigrationChange) (string, error) {
-	var statements []string
+	statements := make([]string, 0, len(changes))
 	var comments []string
 
 	// Add header comment
@@ -111,7 +111,7 @@ func (sg *SQLGenerator) generateUpScript(changes []MigrationChange) (string, err
 
 // generateDownScript generates the down migration script
 func (sg *SQLGenerator) generateDownScript(changes []MigrationChange) (string, error) {
-	var statements []string
+	statements := make([]string, 0, len(changes))
 	var comments []string
 
 	// Add header comment
@@ -313,8 +313,6 @@ func (sg *SQLGenerator) generateCreateTableSQL(change MigrationChange) (string, 
 	}
 
 	var statements []string
-
-	// Create table statement
 	var columnDefs []string
 	var primaryKeys []string
 
@@ -557,6 +555,7 @@ func (sg *SQLGenerator) generateAlterColumnSQL(change MigrationChange) (string, 
 // generatePostgreSQLAlterColumn generates PostgreSQL-specific ALTER COLUMN
 func (sg *SQLGenerator) generatePostgreSQLAlterColumn(tableName, columnName string, column *ColumnInfo) (string, error) {
 	var statements []string
+	statements = make([]string, 0, 2)
 
 	// Alter data type
 	dataType := sg.mapDataType(column.DataType)

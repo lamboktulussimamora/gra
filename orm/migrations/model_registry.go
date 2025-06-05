@@ -525,13 +525,13 @@ func (mr *ModelRegistry) getScale(field reflect.StructField) *int {
 
 // calculateSnapshotChecksum calculates a checksum for the model snapshot
 func (mr *ModelRegistry) calculateSnapshotChecksum(snapshot ModelSnapshot) string {
-	var parts []string
+	parts := make([]string, 0, 1+len(snapshot.Columns)+len(snapshot.Indexes))
 
 	// Add table name
 	parts = append(parts, fmt.Sprintf("table:%s", snapshot.TableName))
 
 	// Add columns in sorted order
-	var columnNames []string
+	columnNames := make([]string, 0, len(snapshot.Columns))
 	for name := range snapshot.Columns {
 		columnNames = append(columnNames, name)
 	}
@@ -548,7 +548,7 @@ func (mr *ModelRegistry) calculateSnapshotChecksum(snapshot ModelSnapshot) strin
 	}
 
 	// Add indexes
-	var indexNames []string
+	indexNames := make([]string, 0, len(snapshot.Indexes))
 	for name := range snapshot.Indexes {
 		indexNames = append(indexNames, name)
 	}
