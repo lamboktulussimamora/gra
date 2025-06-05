@@ -305,7 +305,6 @@ func (sg *SQLGenerator) generateChangeSQL(change MigrationChange, isUp bool) (st
 func (sg *SQLGenerator) generateCreateTableSQL(change MigrationChange) (string, error) {
 	snapshot, ok := change.NewValue.(*ModelSnapshot)
 	if !ok {
-		// Debug: check what type we actually have
 		if change.NewValue == nil {
 			return "", fmt.Errorf("invalid value type for CreateTable: NewValue is nil")
 		}
@@ -313,28 +312,7 @@ func (sg *SQLGenerator) generateCreateTableSQL(change MigrationChange) (string, 
 	}
 
 	var statements []string
-	var columnDefs []string
-	var primaryKeys []string
-
-	// Sort columns for consistent output
-	columnNames := make([]string, 0, len(snapshot.Columns))
-	for name := range snapshot.Columns {
-		columnNames = append(columnNames, name)
-	}
-	sort.Strings(columnNames)
-
-	for _, columnName := range columnNames {
-		column := snapshot.Columns[columnName]
-		columnDef := sg.generateColumnDefinition(column)
-		columnDefs = append(columnDefs, fmt.Sprintf("    %s %s", columnName, columnDef))
-
-		// For SQLite, skip adding to primaryKeys if it's an identity column (already has inline PRIMARY KEY)
-		if column.IsPrimaryKey {
-			if !(sg.driver == SQLite && column.IsIdentity) {
-				primaryKeys = append(primaryKeys, columnName)
-			}
-		}
-	}
+	columnDefs, primaryKeys := sg.collectColumnDefsAndPKs(snapshot)
 
 	// Add primary key constraint (only if we have primary keys that don't already have inline PRIMARY KEY)
 	if len(primaryKeys) > 0 {
@@ -345,35 +323,85 @@ func (sg *SQLGenerator) generateCreateTableSQL(change MigrationChange) (string, 
 	createTableSQL := fmt.Sprintf("CREATE TABLE %s (\n%s\n);",
 		sg.quoteIdentifier(snapshot.TableName),
 		strings.Join(columnDefs, ",\n"))
-
 	statements = append(statements, createTableSQL)
 
-	// Create indexes
-	for indexName, index := range snapshot.Indexes {
-		indexSQL := sg.generateCreateIndexStatement(snapshot.TableName, indexName, &index)
-		statements = append(statements, indexSQL)
-	}
-
-	// Add foreign key constraints
-	for constraintName, constraint := range snapshot.Constraints {
-		if constraint.Type == foreignKeyConstraintType {
-			fkSQL := sg.generateAddForeignKeySQL(snapshot.TableName, constraintName, constraint)
-			statements = append(statements, fkSQL)
-		}
-	}
+	statements = append(statements, sg.generateIndexStatements(snapshot)...)      // helper
+	statements = append(statements, sg.generateForeignKeyStatements(snapshot)...) // helper
 
 	return strings.Join(statements, "\n\n"), nil
 }
 
+// collectColumnDefsAndPKs returns column definitions and primary key columns
+func (sg *SQLGenerator) collectColumnDefsAndPKs(snapshot *ModelSnapshot) ([]string, []string) {
+	columnDefs := make([]string, 0, len(snapshot.Columns))
+	primaryKeys := make([]string, 0, len(snapshot.Columns))
+	columnNames := make([]string, 0, len(snapshot.Columns))
+	for name := range snapshot.Columns {
+		columnNames = append(columnNames, name)
+	}
+	sort.Strings(columnNames)
+	for _, columnName := range columnNames {
+		column := snapshot.Columns[columnName]
+		columnDef := sg.generateColumnDefinition(column)
+		columnDefs = append(columnDefs, fmt.Sprintf("    %s %s", columnName, columnDef))
+		if column.IsPrimaryKey {
+			if !(sg.driver == SQLite && column.IsIdentity) {
+				primaryKeys = append(primaryKeys, columnName)
+			}
+		}
+	}
+	return columnDefs, primaryKeys
+}
+
+// generateIndexStatements returns CREATE INDEX statements for a snapshot
+func (sg *SQLGenerator) generateIndexStatements(snapshot *ModelSnapshot) []string {
+	stmts := make([]string, 0, len(snapshot.Indexes))
+	for indexName, index := range snapshot.Indexes {
+		stmts = append(stmts, sg.generateCreateIndexStatement(snapshot.TableName, indexName, &index))
+	}
+	return stmts
+}
+
+// generateForeignKeyStatements returns ADD FOREIGN KEY statements for a snapshot
+func (sg *SQLGenerator) generateForeignKeyStatements(snapshot *ModelSnapshot) []string {
+	count := 0
+	for _, constraint := range snapshot.Constraints {
+		if constraint.Type == foreignKeyConstraintType {
+			count++
+		}
+	}
+	stmts := make([]string, 0, count)
+	for constraintName, constraint := range snapshot.Constraints {
+		if constraint.Type == foreignKeyConstraintType {
+			stmts = append(stmts, sg.generateAddForeignKeySQL(snapshot.TableName, constraintName, constraint))
+		}
+	}
+	return stmts
+}
+
 // generateColumnDefinition generates column definition SQL
 func (sg *SQLGenerator) generateColumnDefinition(column *ColumnInfo) string {
-	var parts []string
-
 	// Debug: log column info
 	fmt.Printf("DEBUG: Column info: Name=%s, Type=%s, SQLType=%s, DataType=%s\n",
 		column.Name, column.Type, column.SQLType, column.DataType)
 
-	// Data type - prefer SQLType over DataType
+	parts := []string{}
+
+	// Data type
+	dataType := sg.resolveColumnDataType(column)
+	parts = append(parts, dataType)
+
+	// Nullability and default
+	parts = append(parts, sg.nullabilityAndDefaultClause(column)...) // returns []string
+
+	// Identity/auto-increment
+	parts = sg.applyIdentityClause(parts, column)
+
+	return strings.Join(parts, " ")
+}
+
+// resolveColumnDataType determines the SQL data type string for a column
+func (sg *SQLGenerator) resolveColumnDataType(column *ColumnInfo) string {
 	var dataType string
 	if column.SQLType != "" {
 		dataType = column.SQLType
@@ -388,38 +416,42 @@ func (sg *SQLGenerator) generateColumnDefinition(column *ColumnInfo) string {
 	} else if column.Precision != nil && column.Scale != nil {
 		dataType = fmt.Sprintf("%s(%d,%d)", dataType, *column.Precision, *column.Scale)
 	}
-	parts = append(parts, dataType)
+	return dataType
+}
 
-	// Nullable
+// nullabilityAndDefaultClause returns NOT NULL and DEFAULT clauses as a slice
+func (sg *SQLGenerator) nullabilityAndDefaultClause(column *ColumnInfo) []string {
+	clauses := []string{}
 	if !column.IsNullable {
-		parts = append(parts, "NOT NULL")
+		clauses = append(clauses, "NOT NULL")
 	}
-
-	// Default value
 	if column.DefaultValue != nil {
-		parts = append(parts, fmt.Sprintf("DEFAULT %s", *column.DefaultValue))
+		clauses = append(clauses, fmt.Sprintf("DEFAULT %s", *column.DefaultValue))
 	}
+	return clauses
+}
 
-	// Auto increment
-	if column.IsIdentity && sg.driver == PostgreSQL {
-		// For PostgreSQL, use SERIAL or BIGSERIAL
-		if strings.ToUpper(column.DataType) == "BIGINT" {
-			parts[0] = "BIGSERIAL"
-		} else {
-			parts[0] = "SERIAL"
-		}
-	} else if column.IsIdentity && sg.driver == MySQL {
-		parts = append(parts, "AUTO_INCREMENT")
-	} else if column.IsIdentity && sg.driver == SQLite {
-		// For SQLite, identity primary key columns should be INTEGER PRIMARY KEY AUTOINCREMENT
-		if column.IsPrimaryKey {
-			parts[0] = "INTEGER"
-			parts = append(parts, "PRIMARY KEY")
-			parts = append(parts, "AUTOINCREMENT")
+// applyIdentityClause mutates/returns the parts slice with identity/auto-increment logic
+func (sg *SQLGenerator) applyIdentityClause(parts []string, column *ColumnInfo) []string {
+	if column.IsIdentity {
+		switch sg.driver {
+		case PostgreSQL:
+			if strings.ToUpper(column.DataType) == "BIGINT" {
+				parts[0] = "BIGSERIAL"
+			} else {
+				parts[0] = "SERIAL"
+			}
+		case MySQL:
+			parts = append(parts, "AUTO_INCREMENT")
+		case SQLite:
+			if column.IsPrimaryKey {
+				parts[0] = "INTEGER"
+				parts = append(parts, "PRIMARY KEY")
+				parts = append(parts, "AUTOINCREMENT")
+			}
 		}
 	}
-
-	return strings.Join(parts, " ")
+	return parts
 }
 
 // mapDataType maps Go/generic types to database-specific types
