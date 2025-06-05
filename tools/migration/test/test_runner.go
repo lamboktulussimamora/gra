@@ -24,7 +24,8 @@ func main() {
 
 	db, err := sql.Open("postgres", *conn)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("%v", err)
+		return
 	}
 	defer func() {
 		if cerr := db.Close(); cerr != nil {
@@ -33,7 +34,8 @@ func main() {
 	}()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal("Connection failed:", err)
+		log.Printf("Connection failed: %v", err)
+		return
 	}
 
 	fmt.Println("✓ Database connection successful!")
@@ -45,7 +47,8 @@ func main() {
 			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`)
 		if err != nil {
-			log.Fatal("Failed to create migrations table:", err)
+			log.Printf("Failed to create migrations table: %v", err)
+			return
 		}
 
 		// Create users table
@@ -56,7 +59,8 @@ func main() {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`)
 		if err != nil {
-			log.Fatal("Failed to create users table:", err)
+			log.Printf("Failed to create users table: %v", err)
+			return
 		}
 
 		fmt.Println("✓ Users table created successfully!")
@@ -64,7 +68,8 @@ func main() {
 		// Record migration
 		_, err = db.Exec("INSERT INTO schema_migrations (version) VALUES (1) ON CONFLICT DO NOTHING")
 		if err != nil {
-			log.Fatal("Failed to record migration:", err)
+			log.Printf("Failed to record migration: %v", err)
+			return
 		}
 
 		fmt.Println("✓ Migration completed!")

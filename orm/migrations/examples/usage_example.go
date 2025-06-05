@@ -42,7 +42,8 @@ func main() {
 	// Database connection (adjust for your environment)
 	db, err := sql.Open("postgres", "postgres://user:password@localhost/testdb?sslmode=disable")
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Printf("Failed to connect to database: %v", err)
+		return
 	}
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
@@ -52,7 +53,8 @@ func main() {
 
 	// Test database connection
 	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
+		log.Printf("Failed to ping database: %v", err)
+		return
 	}
 
 	// Create hybrid migrator
@@ -75,7 +77,8 @@ func main() {
 	fmt.Println("2. Checking migration status...")
 	status, err := migrator.GetMigrationStatus()
 	if err != nil {
-		log.Fatalf("Failed to get migration status: %v", err)
+		log.Printf("Failed to get migration status: %v", err)
+		return
 	}
 
 	fmt.Printf("   Applied migrations: %d\n", len(status.AppliedMigrations))
@@ -96,7 +99,8 @@ func main() {
 			migrations.ModeInteractive, // Will prompt for destructive changes
 		)
 		if err != nil {
-			log.Fatalf("Failed to create migration: %v", err)
+			log.Printf("Failed to create migration: %v", err)
+			return
 		}
 
 		fmt.Printf("   ✓ Migration created: %s\n", migrationFile.Filename)
@@ -121,7 +125,8 @@ func main() {
 
 			err = migrator.ApplyMigrations(migrations.ModeInteractive)
 			if err != nil {
-				log.Fatalf("Failed to apply migrations: %v", err)
+				log.Printf("Failed to apply migrations: %v", err)
+				return
 			}
 		}
 		fmt.Println("   ✓ Migrations applied successfully")
@@ -133,7 +138,8 @@ func main() {
 	fmt.Println("5. Final migration status...")
 	finalStatus, err := migrator.GetMigrationStatus()
 	if err != nil {
-		log.Fatalf("Failed to get final status: %v", err)
+		log.Printf("Failed to get final status: %v", err)
+		return
 	}
 
 	fmt.Printf("   Applied migrations: %d\n", len(finalStatus.AppliedMigrations))

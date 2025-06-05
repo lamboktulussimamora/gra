@@ -167,7 +167,8 @@ func main() {
 
 	runner, err := NewMigrationRunner(connectionString)
 	if err != nil {
-		log.Fatalf("Failed to create migration runner: %v", err)
+		log.Printf("Failed to create migration runner: %v", err)
+		return
 	}
 	defer func() {
 		if closeErr := runner.Close(); closeErr != nil {
@@ -177,7 +178,8 @@ func main() {
 
 	log.Println("Starting automatic migration...")
 	if err := runner.AutoMigrate(); err != nil {
-		log.Fatalf("Migration failed: %v", err)
+		log.Printf("Migration failed: %v", err)
+		return
 	}
 
 	log.Println("Migration completed successfully!")

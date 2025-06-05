@@ -81,7 +81,8 @@ func main() {
 				config.ConnectionString = buildPostgreSQLConnectionString(config)
 				fmt.Printf("🔗 Built connection string from parameters for database: %s\n", config.Database)
 			} else {
-				log.Fatal("❌ Database connection required. Use -connection flag, DATABASE_URL env var, or provide -host, -user, -database flags")
+				log.Printf("❌ Database connection required. Use -connection flag, DATABASE_URL env var, or provide -host, -user, -database flags")
+				return
 			}
 		}
 	}
@@ -99,7 +100,8 @@ func main() {
 
 	db, err := sql.Open(driverName, config.ConnectionString)
 	if err != nil {
-		log.Fatal("❌ Failed to connect to database:", err)
+		log.Printf("❌ Failed to connect to database: %v", err)
+		return
 	}
 	defer func() {
 		if cerr := db.Close(); cerr != nil {
@@ -119,12 +121,14 @@ func main() {
 
 	// Initialize schema if needed
 	if err := manager.EnsureSchema(); err != nil {
-		log.Fatal("❌ Failed to initialize migration schema:", err)
+		log.Printf("❌ Failed to initialize migration schema: %v", err)
+		return
 	}
 
 	// Load migrations from filesystem before executing commands
 	if err := loadMigrationsFromFilesystem(manager, config.MigrationsDir); err != nil {
-		log.Fatal("❌ Failed to load migrations from filesystem:", err)
+		log.Printf("❌ Failed to load migrations from filesystem: %v", err)
+		return
 	}
 
 	// Execute command
@@ -155,7 +159,8 @@ func main() {
 // addMigration implements Add-Migration command
 func addMigration(manager *migrations.EFMigrationManager, args []string, config CLIConfig) {
 	if len(args) == 0 {
-		log.Fatal("❌ Migration name required. Usage: add-migration <name>")
+		log.Printf("❌ Migration name required. Usage: add-migration <name>")
+		return
 	}
 
 	name := args[0]
@@ -174,7 +179,8 @@ func addMigration(manager *migrations.EFMigrationManager, args []string, config 
 
 	// Save migration to file
 	if err := saveMigrationToFile(migration, config.MigrationsDir); err != nil {
-		log.Fatal("❌ Failed to save migration file:", err)
+		log.Printf("❌ Failed to save migration file: %v", err)
+		return
 	}
 
 	fmt.Printf("✅ Migration created: %s\n", migration.ID)
@@ -193,7 +199,8 @@ func updateDatabase(manager *migrations.EFMigrationManager, args []string, confi
 	}
 
 	if err := manager.UpdateDatabase(targetMigration...); err != nil {
-		log.Fatal("❌ Failed to update database:", err)
+		log.Printf("❌ Failed to update database: %v", err)
+		return
 	}
 
 	fmt.Println("✅ Database updated successfully!")
@@ -206,7 +213,8 @@ func getMigrations(manager *migrations.EFMigrationManager, config CLIConfig) {
 
 	history, err := manager.GetMigrationHistory()
 	if err != nil {
-		log.Fatal("❌ Failed to get migration history:", err)
+		log.Printf("❌ Failed to get migration history: %v", err)
+		return
 	}
 
 	if len(history.Applied) == 0 && len(history.Pending) == 0 && len(history.Failed) == 0 {
@@ -245,14 +253,16 @@ func getMigrations(manager *migrations.EFMigrationManager, config CLIConfig) {
 // rollbackMigration implements rollback functionality
 func rollbackMigration(manager *migrations.EFMigrationManager, args []string, config CLIConfig) {
 	if len(args) == 0 {
-		log.Fatal("❌ Target migration required. Usage: rollback <migration-name-or-id>")
+		log.Printf("❌ Target migration required. Usage: rollback <migration-name-or-id>")
+		return
 	}
 
 	target := args[0]
 	fmt.Printf("⏪ Rolling back to migration: %s\n", target)
 
 	if err := manager.RollbackMigration(target); err != nil {
-		log.Fatal("❌ Failed to rollback migration:", err)
+		log.Printf("❌ Failed to rollback migration: %v", err)
+		return
 	}
 
 	fmt.Println("✅ Rollback completed successfully!")
@@ -265,7 +275,8 @@ func showStatus(manager *migrations.EFMigrationManager, config CLIConfig) {
 
 	history, err := manager.GetMigrationHistory()
 	if err != nil {
-		log.Fatal("❌ Failed to get migration status:", err)
+		log.Printf("❌ Failed to get migration status: %v", err)
+		return
 	}
 
 	sanitizedConnectionString := sanitizeConnectionString(config.ConnectionString)
@@ -335,11 +346,13 @@ func removeMigration(manager *migrations.EFMigrationManager, args []string, conf
 
 	history, err := manager.GetMigrationHistory()
 	if err != nil {
-		log.Fatal("❌ Failed to get migration history:", err)
+		log.Printf("❌ Failed to get migration history: %v", err)
+		return
 	}
 
 	if len(history.Pending) == 0 {
-		log.Fatal("❌ No pending migrations to remove")
+		log.Printf("❌ No pending migrations to remove")
+		return
 	}
 
 	// Remove the last pending migration

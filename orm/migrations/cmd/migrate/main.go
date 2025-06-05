@@ -55,13 +55,15 @@ func main() {
 
 	// Validate configuration
 	if err := validateConfig(&config); err != nil {
-		log.Fatalf("Configuration error: %v", err)
+		log.Printf("Configuration error: %v", err)
+		return
 	}
 
 	// Connect to database
 	db, err := connectDatabase(&config)
 	if err != nil {
-		log.Fatalf("Database connection error: %v", err)
+		log.Printf("Database connection error: %v", err)
+		return
 	}
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
@@ -75,7 +77,8 @@ func main() {
 
 	// Register models (this would typically be done automatically by scanning the models directory)
 	if err := registerModels(migrator, config.ModelsDir); err != nil {
-		log.Fatalf("Model registration error: %v", err)
+		log.Printf("Model registration error: %v", err)
+		return
 	}
 
 	// Execute command
@@ -99,7 +102,8 @@ func main() {
 	}
 
 	if err != nil {
-		log.Fatalf("Command error: %v", err)
+		log.Printf("Command error: %v", err)
+		return
 	}
 }
 
