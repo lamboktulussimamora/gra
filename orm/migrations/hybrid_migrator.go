@@ -542,9 +542,12 @@ func (hm *HybridMigrator) parseMigrationFile(filePath string) (*MigrationFile, e
 			currentSection = "down"
 			continue
 		}
-		if currentSection == "up" {
+
+		// Add content to appropriate section
+		switch currentSection {
+		case "up":
 			upScript.WriteString(line + "\n")
-		} else if currentSection == "down" {
+		case "down":
 			downScript.WriteString(line + "\n")
 		}
 	}
