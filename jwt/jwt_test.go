@@ -122,7 +122,7 @@ func TestGenerateToken(t *testing.T) {
 		}
 
 		// Parse and validate token
-		parsedToken, _ := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+		parsedToken, _ := jwt.Parse(token, func(_ *jwt.Token) (interface{}, error) {
 			return []byte(testSecretKey), nil
 		})
 
