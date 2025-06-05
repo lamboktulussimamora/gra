@@ -1,3 +1,6 @@
+// Package main demonstrates usage examples for the GRA migration system.
+// This file provides example models and migration scenarios for documentation and testing.
+
 package main
 
 import (
@@ -20,6 +23,8 @@ type User struct {
 	UpdatedAt time.Time `db:"updated_at" migration:"not_null,default:CURRENT_TIMESTAMP"`
 }
 
+// User represents a user in the example migration system.
+
 type Post struct {
 	ID          int64     `db:"id" migration:"primary_key,auto_increment"`
 	UserID      int64     `db:"user_id" migration:"not_null,foreign_key:users.id"`
@@ -30,6 +35,8 @@ type Post struct {
 	UpdatedAt   time.Time `db:"updated_at" migration:"not_null,default:CURRENT_TIMESTAMP"`
 }
 
+// Post represents a blog post in the example migration system.
+
 type Comment struct {
 	ID        int64     `db:"id" migration:"primary_key,auto_increment"`
 	PostID    int64     `db:"post_id" migration:"not_null,foreign_key:posts.id"`
@@ -37,6 +44,8 @@ type Comment struct {
 	Content   string    `db:"content" migration:"not_null,type:TEXT"`
 	CreatedAt time.Time `db:"created_at" migration:"not_null,default:CURRENT_TIMESTAMP"`
 }
+
+// Comment represents a comment on a post in the example migration system.
 
 func main() {
 	// Database connection (adjust for your environment)
@@ -149,7 +158,8 @@ func main() {
 	fmt.Println("\n=== Example Complete ===")
 }
 
-// Example of how to use the system in different scenarios
+// Remove unused example functions for linter compliance
+/*
 func exampleScenarios() {
 	// This function shows various usage patterns
 	// (not called in main, just for documentation)
@@ -260,6 +270,8 @@ type AdvancedUser struct {
 	DeletedAt *time.Time `db:"deleted_at" migration:"nullable,index"`
 }
 
+// AdvancedUser demonstrates a model with complex relationships for migration examples.
+
 // Example showing how the system handles different change types
 func changeTypeExamples() {
 	/*
@@ -293,3 +305,4 @@ func changeTypeExamples() {
 		with database schema, similar to Entity Framework Core.
 	*/
 }
+*/
