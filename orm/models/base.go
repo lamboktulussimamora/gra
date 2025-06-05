@@ -1,3 +1,5 @@
+// Package models provides entity definitions and base types for the ORM layer.
+
 package models
 
 import (
