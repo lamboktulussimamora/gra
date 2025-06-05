@@ -1,3 +1,7 @@
+// Package main demonstrates a comprehensive ORM usage example for the GRA framework.
+// This example covers migrations, enhanced ORM features, and best practices.
+// Run this file to see a full demonstration of the framework's capabilities.
+
 package main
 
 import (
