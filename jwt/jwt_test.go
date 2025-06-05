@@ -249,7 +249,7 @@ func TestRefreshToken(t *testing.T) {
 		}
 	})
 
-	t.Run("should allow refresh for expired token", func(t *testing.T) {
+	t.Run("should allow refresh for expired token", func(_ *testing.T) {
 		// We need to manually create an expired token that we can successfully parse
 		// This is a bit tricky to test properly without modifying the code
 		// For a real implementation, you'd want to make the jwt.Parse function mockable
