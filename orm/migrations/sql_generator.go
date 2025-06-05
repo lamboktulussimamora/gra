@@ -332,9 +332,7 @@ func (sg *SQLGenerator) generateCreateTableSQL(change MigrationChange) (string, 
 
 		// For SQLite, skip adding to primaryKeys if it's an identity column (already has inline PRIMARY KEY)
 		if column.IsPrimaryKey {
-			if sg.driver == SQLite && column.IsIdentity {
-				// Skip - SQLite identity columns have inline PRIMARY KEY
-			} else {
+			if !(sg.driver == SQLite && column.IsIdentity) {
 				primaryKeys = append(primaryKeys, columnName)
 			}
 		}

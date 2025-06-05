@@ -296,11 +296,8 @@ func TestCacheMiddleware(t *testing.T) {
 
 		if w2.Code != http.StatusNotModified {
 			t.Errorf(errStatus, http.StatusNotModified, w2.Code)
-		} else {
-			// Test passed, handler shouldn't be called twice
-			if *handlerCalled > 1 {
-				t.Errorf(errHandlerCallCount, "once (for the first request only)", *handlerCalled)
-			}
+		} else if *handlerCalled > 1 {
+			t.Errorf(errHandlerCallCount, "once (for the first request only)", *handlerCalled)
 		}
 	})
 }

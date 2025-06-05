@@ -247,22 +247,21 @@ func (es *EnhancedSet[T]) ToList() ([]T, error) {
 		}()
 
 		return es.scanRows(rows)
-	} else {
-		// Use regular database connection
-		db = es.builder.ctx.Database.db
-		rows, err := db.Query(query, args...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to execute query: %w", err)
-		}
-		defer func() {
-			if closeErr := rows.Close(); closeErr != nil {
-				// Log but don't affect return value
-				fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
-			}
-		}()
-
-		return es.scanRows(rows)
 	}
+	// Use regular database connection
+	db = es.builder.ctx.Database.db
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			// Log but don't affect return value
+			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+		}
+	}()
+
+	return es.scanRows(rows)
 }
 
 // First executes the query and returns the first result

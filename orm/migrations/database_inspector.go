@@ -679,18 +679,16 @@ func (di *DatabaseInspector) compareTableColumns(dbTable *TableSchema, modelSnap
 				ColumnName: columnName,
 				NewColumn:  modelColumn,
 			})
-		} else {
+		} else if di.hasColumnChanged(modelColumn, dbColumn) {
 			// Column exists - check if it has changed
-			if di.hasColumnChanged(modelColumn, dbColumn) {
-				fmt.Printf("DEBUG: Column %s.%s has changed, creating AlterColumn change\n", dbTable.Name, columnName)
-				changes = append(changes, MigrationChange{
-					Type:       AlterColumn,
-					TableName:  dbTable.Name,
-					ColumnName: columnName,
-					OldColumn:  di.convertDatabaseColumnToColumnInfo(dbColumn),
-					NewColumn:  modelColumn,
-				})
-			}
+			fmt.Printf("DEBUG: Column %s.%s has changed, creating AlterColumn change\n", dbTable.Name, columnName)
+			changes = append(changes, MigrationChange{
+				Type:       AlterColumn,
+				TableName:  dbTable.Name,
+				ColumnName: columnName,
+				OldColumn:  di.convertDatabaseColumnToColumnInfo(dbColumn),
+				NewColumn:  modelColumn,
+			})
 		}
 	}
 
