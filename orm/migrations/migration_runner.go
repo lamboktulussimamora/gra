@@ -37,6 +37,13 @@ const (
 	msgCreatedTable           = "✓ Created table: %s"
 	msgMigrationStatus        = "Migration Status:"
 	msgMigrationStatusDivider = "================"
+
+	// SQL type and struct type constants for migration runner
+	sqlTypeInteger   = "INTEGER"
+	sqlTypeText      = "TEXT"
+	sqlTypeBoolean   = "BOOLEAN"
+	sqlTypeTimeStamp = "TIMESTAMP"
+	goTypeTime       = "time.Time"
 )
 
 // MigrationRunner handles automatic database migrations
@@ -183,20 +190,20 @@ func sqlTypeForField(fieldType reflect.Type, dbTag string, field reflect.StructF
 		if dbTag == "id" {
 			return "SERIAL PRIMARY KEY", isNullable
 		}
-		return "INTEGER", isNullable
+		return sqlTypeInteger, isNullable
 	case reflect.String:
 		maxLength := field.Tag.Get("maxlength")
 		if maxLength != "" {
 			return fmt.Sprintf("VARCHAR(%s)", maxLength), isNullable
 		}
-		return "TEXT", isNullable
+		return sqlTypeText, isNullable
 	case reflect.Float32, reflect.Float64:
 		return "DECIMAL(10,2)", isNullable
 	case reflect.Bool:
-		return "BOOLEAN", isNullable
+		return sqlTypeBoolean, isNullable
 	case reflect.Struct:
-		if fieldType.String() == "time.Time" {
-			return "TIMESTAMP", isNullable
+		if fieldType.String() == goTypeTime {
+			return sqlTypeTimeStamp, isNullable
 		}
 		return "", isNullable // Skip unknown struct types
 	default:
@@ -214,7 +221,7 @@ func addNotNullConstraint(sqlType, dbTag string, isNullable bool) string {
 
 // Helper for default timestamp
 func addDefaultTimestamp(sqlType, fieldTypeStr, dbTag string) string {
-	if fieldTypeStr == "time.Time" && (dbTag == "created_at" || dbTag == "updated_at") {
+	if fieldTypeStr == goTypeTime && (dbTag == "created_at" || dbTag == "updated_at") {
 		return sqlType + " DEFAULT CURRENT_TIMESTAMP"
 	}
 	return sqlType
