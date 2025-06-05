@@ -82,8 +82,9 @@ func setupTestMigrator(t *testing.T) (*HybridMigrator, *sql.DB, string) {
 	db, tmpDir := setupTestDB(t)
 	migrationsDir := filepath.Join(tmpDir, "migrations")
 
-	if err := os.MkdirAll(migrationsDir, 0755); err != nil {
-		t.Fatalf("Failed to create migrations directory: %v", err)
+	// #nosec G301 -- Directory must be user-accessible for migration files
+	if err := os.MkdirAll(migrationsDir, 0750); err != nil {
+		t.Fatalf("Failed to create migrations dir: %v", err)
 	}
 
 	migrator := NewHybridMigrator(db, SQLite, migrationsDir)

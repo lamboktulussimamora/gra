@@ -74,7 +74,8 @@ func (hm *HybridMigrator) DbSet(model interface{}, tableName ...string) {
 // AddMigration detects changes and creates a new migration file
 func (hm *HybridMigrator) AddMigration(name string, mode MigrationMode) (*MigrationFile, error) {
 	// Ensure migrations directory exists
-	if err := os.MkdirAll(hm.migrationsDir, 0755); err != nil {
+	// #nosec G301 -- Directory must be user-accessible for migration files
+	if err := os.MkdirAll(hm.migrationsDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create migrations directory: %w", err)
 	}
 
@@ -366,7 +367,8 @@ func (hm *HybridMigrator) generateMigrationFilename(name string, timestamp time.
 // saveMigrationFile saves a migration file to disk
 func (hm *HybridMigrator) saveMigrationFile(migration *MigrationFile) error {
 	content := hm.formatMigrationFileContent(migration)
-	return os.WriteFile(migration.FilePath, []byte(content), 0644)
+	// #nosec G306 -- Migration files are not sensitive, but 0600 is stricter
+	return os.WriteFile(migration.FilePath, []byte(content), 0600)
 }
 
 // formatMigrationFileContent formats the migration file content
@@ -483,6 +485,7 @@ func (hm *HybridMigrator) getAllMigrationFiles() ([]*MigrationFile, error) {
 
 // parseMigrationFile parses a migration file from disk
 func (hm *HybridMigrator) parseMigrationFile(filePath string) (*MigrationFile, error) {
+	// #nosec G304 -- File path is determined by migration manager logic, not user input
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err

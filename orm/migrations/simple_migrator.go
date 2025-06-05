@@ -109,7 +109,8 @@ func (sm *SimpleMigrator) CreateInitialMigration(name string) (*MigrationFile, e
 	}
 
 	// Create migrations directory
-	if err := os.MkdirAll(sm.migrationsDir, 0755); err != nil {
+	// #nosec G301 -- Directory must be user-accessible for migration files
+	if err := os.MkdirAll(sm.migrationsDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create migrations directory: %w", err)
 	}
 
@@ -162,7 +163,8 @@ func (sm *SimpleMigrator) CreateInitialMigration(name string) (*MigrationFile, e
 	}
 
 	// Write SQL file
-	err := os.WriteFile(filepath, []byte(upSQL.String()), 0644)
+	// #nosec G306 -- Migration files are not sensitive, but 0600 is stricter
+	err := os.WriteFile(filepath, []byte(upSQL.String()), 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write migration file: %w", err)
 	}
