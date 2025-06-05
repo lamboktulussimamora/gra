@@ -44,6 +44,19 @@ var (
 	statusFlag = flag.Bool("status", false, "Show migration status")
 )
 
+const warnCloseDB = "Warning: failed to close db: %v"
+
+func closeDBWithWarn(db *sql.DB) {
+	if cerr := db.Close(); cerr != nil {
+		log.Printf(warnCloseDB, cerr)
+	}
+}
+
+func exitWithDBClose(db *sql.DB, msg string, args ...interface{}) {
+	closeDBWithWarn(db)
+	log.Fatalf(msg, args...)
+}
+
 func main() {
 	flag.Parse()
 
@@ -58,14 +71,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer func() {
-		if cerr := db.Close(); cerr != nil {
-			log.Printf("Warning: failed to close db: %v", cerr)
-		}
-	}()
 
 	if err := db.Ping(); err != nil {
-		log.Fatalf("Database connection failed: %v", err)
+		exitWithDBClose(db, "Database connection failed: %v", err)
 	}
 
 	if *verbose {
@@ -73,29 +81,33 @@ func main() {
 	}
 
 	if err := ensureMigrationTable(db); err != nil {
-		log.Fatalf("Failed to ensure migration table: %v", err)
+		exitWithDBClose(db, "Failed to ensure migration table: %v", err)
 	}
 
 	if *statusFlag {
 		if err := showStatus(db); err != nil {
-			log.Fatalf("Status failed: %v", err)
+			exitWithDBClose(db, "Status failed: %v", err)
 		}
+		closeDBWithWarn(db)
 		return
 	}
 
 	if *upFlag {
 		if err := migrateUp(db); err != nil {
-			log.Fatalf("Migration up failed: %v", err)
+			exitWithDBClose(db, "Migration up failed: %v", err)
 		}
+		closeDBWithWarn(db)
 		return
 	}
 
 	if *downFlag {
+		closeDBWithWarn(db)
 		fmt.Println("Migration down not implemented yet")
 		return
 	}
 
 	flag.Usage()
+	closeDBWithWarn(db)
 	os.Exit(1)
 }
 
