@@ -20,14 +20,11 @@ func IntegrationDemo() {
 	}
 
 	// 2. Create migrator
-	migrator, err := NewHybridMigrator(
+	migrator := NewHybridMigrator(
 		db,
 		SQLite,
 		"./test_migrations",
 	)
-	if err != nil {
-		log.Fatalf("Failed to create migrator: %v", err)
-	}
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
 			log.Printf("Warning: Failed to close database: %v", closeErr)
