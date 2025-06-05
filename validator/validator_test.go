@@ -1188,7 +1188,7 @@ func TestPointerStructValidation(t *testing.T) {
 
 	t.Run("Nil Pointer to Struct", func(t *testing.T) {
 		v := New()
-		var nilUser *TestUser = nil
+		var nilUser *TestUser
 		errors := v.Validate(nilUser)
 
 		// Nil pointers should not produce validation errors
