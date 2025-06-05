@@ -1,3 +1,4 @@
+// Package dbcontext provides an enhanced ORM-like database context for Go with multi-database support and change tracking.
 package dbcontext
 
 import (
@@ -10,11 +11,13 @@ import (
 	"time"
 )
 
+const driverPostgres = "postgres"
+
 // detectDatabaseDriver detects the database driver type
 func detectDatabaseDriver(db *sql.DB) string {
 	// Test queries to detect database type
 	if _, err := db.Query("SELECT 1::integer"); err == nil {
-		return "postgres"
+		return driverPostgres
 	}
 	if _, err := db.Query("SELECT sqlite_version()"); err == nil {
 		return "sqlite3"
@@ -28,7 +31,7 @@ func detectDatabaseDriver(db *sql.DB) string {
 
 // convertQueryPlaceholders converts query placeholders based on database driver
 func convertQueryPlaceholders(query string, driver string) string {
-	if driver != "postgres" {
+	if driver != driverPostgres {
 		return query // SQLite and MySQL use ? placeholders
 	}
 
@@ -46,13 +49,23 @@ func convertQueryPlaceholders(query string, driver string) string {
 	return result
 }
 
-// EntityState represents the state of an entity in the change tracker
+// EntityState represents the state of an entity in the change tracker.
+//
+// Possible values:
+//   - EntityStateUnchanged
+//   - EntityStateAdded
+//   - EntityStateModified
+//   - EntityStateDeleted
 type EntityState int
 
 const (
+	// EntityStateUnchanged indicates the entity has not changed since last tracked.
 	EntityStateUnchanged EntityState = iota
+	// EntityStateAdded indicates the entity is newly added and should be inserted.
 	EntityStateAdded
+	// EntityStateModified indicates the entity has been modified and should be updated.
 	EntityStateModified
+	// EntityStateDeleted indicates the entity has been marked for deletion.
 	EntityStateDeleted
 )
 
@@ -224,6 +237,8 @@ func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error {
 	tableName := getTableName(entity)
 	columns, values, placeholders := getInsertData(entity, ctx.driver)
 
+	// Safe: table/column names are trusted, user data is parameterized (see values...)
+	//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
 	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
 		tableName, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
 
@@ -256,6 +271,8 @@ func (ctx *EnhancedDbContext) updateEntity(entity interface{}) error {
 	tableName := getTableName(entity)
 	setPairs, values, idValue := getUpdateData(entity, ctx.driver)
 
+	// Safe: table/column names are trusted, user data is parameterized (see values...)
+	//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
 	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?",
 		tableName, strings.Join(setPairs, ", "))
 
@@ -267,10 +284,9 @@ func (ctx *EnhancedDbContext) updateEntity(entity interface{}) error {
 	if ctx.tx != nil {
 		_, err := ctx.tx.Exec(query, values...)
 		return err
-	} else {
-		_, err := ctx.db.Exec(query, values...)
-		return err
 	}
+	_, err := ctx.db.Exec(query, values...)
+	return err
 }
 
 // deleteEntity removes an entity from the database
@@ -278,6 +294,8 @@ func (ctx *EnhancedDbContext) deleteEntity(entity interface{}) error {
 	tableName := getTableName(entity)
 	idValue := getIDValue(entity)
 
+	// Safe: table/column names are trusted, user data is parameterized (see idValue)
+	//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
 	query := fmt.Sprintf("DELETE FROM %s WHERE id = ?", tableName)
 
 	// Convert placeholders for PostgreSQL
@@ -293,14 +311,13 @@ func (ctx *EnhancedDbContext) deleteEntity(entity interface{}) error {
 			fmt.Printf("DEBUG DELETE TX: rowsAffected=%d\n", rowsAffected)
 		}
 		return err
-	} else {
-		result, err := ctx.db.Exec(query, idValue)
-		if err == nil {
-			rowsAffected, _ := result.RowsAffected()
-			fmt.Printf("DEBUG DELETE DB: rowsAffected=%d\n", rowsAffected)
-		}
-		return err
 	}
+	result, err := ctx.db.Exec(query, idValue)
+	if err == nil {
+		rowsAffected, _ := result.RowsAffected()
+		fmt.Printf("DEBUG DELETE DB: rowsAffected=%d\n", rowsAffected)
+	}
+	return err
 }
 
 // EnhancedDbSet provides LINQ-style querying capabilities
@@ -343,7 +360,7 @@ func (set *EnhancedDbSet[T]) Where(condition string, args ...interface{}) *Enhan
 
 // adjustPlaceholdersForCondition converts ? placeholders to appropriate format
 func (set *EnhancedDbSet[T]) adjustPlaceholdersForCondition(condition string) string {
-	if set.ctx.driver != "postgres" {
+	if set.ctx.driver != driverPostgres {
 		return condition
 	}
 
@@ -492,6 +509,8 @@ func (set *EnhancedDbSet[T]) FirstOrDefault() (*T, error) {
 
 // Count returns the number of entities matching the query
 func (set *EnhancedDbSet[T]) Count() (int, error) {
+	// Safe: table name is trusted, user data is parameterized (see whereArgs...)
+	//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", set.tableName)
 	if set.whereClause != "" {
 		query += " WHERE " + set.whereClause
@@ -595,6 +614,38 @@ func getInsertData(entity interface{}, driver string) ([]string, []interface{}, 
 	return getFieldData(entity, true, driver) // true = exclude ID for INSERT
 }
 
+// shouldSkipField determines if a struct field should be skipped
+func shouldSkipField(field reflect.StructField, excludeID bool) bool {
+	if !field.IsExported() {
+		return true
+	}
+	if excludeID && strings.ToLower(field.Name) == "id" {
+		return true
+	}
+	if dbTag := field.Tag.Get("db"); dbTag == "-" {
+		return true
+	}
+	if sqlTag := field.Tag.Get("sql"); sqlTag == "-" {
+		return true
+	}
+	return false
+}
+
+// handleEmbeddedStruct extracts field data from an embedded struct
+func handleEmbeddedStruct(field reflect.StructField, value reflect.Value, excludeID bool, driver string) ([]string, []interface{}, []string) {
+	embeddedPtr := reflect.New(field.Type)
+	embeddedPtr.Elem().Set(value)
+	return getFieldData(embeddedPtr.Interface(), excludeID, driver)
+}
+
+// getPlaceholder returns the correct placeholder for the driver
+func getPlaceholder(driver string, idx int) string {
+	if driver == driverPostgres {
+		return fmt.Sprintf("$%d", idx+1)
+	}
+	return "?"
+}
+
 // getFieldData extracts field data recursively, handling embedded structs
 func getFieldData(entity interface{}, excludeID bool, driver string) ([]string, []interface{}, []string) {
 	v := reflect.ValueOf(entity).Elem()
@@ -608,39 +659,18 @@ func getFieldData(entity interface{}, excludeID bool, driver string) ([]string, 
 		field := t.Field(i)
 		value := v.Field(i)
 
-		// Skip unexported fields
-		if !field.IsExported() {
+		if shouldSkipField(field, excludeID) {
 			continue
 		}
 
-		// Handle embedded structs
 		if field.Anonymous && field.Type.Kind() == reflect.Struct {
-			// Create a pointer to the embedded struct value
-			embeddedPtr := reflect.New(field.Type)
-			embeddedPtr.Elem().Set(value)
-
-			// Recursively get fields from embedded struct
-			embeddedCols, embeddedVals, embeddedPlaceholders := getFieldData(embeddedPtr.Interface(), excludeID, driver)
+			embeddedCols, embeddedVals, embeddedPlaceholders := handleEmbeddedStruct(field, value, excludeID, driver)
 			columns = append(columns, embeddedCols...)
 			values = append(values, embeddedVals...)
 			placeholders = append(placeholders, embeddedPlaceholders...)
 			continue
 		}
 
-		// Skip ID field for auto-increment if requested
-		if excludeID && strings.ToLower(field.Name) == "id" {
-			continue
-		}
-
-		// Skip fields with sql:"-" tag or db:"-" tag
-		if dbTag := field.Tag.Get("db"); dbTag == "-" {
-			continue
-		}
-		if sqlTag := field.Tag.Get("sql"); sqlTag == "-" {
-			continue
-		}
-
-		// Get column name from db tag or convert field name
 		columnName := field.Tag.Get("db")
 		if columnName == "" {
 			columnName = toSnakeCase(field.Name)
@@ -648,13 +678,7 @@ func getFieldData(entity interface{}, excludeID bool, driver string) ([]string, 
 
 		columns = append(columns, columnName)
 		values = append(values, value.Interface())
-
-		// Generate appropriate placeholder based on driver
-		if driver == "postgres" {
-			placeholders = append(placeholders, fmt.Sprintf("$%d", len(placeholders)+1))
-		} else {
-			placeholders = append(placeholders, "?")
-		}
+		placeholders = append(placeholders, getPlaceholder(driver, len(placeholders)))
 	}
 
 	return columns, values, placeholders
@@ -665,7 +689,7 @@ func getUpdateData(entity interface{}, driver string) ([]string, []interface{}, 
 	columns, values, _ := getFieldData(entity, false, driver) // false = include all fields
 
 	var setPairs []string
-	var updateValues []interface{}
+	updateValues := make([]interface{}, 0, len(columns)) // preallocate for linter
 	var idValue interface{}
 
 	for i, col := range columns {
@@ -673,7 +697,7 @@ func getUpdateData(entity interface{}, driver string) ([]string, []interface{}, 
 			idValue = values[i]
 			continue
 		}
-		if driver == "postgres" {
+		if driver == driverPostgres {
 			setPairs = append(setPairs, fmt.Sprintf("%s = $%d", col, len(updateValues)+1))
 		} else {
 			setPairs = append(setPairs, col+" = ?")
@@ -735,7 +759,9 @@ func setEntityIDValue(entity interface{}, fieldName string, value int64) {
 			case reflect.Int, reflect.Int32, reflect.Int64:
 				fieldValue.SetInt(value)
 			case reflect.Uint, reflect.Uint32, reflect.Uint64:
-				fieldValue.SetUint(uint64(value))
+				if value >= 0 {
+					fieldValue.SetUint(uint64(value))
+				}
 			}
 			return
 		}
@@ -832,6 +858,66 @@ func scanEntity(rows *sql.Rows, entity interface{}) error {
 	return nil
 }
 
+// Helper for setting string fields
+func setStringField(field reflect.Value, value interface{}) {
+	if str, ok := value.(string); ok {
+		field.SetString(str)
+	} else if bytes, ok := value.([]byte); ok {
+		field.SetString(string(bytes))
+	}
+}
+
+// Helper for setting int fields
+func setIntField(field reflect.Value, value interface{}) {
+	if num, ok := value.(int64); ok {
+		field.SetInt(num)
+	} else if str, ok := value.(string); ok {
+		if num, err := strconv.ParseInt(str, 10, 64); err == nil {
+			field.SetInt(num)
+		}
+	}
+}
+
+// Helper for setting uint fields
+func setUintField(field reflect.Value, value interface{}) {
+	if num, ok := value.(int64); ok && num >= 0 {
+		field.SetUint(uint64(num))
+	} else if str, ok := value.(string); ok {
+		if num, err := strconv.ParseUint(str, 10, 64); err == nil {
+			field.SetUint(num)
+		}
+	}
+}
+
+// Helper for setting float fields
+func setFloatField(field reflect.Value, value interface{}) {
+	if num, ok := value.(float64); ok {
+		field.SetFloat(num)
+	} else if str, ok := value.(string); ok {
+		if num, err := strconv.ParseFloat(str, 64); err == nil {
+			field.SetFloat(num)
+		}
+	}
+}
+
+// Helper for setting bool fields
+func setBoolField(field reflect.Value, value interface{}) {
+	if b, ok := value.(bool); ok {
+		field.SetBool(b)
+	} else if num, ok := value.(int64); ok {
+		field.SetBool(num != 0)
+	}
+}
+
+// Helper for setting time.Time fields
+func setTimeField(field reflect.Value, value interface{}) {
+	if str, ok := value.(string); ok {
+		if t, err := time.Parse("2006-01-02 15:04:05", str); err == nil {
+			field.Set(reflect.ValueOf(t))
+		}
+	}
+}
+
 // setFieldValue sets a field value with type conversion
 func setFieldValue(field reflect.Value, value interface{}) error {
 	if value == nil {
@@ -840,48 +926,18 @@ func setFieldValue(field reflect.Value, value interface{}) error {
 
 	switch field.Kind() {
 	case reflect.String:
-		if str, ok := value.(string); ok {
-			field.SetString(str)
-		} else if bytes, ok := value.([]byte); ok {
-			field.SetString(string(bytes))
-		}
+		setStringField(field, value)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		if num, ok := value.(int64); ok {
-			field.SetInt(num)
-		} else if str, ok := value.(string); ok {
-			if num, err := strconv.ParseInt(str, 10, 64); err == nil {
-				field.SetInt(num)
-			}
-		}
+		setIntField(field, value)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		if num, ok := value.(int64); ok && num >= 0 {
-			field.SetUint(uint64(num))
-		} else if str, ok := value.(string); ok {
-			if num, err := strconv.ParseUint(str, 10, 64); err == nil {
-				field.SetUint(num)
-			}
-		}
+		setUintField(field, value)
 	case reflect.Float32, reflect.Float64:
-		if num, ok := value.(float64); ok {
-			field.SetFloat(num)
-		} else if str, ok := value.(string); ok {
-			if num, err := strconv.ParseFloat(str, 64); err == nil {
-				field.SetFloat(num)
-			}
-		}
+		setFloatField(field, value)
 	case reflect.Bool:
-		if b, ok := value.(bool); ok {
-			field.SetBool(b)
-		} else if num, ok := value.(int64); ok {
-			field.SetBool(num != 0)
-		}
+		setBoolField(field, value)
 	case reflect.Struct:
 		if field.Type() == reflect.TypeOf(time.Time{}) {
-			if str, ok := value.(string); ok {
-				if t, err := time.Parse("2006-01-02 15:04:05", str); err == nil {
-					field.Set(reflect.ValueOf(t))
-				}
-			}
+			setTimeField(field, value)
 		}
 	}
 
