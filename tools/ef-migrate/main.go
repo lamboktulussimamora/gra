@@ -264,7 +264,8 @@ func showStatus(manager *migrations.EFMigrationManager, config CLIConfig) {
 		log.Fatal("❌ Failed to get migration status:", err)
 	}
 
-	fmt.Printf("Database: %s\n", extractDBName(config.ConnectionString))
+	sanitizedConnectionString := sanitizeConnectionString(config.ConnectionString)
+	fmt.Printf("Database: %s\n", extractDBName(sanitizedConnectionString))
 	fmt.Printf("Applied:  %d migrations\n", len(history.Applied))
 	fmt.Printf("Pending:  %d migrations\n", len(history.Pending))
 	fmt.Printf("Failed:   %d migrations\n", len(history.Failed))
@@ -441,6 +442,11 @@ func buildPostgreSQLConnectionString(config CLIConfig) string {
 	
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		config.User, config.Password, host, port, config.Database, sslmode)
+}
+
+func sanitizeConnectionString(connectionString string) string {
+	re := regexp.MustCompile(`(postgres://.*:)(.*)(@.*)`)
+	return re.ReplaceAllString(connectionString, "${1}*****${3}")
 }
 
 func printUsage() {
