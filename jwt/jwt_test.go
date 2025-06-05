@@ -17,7 +17,7 @@ const (
 	testName         = "John Doe"
 	testDifferentKey = "different-key"
 	testInvalidToken = "invalid.token.string"
-	testApiAudience  = "api"
+	testAPIAudience  = "api"
 	testWebAudience  = "web"
 
 	// Error message templates
@@ -29,12 +29,12 @@ const (
 	errMsgExpectedJTI     = "Expected jti to be '%s', got %v"
 	errMsgExpectedName    = "Expected name to be '%s', got %v"
 	// #nosec G101 -- This is a test error message, not a credential
-	errMsgExpiredToken    = "Expected ErrExpiredToken, got %v"
-	errMsgMissingKey      = "Expected ErrMissingKey, got %v"
-	errMsgMissingSubject  = "Expected ErrMissingSubject, got %v"
-	errServiceNil         = "Expected service to be created, got nil"
-	errTokenEmpty         = "Expected token to be generated, got empty string"
-	errTokenNotDifferent  = "Expected new token to be different from original token"
+	errMsgExpiredToken   = "Expected ErrExpiredToken, got %v"
+	errMsgMissingKey     = "Expected ErrMissingKey, got %v"
+	errMsgMissingSubject = "Expected ErrMissingSubject, got %v"
+	errServiceNil        = "Expected service to be created, got nil"
+	errTokenEmpty        = "Expected token to be generated, got empty string"
+	errTokenNotDifferent = "Expected new token to be different from original token"
 )
 
 func TestNewService(t *testing.T) {
@@ -110,7 +110,7 @@ func TestGenerateToken(t *testing.T) {
 		claims := StandardClaims{
 			ID:       testTokenID,
 			Subject:  testUserID,
-			Audience: []string{testApiAudience, testWebAudience},
+			Audience: []string{testAPIAudience, testWebAudience},
 			Custom: map[string]interface{}{
 				"role": testRoleAdmin,
 			},
