@@ -31,7 +31,7 @@ const (
 	nullableNo  = "NO"
 
 	typeNullableFmt = "type:%s,nullable:%s"
-	defaultFmt     = ",default:%s"
+	defaultFmt      = ",default:%s"
 )
 
 // AutoMigrator provides EF Core-style automatic database migrations
