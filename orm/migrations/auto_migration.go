@@ -26,6 +26,12 @@ const (
 	dbErrCommitUpdate          = "failed to commit update transaction: %w"
 	dbWarnRollback             = "Warning: Failed to rollback transaction: %v"
 	dbWarnCloseRows            = "Warning: Failed to close rows: %v"
+
+	nullableYes = "YES"
+	nullableNo  = "NO"
+
+	typeNullableFmt = "type:%s,nullable:%s"
+	defaultFmt     = ",default:%s"
 )
 
 // AutoMigrator provides EF Core-style automatic database migrations
@@ -128,20 +134,19 @@ func (am *AutoMigrator) migrateModel(model interface{}) error {
 	var existingChecksum string
 	err := am.db.QueryRow("SELECT checksum FROM __migrations WHERE migration_name = $1", migrationName).Scan(&existingChecksum)
 
-	if err == nil {
-		// Migration exists
+	switch {
+	case err == nil:
 		if existingChecksum == checksum {
 			am.logger("✓ Table %s is up to date", tableName)
 			return nil
-		} else {
-			// Schema changed, need to update
-			am.logger("⚠ Table %s schema changed, updating...", tableName)
-			return am.updateTableSchema(tableName, modelType, migrationName, checksum)
 		}
-	} else if err == sql.ErrNoRows {
+		// Schema changed, need to update
+		am.logger("⚠ Table %s schema changed, updating...", tableName)
+		return am.updateTableSchema(tableName, modelType, migrationName, checksum)
+	case err == sql.ErrNoRows:
 		// Migration doesn't exist, create table
 		return am.createTable(tableName, modelType, migrationName, checksum)
-	} else {
+	default:
 		return fmt.Errorf("failed to check migration status: %w", err)
 	}
 }
@@ -337,7 +342,7 @@ func (am *AutoMigrator) generateCreateTableSQL(tableName string, modelType refle
 }
 
 // generateColumnDefinition generates SQL column definition using database-aware schema generation
-func (am *AutoMigrator) generateColumnDefinition(field reflect.StructField, dbTag string) string {
+func (am *AutoMigrator) generateColumnDefinition(field reflect.StructField, _ string) string {
 	// Detect database driver
 	driver := schema.DetectDatabaseDriver(am.db)
 
@@ -463,7 +468,6 @@ func (am *AutoMigrator) getCurrentTableColumns(tableName string) (map[string]str
 	}
 }
 
-// getTableColumnsQuery returns the query and args for fetching table columns based on driver
 func (am *AutoMigrator) getTableColumnsQuery(driver schema.DatabaseDriver, tableName string) (string, []interface{}, error) {
 	switch driver {
 	case schema.PostgreSQL:
@@ -485,7 +489,6 @@ func (am *AutoMigrator) getTableColumnsQuery(driver schema.DatabaseDriver, table
 	}
 }
 
-// scanSQLiteTableInfo scans SQLite PRAGMA table_info results into columns map
 func (am *AutoMigrator) scanSQLiteTableInfo(rows *sql.Rows, columns map[string]string) (map[string]string, error) {
 	for rows.Next() {
 		var cid int
@@ -498,21 +501,20 @@ func (am *AutoMigrator) scanSQLiteTableInfo(rows *sql.Rows, columns map[string]s
 			return nil, err
 		}
 
-		nullable := "YES"
+		nullable := nullableYes
 		if notNull == 1 {
-			nullable = "NO"
+			nullable = nullableNo
 		}
 
-		colInfo := fmt.Sprintf("type:%s,nullable:%s", dataType, nullable)
+		colInfo := fmt.Sprintf(typeNullableFmt, dataType, nullable)
 		if defaultValue.Valid {
-			colInfo += fmt.Sprintf(",default:%s", defaultValue.String)
+			colInfo += fmt.Sprintf(defaultFmt, defaultValue.String)
 		}
 		columns[name] = colInfo
 	}
 	return columns, rows.Err()
 }
 
-// scanInformationSchemaColumns scans PostgreSQL/MySQL information_schema results into columns map
 func (am *AutoMigrator) scanInformationSchemaColumns(rows *sql.Rows, columns map[string]string) (map[string]string, error) {
 	for rows.Next() {
 		var colName, dataType, isNullable string
@@ -523,9 +525,9 @@ func (am *AutoMigrator) scanInformationSchemaColumns(rows *sql.Rows, columns map
 			return nil, err
 		}
 
-		colInfo := fmt.Sprintf("type:%s,nullable:%s", dataType, isNullable)
+		colInfo := fmt.Sprintf(typeNullableFmt, dataType, isNullable)
 		if columnDefault.Valid {
-			colInfo += fmt.Sprintf(",default:%s", columnDefault.String)
+			colInfo += fmt.Sprintf(defaultFmt, columnDefault.String)
 		}
 		columns[colName] = colInfo
 	}
