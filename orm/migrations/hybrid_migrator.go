@@ -500,19 +500,21 @@ func (hm *HybridMigrator) getAllMigrationFiles() ([]*MigrationFile, error) {
 
 // parseMigrationFileMetadata parses migration metadata from a line and updates the migration struct.
 func parseMigrationFileMetadata(line string, migration *MigrationFile) {
-	if strings.HasPrefix(line, "-- Migration:") {
+	// Parse metadata from comments
+	switch {
+	case strings.HasPrefix(line, "-- Migration:"):
 		migration.Name = strings.TrimSpace(strings.TrimPrefix(line, "-- Migration:"))
-	} else if strings.HasPrefix(line, "-- Created:") {
+	case strings.HasPrefix(line, "-- Created:"):
 		timestampStr := strings.TrimSpace(strings.TrimPrefix(line, "-- Created:"))
 		if timestamp, err := time.Parse(time.RFC3339, timestampStr); err == nil {
 			migration.Timestamp = timestamp
 		}
-	} else if strings.HasPrefix(line, "-- Checksum:") {
+	case strings.HasPrefix(line, "-- Checksum:"):
 		migration.Checksum = strings.TrimSpace(strings.TrimPrefix(line, "-- Checksum:"))
-	} else if strings.HasPrefix(line, "-- Mode:") {
+	case strings.HasPrefix(line, "-- Mode:"):
 		modeStr := strings.TrimSpace(strings.TrimPrefix(line, "-- Mode:"))
 		migration.Mode = ParseMigrationMode(modeStr)
-	} else if strings.HasPrefix(line, "-- Has Destructive:") {
+	case strings.HasPrefix(line, "-- Has Destructive:"):
 		destructiveStr := strings.TrimSpace(strings.TrimPrefix(line, "-- Has Destructive:"))
 		hasDestructive := destructiveStr == "true"
 		migration.ParsedHasDestructive = &hasDestructive
