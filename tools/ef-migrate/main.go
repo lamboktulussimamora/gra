@@ -89,13 +89,13 @@ func main() {
 
 	// Detect database driver
 	var driverName string
-	if strings.HasPrefix(config.ConnectionString, "postgres://") || strings.Contains(config.ConnectionString, "user=") {
+	switch {
+	case strings.HasPrefix(config.ConnectionString, "postgres://"), strings.Contains(config.ConnectionString, "user="):
 		driverName = "postgres"
-	} else if strings.HasSuffix(config.ConnectionString, ".db") || strings.Contains(config.ConnectionString, "sqlite") {
+	case strings.HasSuffix(config.ConnectionString, ".db"), strings.Contains(config.ConnectionString, "sqlite"):
 		driverName = "sqlite3"
-	} else {
-		// Default to postgres for backward compatibility
-		driverName = "postgres"
+	default:
+		driverName = "postgres" // Default to postgres for backward compatibility
 	}
 
 	db, err := sql.Open(driverName, config.ConnectionString)
