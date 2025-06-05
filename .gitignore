@@ -46,3 +46,8 @@ node_modules/
 
 # Go workspace file
 go.work
+
+# SonarQube
+.scannerwork/
+.sonar/
+sonar-project.properties.bak

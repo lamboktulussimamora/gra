@@ -71,15 +71,45 @@ clean:
 	@find ./examples -type f -perm +111 -not -name "*.sh" -not -name "*.go" -not -name "*.md" -delete
 	@echo "Project cleaned up successfully!"
 
+# SonarQube targets
+.PHONY: sonar-start sonar-stop sonar-analyze sonar-clean
+
+sonar-start:
+	@echo "Starting SonarQube with Docker Compose..."
+	docker-compose -f docker-compose.sonar.yml up -d
+	@echo "SonarQube is starting at http://localhost:9000"
+	@echo "Default credentials: admin/admin"
+	@echo "Please wait a few minutes for SonarQube to fully initialize"
+
+sonar-stop:
+	@echo "Stopping SonarQube..."
+	docker-compose -f docker-compose.sonar.yml down
+
+sonar-analyze: coverage
+	@echo "Running SonarQube analysis..."
+	./scripts/run-sonar.sh
+
+sonar-clean:
+	@echo "Cleaning SonarQube data..."
+	docker-compose -f docker-compose.sonar.yml down -v
+	docker volume prune -f
+
 # Help command
 .PHONY: help
 help:
 	@echo "GRA Framework Development Commands:"
-	@echo "  make test      - Run tests"
-	@echo "  make coverage  - Run tests with coverage and generate HTML report"
-	@echo "  make bench     - Run benchmarks"
-	@echo "  make race      - Run tests with race detector"
-	@echo "  make pages     - Generate GitHub Pages content"
-	@echo "  make verify    - Verify code quality (fmt, vet, lint)"
-	@echo "  make clean     - Clean up generated files, backups, and binaries"
-	@echo "  make help      - Show this help message"
+	@echo "  make test         - Run tests"
+	@echo "  make coverage     - Run tests with coverage and generate HTML report"
+	@echo "  make bench        - Run benchmarks"
+	@echo "  make race         - Run tests with race detector"
+	@echo "  make pages        - Generate GitHub Pages content"
+	@echo "  make verify       - Verify code quality (fmt, vet, lint)"
+	@echo "  make clean        - Clean up generated files, backups, and binaries"
+	@echo ""
+	@echo "SonarQube Commands:"
+	@echo "  make sonar-start  - Start SonarQube server with Docker"
+	@echo "  make sonar-stop   - Stop SonarQube server"
+	@echo "  make sonar-analyze- Run SonarQube analysis (requires SONAR_TOKEN)"
+	@echo "  make sonar-clean  - Clean SonarQube data and volumes"
+	@echo ""
+	@echo "  make help         - Show this help message"
