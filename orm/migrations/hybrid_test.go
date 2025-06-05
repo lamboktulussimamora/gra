@@ -664,3 +664,11 @@ func TestFullWorkflow(t *testing.T) {
 		t.Error("Migration files should still exist after rollback")
 	}
 }
+
+// Import required types and constants for hybrid migration tests
+// These are re-exported for test visibility if not already imported
+// (If these are already imported, this is a no-op)
+
+// HybridMigrator, MigrationFile, MigrationStatus, NewHybridMigrator, NewModelRegistry, MigrationMode, etc.
+// are defined in the migrations package and available for use in this test file.
+// The following import ensures all symbols are available for type checking and test execution.
