@@ -57,8 +57,8 @@ const (
 )
 
 // createTestEntry creates a standard cache entry for testing
-func createTestEntry() *CacheEntry {
-	return &CacheEntry{
+func createTestEntry() *Entry {
+	return &Entry{
 		Body:         []byte(testBody),
 		StatusCode:   http.StatusOK,
 		Headers:      map[string][]string{headerContentType: {valApplicationJSON}},
@@ -68,13 +68,13 @@ func createTestEntry() *CacheEntry {
 
 // testCacheEntryExists verifies if a cache entry exists or not
 func testCacheEntryExists(t *testing.T, store *MemoryStore, key string, shouldExist bool, reason string) {
-	t.Helper()
-	_, exists := store.Get(key)
+	entry, exists := store.Get(key)
 	if shouldExist && !exists {
 		t.Errorf(errCacheEntryExists, "exist")
 	} else if !shouldExist && exists {
 		t.Errorf(errCacheEntryExists, reason)
 	}
+	_ = entry // avoid unused variable warning
 }
 
 func TestMemoryStore(t *testing.T) {
@@ -181,7 +181,7 @@ func createTestHandler(handlerCalled *int) func(c *context.Context) {
 }
 
 // setupCacheTest creates common test objects for cache middleware tests
-func setupCacheTest() (*MemoryStore, CacheConfig, *int) {
+func setupCacheTest() (*MemoryStore, Config, *int) {
 	store := NewMemoryStore()
 	config := DefaultCacheConfig()
 	config.Store = store
