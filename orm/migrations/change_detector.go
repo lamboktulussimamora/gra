@@ -1,7 +1,7 @@
 package migrations
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
 	"sort"
 	"strings"
@@ -70,7 +70,7 @@ type MigrationPlan struct {
 
 // calculatePlanChecksum creates a checksum for the entire migration plan
 func (cd *ChangeDetector) calculatePlanChecksum(changes []MigrationChange) string {
-	hasher := md5.New()
+	hasher := sha256.New()
 
 	// Sort changes for consistent checksum
 	sortedChanges := make([]MigrationChange, len(changes))
