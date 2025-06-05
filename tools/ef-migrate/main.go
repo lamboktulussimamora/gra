@@ -21,9 +21,9 @@ import (
 
 // Constants for error messages and formatting
 const (
-	ErrorFailedToGetHistory = "❌ Failed to get migration history:"
-	FormatMigrationLine     = "   %s\n"
-	TimeFormat              = "2006-01-02 15:04:05"
+	ErrorFailedToGetHistoryFmt = "❌ Failed to get migration history: %v"
+	FormatMigrationLine        = "   %s\n"
+	TimeFormat                 = "2006-01-02 15:04:05"
 )
 
 type CLIConfig struct {
@@ -213,7 +213,7 @@ func getMigrations(manager *migrations.EFMigrationManager, config CLIConfig) {
 
 	history, err := manager.GetMigrationHistory()
 	if err != nil {
-		log.Printf("❌ Failed to get migration history: %v", err)
+		log.Printf(ErrorFailedToGetHistoryFmt, err)
 		return
 	}
 
@@ -287,7 +287,7 @@ func showStatus(manager *migrations.EFMigrationManager, config CLIConfig) {
 
 	if len(history.Applied) > 0 {
 		latest := history.Applied[len(history.Applied)-1]
-		fmt.Printf("Latest:   %s (%s)\n", latest.ID, latest.AppliedAt.Format("2006-01-02 15:04:05"))
+		fmt.Printf("Latest:   %s (%s)\n", latest.ID, latest.AppliedAt.Format(TimeFormat))
 	}
 
 	if len(history.Pending) > 0 {
@@ -301,7 +301,8 @@ func generateScript(manager *migrations.EFMigrationManager, args []string, confi
 
 	history, err := manager.GetMigrationHistory()
 	if err != nil {
-		log.Fatal("❌ Failed to get migration history:", err)
+		log.Printf(ErrorFailedToGetHistoryFmt, err)
+		return
 	}
 
 	if len(history.Pending) == 0 {
@@ -326,7 +327,7 @@ func generateScript(manager *migrations.EFMigrationManager, args []string, confi
 
 	// Generate script
 	fmt.Println("-- Generated Migration Script")
-	fmt.Printf("-- Generated at: %s\n", time.Now().Format("2006-01-02 15:04:05"))
+	fmt.Printf("-- Generated at: %s\n", time.Now().Format(TimeFormat))
 	fmt.Printf("-- Migrations: %d\n", len(migrations))
 	fmt.Println("-- ==========================================")
 
@@ -346,7 +347,7 @@ func removeMigration(manager *migrations.EFMigrationManager, args []string, conf
 
 	history, err := manager.GetMigrationHistory()
 	if err != nil {
-		log.Printf("❌ Failed to get migration history: %v", err)
+		log.Printf(ErrorFailedToGetHistoryFmt, err)
 		return
 	}
 
@@ -382,7 +383,7 @@ func formatMigrationInfo(m migrations.Migration, status string) string {
 
 	result := fmt.Sprintf("%s %s", statusIcon, m.ID)
 	if !m.AppliedAt.IsZero() {
-		result += fmt.Sprintf(" (%s)", m.AppliedAt.Format("2006-01-02 15:04:05"))
+		result += fmt.Sprintf(" (%s)", m.AppliedAt.Format(TimeFormat))
 	}
 	if m.Description != "" {
 		result += fmt.Sprintf(" - %s", m.Description)
@@ -434,7 +435,7 @@ func saveMigrationToFile(migration *migrations.Migration, dir string) error {
 `,
 		migration.Name,
 		migration.Description,
-		time.Now().Format("2006-01-02 15:04:05"),
+		time.Now().Format(TimeFormat),
 		migration.Version,
 		migration.UpSQL,
 		migration.DownSQL,
