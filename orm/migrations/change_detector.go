@@ -366,7 +366,7 @@ func (cd *ChangeDetector) findOrphanedForeignKeys(changes []MigrationChange) []s
 
 // findDataLossChanges identifies changes that might cause data loss
 func (cd *ChangeDetector) findDataLossChanges(changes []MigrationChange) []MigrationChange {
-	var dataLossChanges []MigrationChange
+	dataLossChanges := make([]MigrationChange, 0, len(changes))
 
 	for _, change := range changes {
 		switch change.Type {
