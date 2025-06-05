@@ -18,18 +18,21 @@ func IntegrationTest() {
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
+
+	// 2. Create migrator
+	migrator, err := NewHybridMigrator(
+		db,
+		SQLite,
+		"./test_migrations",
+	)
+	if err != nil {
+		log.Fatalf("Failed to create migrator: %v", err)
+	}
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
 			log.Printf("Warning: Failed to close database: %v", closeErr)
 		}
 	}()
-
-	// 2. Create migrator
-	migrator := NewHybridMigrator(
-		db,
-		SQLite,
-		"./test_migrations",
-	)
 
 	// 3. Register existing GRA models
 	fmt.Println("1. Registering GRA models...")
