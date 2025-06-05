@@ -360,7 +360,7 @@ func (sg *SQLGenerator) generateCreateTableSQL(change MigrationChange) (string, 
 
 	// Add foreign key constraints
 	for constraintName, constraint := range snapshot.Constraints {
-		if constraint.Type == "FOREIGN KEY" {
+		if constraint.Type == foreignKeyConstraintType {
 			fkSQL := sg.generateAddForeignKeySQL(snapshot.TableName, constraintName, constraint)
 			statements = append(statements, fkSQL)
 		}
@@ -683,3 +683,7 @@ func (sg *SQLGenerator) quoteIdentifiers(identifiers []string) []string {
 	}
 	return quoted
 }
+
+const (
+	foreignKeyConstraintType = "FOREIGN KEY"
+)
