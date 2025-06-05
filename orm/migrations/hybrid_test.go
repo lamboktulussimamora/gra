@@ -40,7 +40,7 @@ type TestUserWithBio struct {
 
 // TableName returns the same table name as TestUser to enable column change detection
 func (TestUserWithBio) TableName() string {
-	return "testusers"
+	return testUsersTable
 }
 
 // UserWithoutEmail is used for testing destructive changes (column removal)
@@ -51,8 +51,15 @@ type UserWithoutEmail struct {
 
 // TableName returns the same table name as TestUser to enable destructive change detection
 func (UserWithoutEmail) TableName() string {
-	return "testusers"
+	return testUsersTable
 }
+
+const (
+	testUsersTable           = "testusers"
+	warnFailedToCloseDB      = "Warning: Failed to close database: %v"
+	errFailedToDetectChanges = "Failed to detect changes: %v"
+	testUsersTableQuery      = "SELECT name FROM sqlite_master WHERE type='table' AND name='testusers'"
+)
 
 // Test helpers
 func setupTestDB(t *testing.T) (*sql.DB, string) {
@@ -155,7 +162,7 @@ func TestChangeDetection(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Warning: Failed to close database: %v", closeErr)
+			t.Logf(warnFailedToCloseDB, closeErr)
 		}
 	}()
 
@@ -166,7 +173,7 @@ func TestChangeDetection(t *testing.T) {
 	// Detect changes (should detect new tables)
 	plan, err := migrator.changeDetector.DetectChanges()
 	if err != nil {
-		t.Fatalf("Failed to detect changes: %v", err)
+		t.Fatalf(errFailedToDetectChanges, err)
 	}
 
 	if len(plan.Changes) == 0 {
@@ -197,7 +204,7 @@ func TestSQLGeneration(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Warning: Failed to close database: %v", closeErr)
+			t.Logf(warnFailedToCloseDB, closeErr)
 		}
 	}()
 
@@ -205,7 +212,7 @@ func TestSQLGeneration(t *testing.T) {
 
 	plan, err := migrator.changeDetector.DetectChanges()
 	if err != nil {
-		t.Fatalf("Failed to detect changes: %v", err)
+		t.Fatalf(errFailedToDetectChanges, err)
 	}
 
 	migrationSQL, err := migrator.sqlGenerator.GenerateMigrationSQL(plan)
@@ -234,101 +241,75 @@ func TestSQLGeneration(t *testing.T) {
 }
 
 // Test Migration Creation and Application
-func TestMigrationCreationAndApplication(t *testing.T) {
-	migrator, db, _ := setupTestMigrator(t)
-	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Warning: Failed to close database: %v", closeErr)
-		}
-	}()
-
-	// Register model
+func registerModelAndLog(t *testing.T, migrator *HybridMigrator) {
 	migrator.DbSet(&TestUser{})
-
-	// Debug: Check what model snapshots exist
 	models := migrator.registry.GetModels()
 	t.Logf("Registered models:")
 	for name, snapshot := range models {
 		t.Logf("  Model: %s, Table: %s", name, snapshot.TableName)
 	}
+}
 
-	// Create migration
+func createAndValidateMigration(t *testing.T, migrator *HybridMigrator) *MigrationFile {
 	migrationFile, err := migrator.AddMigration("create_users", Interactive)
 	if err != nil {
 		t.Fatalf("Failed to create migration: %v", err)
 	}
-
-	// Debug: Log migration details
-	t.Logf("Migration created: %s", migrationFile.Name)
-	t.Logf("Migration file path: %s", migrationFile.FilePath)
-	t.Logf("Migration changes count: %d", len(migrationFile.Changes))
-	for i, change := range migrationFile.Changes {
-		t.Logf("  Change %d: %s on %s", i, change.Type, change.TableName)
+	if migrationFile.Name != "create_users" {
+		t.Errorf("Expected migration name 'create_users', got '%s'", migrationFile.Name)
 	}
+	if _, err := os.Stat(migrationFile.FilePath); os.IsNotExist(err) {
+		t.Error("Migration file was not created")
+	}
+	return migrationFile
+}
 
-	// Debug: Read and log migration file content
+func logMigrationFileContent(t *testing.T, migrationFile *MigrationFile) {
 	if content, err := os.ReadFile(migrationFile.FilePath); err == nil {
 		t.Logf("Migration file content:\n%s", string(content))
 	} else {
 		t.Logf("Failed to read migration file: %v", err)
 	}
+}
 
-	if migrationFile.Name != "create_users" {
-		t.Errorf("Expected migration name 'create_users', got '%s'", migrationFile.Name)
-	}
-
-	// Check that migration file was created
-	if _, err := os.Stat(migrationFile.FilePath); os.IsNotExist(err) {
-		t.Error("Migration file was not created")
-	}
-
-	// Apply migration
-	err = migrator.ApplyMigrations(Automatic)
+func applyMigrationAndCheckTable(t *testing.T, migrator *HybridMigrator, db *sql.DB) {
+	err := migrator.ApplyMigrations(Automatic)
 	if err != nil {
 		t.Fatalf("Failed to apply migration: %v", err)
 	}
-
-	// Debug: List all tables in the database
-	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='table'")
-	if err != nil {
-		t.Logf("Failed to query tables: %v", err)
-	} else {
-		defer func() {
-			if closeErr := rows.Close(); closeErr != nil {
-				t.Logf("Warning: Failed to close rows: %v", closeErr)
-			}
-		}()
-		t.Log("Tables in database:")
-		for rows.Next() {
-			var name string
-			if err := rows.Scan(&name); err != nil {
-				t.Logf("Warning: Failed to scan table name: %v", err)
-				continue
-			}
-			t.Logf("  - %s", name)
-		}
-	}
-
-	// Check that table was created
 	var tableName string
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='testusers'").Scan(&tableName)
+	err = db.QueryRow(testUsersTableQuery).Scan(&tableName)
 	if err != nil {
 		t.Errorf("Table 'testusers' was not created: %v", err)
 	}
+}
 
-	// Check migration status
+func validateMigrationStatus(t *testing.T, migrator *HybridMigrator) {
 	status, err := migrator.GetMigrationStatus()
 	if err != nil {
 		t.Fatalf("Failed to get migration status: %v", err)
 	}
-
 	if len(status.AppliedMigrations) != 1 {
 		t.Errorf("Expected 1 applied migration, got %d", len(status.AppliedMigrations))
 	}
-
 	if status.HasPendingChanges {
 		t.Error("Should not have pending changes after applying migration")
 	}
+}
+
+func TestMigrationCreationAndApplication(t *testing.T) {
+	migrator, db, _ := setupTestMigrator(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(warnFailedToCloseDB, closeErr)
+		}
+	}()
+
+	registerModelAndLog(t, migrator)
+	migrationFile := createAndValidateMigration(t, migrator)
+	logMigrationFileContent(t, migrationFile)
+	applyMigrationAndCheckTable(t, migrator, db)
+	validateMigrationStatus(t, migrator)
 }
 
 // Test Migration Rollback
@@ -336,7 +317,7 @@ func TestMigrationRollback(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Warning: Failed to close database: %v", closeErr)
+			t.Logf(warnFailedToCloseDB, closeErr)
 		}
 	}()
 
@@ -356,7 +337,7 @@ func TestMigrationRollback(t *testing.T) {
 
 	// Verify table exists
 	var tableName string
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='testusers'").Scan(&tableName)
+	err = db.QueryRow(testUsersTableQuery).Scan(&tableName)
 	if err != nil {
 		t.Fatalf("Table should exist before rollback: %v", err)
 	}
@@ -368,7 +349,7 @@ func TestMigrationRollback(t *testing.T) {
 	}
 
 	// Verify table no longer exists
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='testusers'").Scan(&tableName)
+	err = db.QueryRow(testUsersTableQuery).Scan(&tableName)
 	if err == nil {
 		t.Error("Table should not exist after rollback")
 	}
@@ -389,7 +370,7 @@ func TestColumnChanges(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Warning: Failed to close database: %v", closeErr)
+			t.Logf(warnFailedToCloseDB, closeErr)
 		}
 	}()
 
@@ -414,7 +395,7 @@ func TestColumnChanges(t *testing.T) {
 	// Detect changes
 	plan, err := newMigrator.changeDetector.DetectChanges()
 	if err != nil {
-		t.Fatalf("Failed to detect changes: %v", err)
+		t.Fatalf(errFailedToDetectChanges, err)
 	}
 
 	// Debug: Print what was detected
@@ -441,7 +422,7 @@ func TestMigrationModes(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Warning: Failed to close database: %v", closeErr)
+			t.Logf(warnFailedToCloseDB, closeErr)
 		}
 	}()
 
@@ -463,7 +444,7 @@ func TestMigrationModes(t *testing.T) {
 	}
 
 	var tableName string
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='testusers'").Scan(&tableName)
+	err = db.QueryRow(testUsersTableQuery).Scan(&tableName)
 	if err == nil {
 		t.Error("Table should not exist in GenerateOnly mode")
 	}
@@ -475,7 +456,7 @@ func TestMigrationModes(t *testing.T) {
 	}
 
 	// Now table should exist
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='testusers'").Scan(&tableName)
+	err = db.QueryRow(testUsersTableQuery).Scan(&tableName)
 	if err != nil {
 		t.Errorf("Table should exist after applying migration: %v", err)
 	}
@@ -486,7 +467,7 @@ func TestDatabaseInspector(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Warning: Failed to close database: %v", closeErr)
+			t.Logf(warnFailedToCloseDB, closeErr)
 		}
 	}()
 
@@ -542,7 +523,7 @@ func TestErrorHandling(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Warning: Failed to close database: %v", closeErr)
+			t.Logf(warnFailedToCloseDB, closeErr)
 		}
 	}()
 
@@ -572,7 +553,7 @@ func TestErrorHandling(t *testing.T) {
 
 	plan, err := newMigrator.changeDetector.DetectChanges()
 	if err != nil {
-		t.Fatalf("Failed to detect changes: %v", err)
+		t.Fatalf(errFailedToDetectChanges, err)
 	}
 
 	// Should have destructive changes
@@ -609,7 +590,7 @@ func TestFullWorkflow(t *testing.T) {
 	migrator, db, _ := setupTestMigrator(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Warning: Failed to close database: %v", closeErr)
+			t.Logf(warnFailedToCloseDB, closeErr)
 		}
 	}()
 
