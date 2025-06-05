@@ -1,7 +1,7 @@
 package migrations
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
 	"reflect"
 	"sort"
@@ -559,9 +559,9 @@ func (mr *ModelRegistry) calculateSnapshotChecksum(snapshot ModelSnapshot) strin
 		parts = append(parts, fmt.Sprintf("idx:%s:%s:%t", idx.Name, strings.Join(idx.Columns, ","), idx.Unique))
 	}
 
-	// Calculate MD5 hash
+	// Calculate SHA256 hash
 	data := strings.Join(parts, "|")
-	hash := md5.Sum([]byte(data))
+	hash := sha256.Sum256([]byte(data))
 	return fmt.Sprintf("%x", hash)
 }
 
