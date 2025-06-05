@@ -64,6 +64,7 @@ type EFMigrationManager struct {
 	autoMigrate       bool
 	pendingMigrations []Migration
 	loadedMigrations  map[string]Migration // Store all loaded migrations with their SQL
+	driver            string               // Database driver for placeholder conversion
 }
 
 // EFMigrationConfig configures the migration manager
@@ -80,7 +81,7 @@ func DefaultEFMigrationConfig() *EFMigrationConfig {
 	return &EFMigrationConfig{
 		AutoMigrate:    false,
 		MigrationTable: "__ef_migrations_history",
-		HistoryTable:   "__migration_history",
+		HistoryTable:   "__ef_migration_history", // Changed to avoid conflict with hybrid migrator
 		SnapshotTable:  "__model_snapshot",
 		Logger:         log.Default(),
 	}
@@ -92,7 +93,7 @@ func NewEFMigrationManager(db *sql.DB, config *EFMigrationConfig) *EFMigrationMa
 		config = DefaultEFMigrationConfig()
 	}
 
-	return &EFMigrationManager{
+	em := &EFMigrationManager{
 		db:                db,
 		logger:            config.Logger,
 		migrationTable:    config.MigrationTable,
@@ -102,39 +103,58 @@ func NewEFMigrationManager(db *sql.DB, config *EFMigrationConfig) *EFMigrationMa
 		pendingMigrations: make([]Migration, 0),
 		loadedMigrations:  make(map[string]Migration),
 	}
+
+	// Detect database driver
+	em.driver = em.detectDatabaseDriver()
+
+	return em
 }
 
-// detectDatabaseType detects the database type from the driver
-func (em *EFMigrationManager) detectDatabaseType() string {
-	// Query to detect database type
-	var dbType string
-	row := em.db.QueryRow("SELECT 1")
-	if err := row.Scan(&dbType); err == nil {
-		// Try PostgreSQL specific query
-		row = em.db.QueryRow("SELECT version()")
-		var version string
-		if err := row.Scan(&version); err == nil {
-			if strings.Contains(strings.ToLower(version), "postgresql") {
-				return "postgres"
-			}
-		}
+// detectDatabaseDriver detects the database driver type
+func (em *EFMigrationManager) detectDatabaseDriver() string {
+	// Test queries to detect database type
+	if _, err := em.db.Query("SELECT 1::integer"); err == nil {
+		return "postgres"
+	}
+	if _, err := em.db.Query("SELECT sqlite_version()"); err == nil {
+		return "sqlite3"
+	}
+	if _, err := em.db.Query("SELECT VERSION()"); err == nil {
+		return "mysql"
+	}
+	// Default to sqlite3 if detection fails
+	return "sqlite3"
+}
 
-		// Try SQLite specific query
-		row = em.db.QueryRow("SELECT sqlite_version()")
-		if err := row.Scan(&version); err == nil {
-			return "sqlite"
-		}
+// ConvertQueryPlaceholders converts query placeholders based on database driver (exported for testing)
+func (em *EFMigrationManager) ConvertQueryPlaceholders(query string) string {
+	return em.convertQueryPlaceholders(query)
+}
+
+// convertQueryPlaceholders converts query placeholders based on database driver
+func (em *EFMigrationManager) convertQueryPlaceholders(query string) string {
+	if em.driver != "postgres" {
+		return query // SQLite and MySQL use ? placeholders
 	}
 
-	// Default to postgres
-	return "postgres"
+	// Convert ? placeholders to $1, $2, $3 for PostgreSQL
+	count := 0
+	result := ""
+	for _, char := range query {
+		if char == '?' {
+			count++
+			result += fmt.Sprintf("$%d", count)
+		} else {
+			result += string(char)
+		}
+	}
+	return result
 }
 
 // getAutoIncrementSQL returns the appropriate auto-increment SQL for the database type
 func (em *EFMigrationManager) getAutoIncrementSQL() string {
-	dbType := em.detectDatabaseType()
-	switch dbType {
-	case "sqlite":
+	switch em.driver {
+	case "sqlite3":
 		return "INTEGER PRIMARY KEY AUTOINCREMENT"
 	default: // postgres
 		return "SERIAL PRIMARY KEY"
@@ -145,7 +165,8 @@ func (em *EFMigrationManager) getAutoIncrementSQL() string {
 func (em *EFMigrationManager) EnsureSchema() error {
 	autoIncrement := em.getAutoIncrementSQL()
 
-	queries := []string{
+	// Create tables first
+	tableQueries := []string{
 		// EF Migrations History table (equivalent to EF Core's __EFMigrationsHistory)
 		fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS %s (
@@ -183,7 +204,43 @@ func (em *EFMigrationManager) EnsureSchema() error {
 				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			)
 		`, em.snapshotTable, autoIncrement),
+	}
 
+	// Execute table creation queries
+	for i, query := range tableQueries {
+		convertedQuery := em.convertQueryPlaceholders(query)
+		em.logger.Printf("DEBUG: Executing table creation query %d: %s", i+1, convertedQuery)
+		if _, err := em.db.Exec(convertedQuery); err != nil {
+			em.logger.Printf("ERROR: Failed to execute table creation query %d: %v", i+1, err)
+			em.logger.Printf("ERROR: Query was: %s", convertedQuery)
+			return fmt.Errorf("failed to create migration schema: %w", err)
+		}
+		em.logger.Printf("DEBUG: Successfully executed table creation query %d", i+1)
+	}
+
+	// Debug: Verify table structure before creating indexes
+	if em.driver == "sqlite3" {
+		// Check if the __migration_history table exists and what columns it has
+		rows, err := em.db.Query("PRAGMA table_info(__migration_history)")
+		if err != nil {
+			em.logger.Printf("DEBUG: Failed to get table info: %v", err)
+		} else {
+			em.logger.Println("DEBUG: __migration_history table columns:")
+			for rows.Next() {
+				var cid int
+				var name, dataType string
+				var notNull, pk int
+				var defaultValue interface{}
+				if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err == nil {
+					em.logger.Printf("DEBUG:   Column: %s, Type: %s, NotNull: %d, PK: %d", name, dataType, notNull, pk)
+				}
+			}
+			rows.Close()
+		}
+	}
+
+	// Create indexes after tables are confirmed to exist
+	indexQueries := []string{
 		// Indexes for performance
 		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_%s_version ON %s(version)`,
 			strings.ReplaceAll(em.historyTable, "__", ""), em.historyTable),
@@ -191,10 +248,16 @@ func (em *EFMigrationManager) EnsureSchema() error {
 			strings.ReplaceAll(em.historyTable, "__", ""), em.historyTable),
 	}
 
-	for _, query := range queries {
-		if _, err := em.db.Exec(query); err != nil {
+	// Execute index creation queries
+	for i, query := range indexQueries {
+		convertedQuery := em.convertQueryPlaceholders(query)
+		em.logger.Printf("DEBUG: Executing index creation query %d: %s", i+1, convertedQuery)
+		if _, err := em.db.Exec(convertedQuery); err != nil {
+			em.logger.Printf("ERROR: Failed to execute index creation query %d: %v", i+1, err)
+			em.logger.Printf("ERROR: Query was: %s", convertedQuery)
 			return fmt.Errorf("failed to create migration schema: %w", err)
 		}
+		em.logger.Printf("DEBUG: Successfully executed index creation query %d", i+1)
 	}
 
 	em.logger.Println("✓ Migration schema initialized")
@@ -228,17 +291,9 @@ func (em *EFMigrationManager) AddLoadedMigration(migration Migration) {
 	em.loadedMigrations[migration.ID] = migration
 
 	// Check if migration is already applied by querying the database
-	var query string
-	dbType := em.detectDatabaseType()
-	if dbType == "postgres" {
-		query = fmt.Sprintf(`
-			SELECT COUNT(*) FROM %s WHERE migration_id = $1
-		`, em.historyTable)
-	} else {
-		query = fmt.Sprintf(`
-			SELECT COUNT(*) FROM %s WHERE migration_id = ?
-		`, em.historyTable)
-	}
+	query := em.convertQueryPlaceholders(fmt.Sprintf(`
+		SELECT COUNT(*) FROM %s WHERE migration_id = ?
+	`, em.historyTable))
 
 	var count int
 	err := em.db.QueryRow(query, migration.ID).Scan(&count)
@@ -378,30 +433,37 @@ func (em *EFMigrationManager) applyMigration(migration Migration) error {
 
 	em.logger.Printf("Applying migration: %s", migration.ID)
 
-	// Execute UP SQL
-	if _, err := tx.Exec(migration.UpSQL); err != nil {
+	// Execute UP SQL with proper placeholder conversion
+	upSQL := em.convertQueryPlaceholders(migration.UpSQL)
+
+	// Debug: Log the SQL being executed
+	fmt.Printf("DEBUG: Executing SQL:\n%s\n", upSQL)
+
+	if _, err := tx.Exec(upSQL); err != nil {
 		// Record failed migration
 		em.recordMigrationResult(migration, MigrationStateFailed, 0, err.Error())
+		fmt.Printf("DEBUG: SQL execution failed: %v\n", err)
 		return fmt.Errorf("failed to execute migration SQL: %w", err)
 	}
+
+	fmt.Printf("DEBUG: SQL executed successfully\n")
 
 	executionTime := int(time.Since(startTime).Milliseconds())
 
 	// Record in EF migrations history table
-	_, err = tx.Exec(
-		fmt.Sprintf("INSERT INTO %s (migration_id, product_version) VALUES ($1, $2)", em.migrationTable),
-		migration.ID, "GRA-1.1.0",
-	)
+	efHistoryQuery := em.convertQueryPlaceholders(
+		fmt.Sprintf("INSERT INTO %s (migration_id, product_version) VALUES (?, ?)", em.migrationTable))
+	_, err = tx.Exec(efHistoryQuery, migration.ID, "GRA-1.1.0")
 	if err != nil {
 		return fmt.Errorf("failed to record in EF history: %w", err)
 	}
 
 	// Record in detailed history table
-	_, err = tx.Exec(
-		fmt.Sprintf(`
-			INSERT INTO %s (migration_id, name, version, description, up_sql, down_sql, applied_at, state, execution_time_ms)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		`, em.historyTable),
+	detailHistoryQuery := em.convertQueryPlaceholders(fmt.Sprintf(`
+		INSERT INTO %s (migration_id, name, version, description, up_sql, down_sql, applied_at, state, execution_time_ms)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, em.historyTable))
+	_, err = tx.Exec(detailHistoryQuery,
 		migration.ID, migration.Name, migration.Version, migration.Description,
 		migration.UpSQL, migration.DownSQL, time.Now(), "applied", executionTime,
 	)
@@ -485,30 +547,28 @@ func (em *EFMigrationManager) rollbackMigration(migration Migration) error {
 
 	em.logger.Printf("Rolling back migration: %s", migration.ID)
 
-	// Execute DOWN SQL
-	if _, err := tx.Exec(migration.DownSQL); err != nil {
+	// Execute DOWN SQL with proper placeholder conversion
+	downSQL := em.convertQueryPlaceholders(migration.DownSQL)
+	if _, err := tx.Exec(downSQL); err != nil {
 		return fmt.Errorf("failed to execute rollback SQL: %w", err)
 	}
 
 	// Remove from EF migrations history
-	_, err = tx.Exec(
-		fmt.Sprintf("DELETE FROM %s WHERE migration_id = $1", em.migrationTable),
-		migration.ID,
-	)
+	deleteQuery := em.convertQueryPlaceholders(
+		fmt.Sprintf("DELETE FROM %s WHERE migration_id = ?", em.migrationTable))
+	_, err = tx.Exec(deleteQuery, migration.ID)
 	if err != nil {
 		return fmt.Errorf("failed to remove from EF history: %w", err)
 	}
 
 	// Update history table
 	executionTime := int(time.Since(startTime).Milliseconds())
-	_, err = tx.Exec(
-		fmt.Sprintf(`
-			UPDATE %s 
-			SET rolled_back_at = $1, state = 'rolled_back'
-			WHERE migration_id = $2
-		`, em.historyTable),
-		time.Now(), migration.ID,
-	)
+	updateQuery := em.convertQueryPlaceholders(fmt.Sprintf(`
+		UPDATE %s 
+		SET rolled_back_at = ?, state = 'rolled_back'
+		WHERE migration_id = ?
+	`, em.historyTable))
+	_, err = tx.Exec(updateQuery, time.Now(), migration.ID)
 	if err != nil {
 		return fmt.Errorf("failed to update history: %w", err)
 	}
@@ -572,14 +632,14 @@ func (em *EFMigrationManager) recordMigrationResult(migration Migration, state M
 		stateStr = "failed"
 	}
 
-	query := fmt.Sprintf(`
+	query := em.convertQueryPlaceholders(fmt.Sprintf(`
 		INSERT INTO %s (migration_id, name, version, description, up_sql, down_sql, state, execution_time_ms, error_message)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (migration_id) DO UPDATE SET 
 			state = EXCLUDED.state,
 			execution_time_ms = EXCLUDED.execution_time_ms,
 			error_message = EXCLUDED.error_message
-	`, em.historyTable)
+	`, em.historyTable))
 
 	_, err := em.db.Exec(query,
 		migration.ID, migration.Name, migration.Version, migration.Description,

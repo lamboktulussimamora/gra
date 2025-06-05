@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.0.7 (2025-06-05)
+
+### Hybrid Migration System Bug Fix
+
+#### Bug Fixes:
+- **Fixed HybridMigrator initialization issue**: Fixed runtime error where `migrator.EnsureSchema()` was called directly but `HybridMigrator` doesn't expose this method
+- **Enhanced GetMigrationStatus() method**: Added automatic schema initialization for both EF migration schema and migration history table
+- **Improved demo reliability**: Updated hybrid migration demo to use proper API patterns and automatic initialization
+
+#### New Features:
+- **Enhanced Hybrid Migration System**: Complete hybrid migration system with model-driven migration generation
+- **Model Registry**: Added ModelRegistry for registering Go structs as database models
+- **Change Detection**: Implemented automatic change detection between Go models and database schema
+- **SQL Generation**: Added automated SQL generation for schema changes (CREATE TABLE, ALTER TABLE, etc.)
+- **Migration File Generation**: Automated migration file creation with proper up/down scripts
+- **Database Inspector**: Added database schema inspection capabilities for multiple database engines
+
+#### Examples:
+- **Hybrid Migration Demo**: Complete working demo showing model registration, change detection, and migration generation
+- **Integration Tests**: Added comprehensive test suite for hybrid migration functionality
+
+#### Documentation:
+- Updated hybrid migration documentation with proper usage patterns
+- Added troubleshooting guide for common migration issues
+- Enhanced examples with proper error handling
+
 ## v1.0.6 (2025-05-17)
 
 ### Go Version Update

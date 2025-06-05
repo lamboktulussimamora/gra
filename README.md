@@ -23,9 +23,11 @@ A lightweight HTTP framework for building web applications in Go, inspired by Gi
 - Structured logging
 - **Enhanced Entity Framework Core-like ORM**
 - **Automatic database migrations**
+- **Hybrid Migration System** with model-driven migration generation
 - **LINQ-style querying with generics**
 - **Change tracking and entity states**
 - **Transaction management**
+- **Database schema inspection and comparison**
 - Clean architecture friendly
 
 ## Installation
@@ -752,7 +754,11 @@ if err != nil {
 
 ### Migration System
 
-The migration system automatically creates and updates database tables based on your entity definitions:
+GRA provides multiple migration approaches to suit different development workflows:
+
+#### 1. Automatic Migration System
+
+The automatic migration system creates and updates database tables based on your entity definitions:
 
 ```go
 // Create migration runner
@@ -775,6 +781,72 @@ err := migrationRunner.AutoMigrate(entities...)
 if err != nil {
     log.Fatal("Migration failed:", err)
 }
+```
+
+#### 2. Hybrid Migration System (New in v1.0.7)
+
+The hybrid migration system combines model-driven development with explicit migration file generation:
+
+```go
+import (
+    "github.com/lamboktulussimamora/gra/orm/migrations"
+)
+
+// Create hybrid migrator
+migrator := migrations.NewHybridMigrator(db, config)
+
+// Register your models
+registry := migrations.NewModelRegistry()
+registry.RegisterModel(&models.User{})
+registry.RegisterModel(&models.Product{})
+registry.RegisterModel(&models.Category{})
+
+// Check migration status (automatically initializes schema)
+status, err := migrator.GetMigrationStatus()
+if err != nil {
+    log.Fatal(err)
+}
+
+// Generate migration from model changes
+migration, err := migrator.CreateMigration("create_initial_schema", "Initial database schema")
+if err != nil {
+    log.Fatal(err)
+}
+
+// Apply migrations
+err = migrator.ApplyMigrations()
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+#### Key Features of Hybrid Migration System:
+- **Model Registration**: Register Go structs as database models
+- **Change Detection**: Automatic detection of schema differences
+- **SQL Generation**: Automated DDL generation (CREATE TABLE, ALTER TABLE, etc.)
+- **Migration Files**: Generates proper up/down migration scripts
+- **Database Inspection**: Multi-database schema comparison
+- **Safety Checks**: Warns about destructive changes
+
+#### 3. Entity Framework Core-like CLI
+
+For teams familiar with Entity Framework Core, use the CLI tool:
+
+```bash
+# Install the CLI tool
+go install github.com/lamboktulussimamora/gra/tools/ef-migrate
+
+# Create new migration
+ef-migrate add-migration CreateUsersTable
+
+# Apply migrations
+ef-migrate update-database
+
+# Check migration status
+ef-migrate status
+
+# Rollback to specific migration
+ef-migrate rollback InitialCreate
 ```
 
 ### Entity Relationships
@@ -814,8 +886,11 @@ userDbSet := ctx.Set(&models.User{})
 users, err := userDbSet.Where("is_active = ?", true).ToList()
 ```
 
-### Complete Example
+### Complete Examples
 
+The framework includes comprehensive examples demonstrating different aspects:
+
+#### 1. Enhanced ORM Demo
 See the comprehensive example at `examples/comprehensive-orm-demo/` for a full demonstration including:
 
 - Database setup and migrations
@@ -827,6 +902,37 @@ See the comprehensive example at `examples/comprehensive-orm-demo/` for a full d
 
 ```bash
 # Run the comprehensive demo
+cd examples/comprehensive-orm-demo
+go run main.go
+```
+
+#### 2. Hybrid Migration Demo (New in v1.0.7)
+Complete demonstration of the hybrid migration system at `examples/hybrid-migration-demo/`:
+
+- Model registration and management
+- Automatic change detection
+- Migration file generation
+- Schema comparison and validation
+- Multi-database support
+
+```bash
+# Run the hybrid migration demo
+cd examples/hybrid-migration-demo
+go run demo.go
+```
+
+#### 3. Manual Migration System
+Traditional migration approach at `examples/manual_migrations/`:
+
+- Direct SQL migration files
+- Shell script-based migration runner
+- Version tracking and rollback support
+
+```bash
+# Run manual migration example
+cd examples/manual_migrations
+./db_migrate_v2.sh status
+```
 cd examples/comprehensive-orm-demo
 go run main.go
 ```

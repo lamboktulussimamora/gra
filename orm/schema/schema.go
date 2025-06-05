@@ -171,20 +171,32 @@ func ParseFieldToColumnForDriver(field reflect.StructField, driver DatabaseDrive
 	}
 
 	sqlTag := field.Tag.Get("sql")
+	migrationTag := field.Tag.Get("migration")
 	columnName := dbTag
 
 	// Determine SQL type based on Go type and database driver
 	sqlType := goTypeToSQLTypeForDriver(field.Type, driver)
 
+	// Check for type override in migration tag
+	if migrationTag != "" {
+		if typeMatch := extractSQLValue(migrationTag, "type"); typeMatch != "" {
+			sqlType = typeMatch
+		}
+	}
+
 	// Parse SQL tags for additional column properties
 	var parts []string
 	parts = append(parts, fmt.Sprintf("%s %s", columnName, sqlType))
 
-	if strings.Contains(sqlTag, "primary_key") {
+	// Check both sql and migration tags for attributes
+	hasFromSql := func(attr string) bool { return strings.Contains(sqlTag, attr) }
+	hasFromMigration := func(attr string) bool { return strings.Contains(migrationTag, attr) }
+
+	if hasFromSql("primary_key") || hasFromMigration("primary_key") {
 		parts = append(parts, "PRIMARY KEY")
 	}
 
-	if strings.Contains(sqlTag, "auto_increment") {
+	if hasFromSql("auto_increment") || hasFromMigration("auto_increment") {
 		// Handle auto-increment based on database driver
 		switch driver {
 		case PostgreSQL:
@@ -198,7 +210,7 @@ func ParseFieldToColumnForDriver(field reflect.StructField, driver DatabaseDrive
 			}
 		case SQLite:
 			// SQLite uses INTEGER PRIMARY KEY AUTOINCREMENT
-			if strings.Contains(sqlTag, "primary_key") && strings.Contains(sqlType, "INTEGER") {
+			if (hasFromSql("primary_key") || hasFromMigration("primary_key")) && strings.Contains(sqlType, "INTEGER") {
 				parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "INTEGER", 1)
 				// Add AUTOINCREMENT if not already present
 				if !strings.Contains(strings.Join(parts, " "), "AUTOINCREMENT") {
@@ -213,16 +225,23 @@ func ParseFieldToColumnForDriver(field reflect.StructField, driver DatabaseDrive
 		}
 	}
 
-	if strings.Contains(sqlTag, "not_null") {
+	if hasFromSql("not_null") || hasFromMigration("not_null") {
 		parts = append(parts, "NOT NULL")
 	}
 
-	if strings.Contains(sqlTag, "unique") {
+	if hasFromSql("unique") || hasFromMigration("unique") {
 		parts = append(parts, "UNIQUE")
 	}
 
-	// Handle default values
-	if defaultMatch := extractSQLValue(sqlTag, "default"); defaultMatch != "" {
+	// Handle default values from both sql and migration tags
+	var defaultMatch string
+	if sqlTag != "" {
+		defaultMatch = extractSQLValue(sqlTag, "default")
+	}
+	if defaultMatch == "" && migrationTag != "" {
+		defaultMatch = extractSQLValue(migrationTag, "default")
+	}
+	if defaultMatch != "" {
 		if defaultMatch == "CURRENT_TIMESTAMP" {
 			parts = append(parts, "DEFAULT CURRENT_TIMESTAMP")
 		} else if defaultMatch != "null" {
