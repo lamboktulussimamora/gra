@@ -18,6 +18,9 @@ const (
 	SQLite DatabaseDriver = "sqlite3"
 	// MySQL driver
 	MySQL DatabaseDriver = "mysql"
+
+	sqlTypeInteger = "INTEGER"
+	sqlTypeText    = "TEXT"
 )
 
 // DetectDatabaseDriver attempts to detect the database driver type from a *sql.DB instance
@@ -282,7 +285,7 @@ func goTypeToPostgreSQLType(t reflect.Type) string {
 	case reflect.String:
 		return "VARCHAR(255)"
 	case reflect.Int, reflect.Int32:
-		return "INTEGER"
+		return sqlTypeInteger
 	case reflect.Int64:
 		return "BIGINT"
 	case reflect.Float32:
@@ -295,7 +298,7 @@ func goTypeToPostgreSQLType(t reflect.Type) string {
 		if t == reflect.TypeOf(time.Time{}) {
 			return "TIMESTAMP"
 		}
-		return "TEXT"
+		return sqlTypeText
 	}
 }
 
@@ -303,9 +306,9 @@ func goTypeToPostgreSQLType(t reflect.Type) string {
 func goTypeToSQLiteType(t reflect.Type) string {
 	switch t.Kind() {
 	case reflect.String:
-		return "TEXT"
+		return sqlTypeText
 	case reflect.Int, reflect.Int32, reflect.Int64:
-		return "INTEGER"
+		return sqlTypeInteger
 	case reflect.Float32, reflect.Float64:
 		return "REAL"
 	case reflect.Bool:
@@ -314,7 +317,7 @@ func goTypeToSQLiteType(t reflect.Type) string {
 		if t == reflect.TypeOf(time.Time{}) {
 			return "DATETIME"
 		}
-		return "TEXT"
+		return sqlTypeText
 	}
 }
 
@@ -337,7 +340,7 @@ func goTypeToMySQLType(t reflect.Type) string {
 		if t == reflect.TypeOf(time.Time{}) {
 			return "DATETIME"
 		}
-		return "TEXT"
+		return sqlTypeText
 	}
 }
 
