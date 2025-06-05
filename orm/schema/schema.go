@@ -166,14 +166,14 @@ func getEmbeddedType(t reflect.Type) reflect.Type {
 }
 
 // collectConstraintsForDriver returns an empty slice (no constraints extracted)
-func collectConstraintsForDriver(t reflect.Type, driver DatabaseDriver) []string {
+func collectConstraintsForDriver(_ reflect.Type, _ DatabaseDriver) []string {
 	// Constraint extraction not implemented
 	return nil
 }
 
 // parseFieldToColumn converts a struct field to a SQL column definition
-func parseFieldToColumn(field reflect.StructField) string {
-	return ParseFieldToColumnForDriver(field, PostgreSQL)
+func parseFieldToColumn(_ reflect.StructField) string {
+	return ""
 }
 
 // ParseFieldToColumnForDriver converts a struct field to a SQL column definition for a specific database driver
