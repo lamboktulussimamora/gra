@@ -26,6 +26,7 @@ const (
 	TimeFormat                 = "2006-01-02 15:04:05"
 )
 
+// CLIConfig is the configuration for the CLI migration tool.
 type CLIConfig struct {
 	ConnectionString string
 	MigrationsDir    string
@@ -189,7 +190,7 @@ func addMigration(manager *migrations.EFMigrationManager, args []string, config 
 }
 
 // updateDatabase implements Update-Database command
-func updateDatabase(manager *migrations.EFMigrationManager, args []string, config CLIConfig) {
+func updateDatabase(manager *migrations.EFMigrationManager, args []string, _ CLIConfig) {
 	fmt.Println("🚀 Updating database...")
 
 	var targetMigration []string
@@ -207,7 +208,7 @@ func updateDatabase(manager *migrations.EFMigrationManager, args []string, confi
 }
 
 // getMigrations implements Get-Migration command
-func getMigrations(manager *migrations.EFMigrationManager, config CLIConfig) {
+func getMigrations(manager *migrations.EFMigrationManager, _ CLIConfig) {
 	fmt.Println("📋 Migration History:")
 	fmt.Println("====================")
 
@@ -251,7 +252,7 @@ func getMigrations(manager *migrations.EFMigrationManager, config CLIConfig) {
 }
 
 // rollbackMigration implements rollback functionality
-func rollbackMigration(manager *migrations.EFMigrationManager, args []string, config CLIConfig) {
+func rollbackMigration(manager *migrations.EFMigrationManager, args []string, _ CLIConfig) {
 	if len(args) == 0 {
 		log.Printf("❌ Target migration required. Usage: rollback <migration-name-or-id>")
 		return
@@ -296,7 +297,7 @@ func showStatus(manager *migrations.EFMigrationManager, config CLIConfig) {
 }
 
 // generateScript generates SQL script for migrations
-func generateScript(manager *migrations.EFMigrationManager, args []string, config CLIConfig) {
+func generateScript(manager *migrations.EFMigrationManager, args []string, _ CLIConfig) {
 	fmt.Println("📜 Generating migration script...")
 
 	history, err := manager.GetMigrationHistory()
@@ -342,7 +343,7 @@ func generateScript(manager *migrations.EFMigrationManager, args []string, confi
 }
 
 // removeMigration removes the last migration
-func removeMigration(manager *migrations.EFMigrationManager, args []string, config CLIConfig) {
+func removeMigration(manager *migrations.EFMigrationManager, _ []string, config CLIConfig) {
 	fmt.Println("🗑️  Removing last migration...")
 
 	history, err := manager.GetMigrationHistory()
@@ -405,12 +406,14 @@ func extractDBName(connectionString string) string {
 
 func saveMigrationToFile(migration *migrations.Migration, dir string) error {
 	// Create directory if it doesn't exist
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	// #nosec G301 -- Directory must be user-accessible for migration files
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return err
 	}
 
 	// Create migration file
 	filename := fmt.Sprintf("%s/%s.sql", dir, migration.ID)
+	// #nosec G304 -- File creation is controlled by migration logic, not user input
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -571,6 +574,7 @@ func loadMigrationsFromFilesystem(manager *migrations.EFMigrationManager, migrat
 		}
 
 		// Read migration file content
+		// #nosec G304 -- File path is determined by migration manager logic, not user input
 		content, err := os.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("failed to read migration file %s: %w", file, err)
