@@ -403,11 +403,12 @@ func (sg *SQLGenerator) generateColumnDefinition(column *ColumnInfo) string {
 // resolveColumnDataType determines the SQL data type string for a column
 func (sg *SQLGenerator) resolveColumnDataType(column *ColumnInfo) string {
 	var dataType string
-	if column.SQLType != "" {
+	switch {
+	case column.SQLType != "":
 		dataType = column.SQLType
-	} else if column.DataType != "" {
+	case column.DataType != "":
 		dataType = sg.mapDataType(column.DataType)
-	} else {
+	default:
 		dataType = sg.mapDataType(column.Type)
 	}
 
