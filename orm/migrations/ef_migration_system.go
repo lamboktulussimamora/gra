@@ -161,13 +161,65 @@ func (em *EFMigrationManager) getAutoIncrementSQL() string {
 	}
 }
 
+// ensureSchemaTables creates the migration tracking tables
+func (em *EFMigrationManager) ensureSchemaTables(tableQueries []string) error {
+	for i, query := range tableQueries {
+		convertedQuery := em.convertQueryPlaceholders(query)
+		em.logger.Printf("DEBUG: Executing table creation query %d: %s", i+1, convertedQuery)
+		if _, err := em.db.Exec(convertedQuery); err != nil {
+			em.logger.Printf("ERROR: Failed to execute table creation query %d: %v", i+1, err)
+			em.logger.Printf("ERROR: Query was: %s", convertedQuery)
+			return fmt.Errorf("failed to create migration schema: %w", err)
+		}
+		em.logger.Printf("DEBUG: Successfully executed table creation query %d", i+1)
+	}
+	return nil
+}
+
+// ensureSchemaIndexes creates indexes for migration tracking tables
+func (em *EFMigrationManager) ensureSchemaIndexes(indexQueries []string) error {
+	for i, query := range indexQueries {
+		convertedQuery := em.convertQueryPlaceholders(query)
+		em.logger.Printf("DEBUG: Executing index creation query %d: %s", i+1, convertedQuery)
+		if _, err := em.db.Exec(convertedQuery); err != nil {
+			em.logger.Printf("ERROR: Failed to execute index creation query %d: %v", i+1, err)
+			em.logger.Printf("ERROR: Query was: %s", convertedQuery)
+			return fmt.Errorf("failed to create migration schema: %w", err)
+		}
+		em.logger.Printf("DEBUG: Successfully executed index creation query %d", i+1)
+	}
+	return nil
+}
+
+// debugSQLiteSchema logs the __migration_history table structure for SQLite
+func (em *EFMigrationManager) debugSQLiteSchema() {
+	rows, err := em.db.Query("PRAGMA table_info(__migration_history)")
+	if err != nil {
+		em.logger.Printf("DEBUG: Failed to get table info: %v", err)
+		return
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			log.Printf(warnFailedToCloseRows, closeErr)
+		}
+	}()
+	em.logger.Println("DEBUG: __migration_history table columns:")
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull, pk int
+		var defaultValue interface{}
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err == nil {
+			em.logger.Printf("DEBUG:   Column: %s, Type: %s, NotNull: %d, PK: %d", name, dataType, notNull, pk)
+		}
+	}
+}
+
 // EnsureSchema creates necessary migration tracking tables
 func (em *EFMigrationManager) EnsureSchema() error {
 	autoIncrement := em.getAutoIncrementSQL()
 
-	// Create tables first
 	tableQueries := []string{
-		// EF Migrations History table (equivalent to EF Core's __EFMigrationsHistory)
 		fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS %s (
 				migration_id VARCHAR(150) PRIMARY KEY,
@@ -175,8 +227,6 @@ func (em *EFMigrationManager) EnsureSchema() error {
 				applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			)
 		`, em.migrationTable),
-
-		// Migration history with full details
 		fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS %s (
 				id %s,
@@ -194,8 +244,6 @@ func (em *EFMigrationManager) EnsureSchema() error {
 				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			)
 		`, em.historyTable, autoIncrement),
-
-		// Model snapshot table (equivalent to EF Core's model snapshot)
 		fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS %s (
 				id %s,
@@ -206,62 +254,23 @@ func (em *EFMigrationManager) EnsureSchema() error {
 		`, em.snapshotTable, autoIncrement),
 	}
 
-	// Execute table creation queries
-	for i, query := range tableQueries {
-		convertedQuery := em.convertQueryPlaceholders(query)
-		em.logger.Printf("DEBUG: Executing table creation query %d: %s", i+1, convertedQuery)
-		if _, err := em.db.Exec(convertedQuery); err != nil {
-			em.logger.Printf("ERROR: Failed to execute table creation query %d: %v", i+1, err)
-			em.logger.Printf("ERROR: Query was: %s", convertedQuery)
-			return fmt.Errorf("failed to create migration schema: %w", err)
-		}
-		em.logger.Printf("DEBUG: Successfully executed table creation query %d", i+1)
+	if err := em.ensureSchemaTables(tableQueries); err != nil {
+		return err
 	}
 
-	// Debug: Verify table structure before creating indexes
 	if em.driver == "sqlite3" {
-		// Check if the __migration_history table exists and what columns it has
-		rows, err := em.db.Query("PRAGMA table_info(__migration_history)")
-		if err != nil {
-			em.logger.Printf("DEBUG: Failed to get table info: %v", err)
-		} else {
-			defer func() {
-				if closeErr := rows.Close(); closeErr != nil {
-					log.Printf("Warning: Failed to close rows: %v", closeErr)
-				}
-			}()
-			em.logger.Println("DEBUG: __migration_history table columns:")
-			for rows.Next() {
-				var cid int
-				var name, dataType string
-				var notNull, pk int
-				var defaultValue interface{}
-				if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err == nil {
-					em.logger.Printf("DEBUG:   Column: %s, Type: %s, NotNull: %d, PK: %d", name, dataType, notNull, pk)
-				}
-			}
-		}
+		em.debugSQLiteSchema()
 	}
 
-	// Create indexes after tables are confirmed to exist
 	indexQueries := []string{
-		// Indexes for performance
 		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_%s_version ON %s(version)`,
 			strings.ReplaceAll(em.historyTable, "__", ""), em.historyTable),
 		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_%s_state ON %s(state)`,
 			strings.ReplaceAll(em.historyTable, "__", ""), em.historyTable),
 	}
 
-	// Execute index creation queries
-	for i, query := range indexQueries {
-		convertedQuery := em.convertQueryPlaceholders(query)
-		em.logger.Printf("DEBUG: Executing index creation query %d: %s", i+1, convertedQuery)
-		if _, err := em.db.Exec(convertedQuery); err != nil {
-			em.logger.Printf("ERROR: Failed to execute index creation query %d: %v", i+1, err)
-			em.logger.Printf("ERROR: Query was: %s", convertedQuery)
-			return fmt.Errorf("failed to create migration schema: %w", err)
-		}
-		em.logger.Printf("DEBUG: Successfully executed index creation query %d", i+1)
+	if err := em.ensureSchemaIndexes(indexQueries); err != nil {
+		return err
 	}
 
 	em.logger.Println("✓ Migration schema initialized")
@@ -336,7 +345,7 @@ func (em *EFMigrationManager) GetMigrationHistory() (*MigrationHistory, error) {
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			log.Printf("Warning: Failed to close rows: %v", closeErr)
+			log.Printf(warnFailedToCloseRows, closeErr)
 		}
 	}()
 
@@ -494,50 +503,54 @@ func (em *EFMigrationManager) applyMigration(migration Migration) error {
 	return nil
 }
 
+// findTargetMigrationIndex returns the index of the target migration in the applied list, or -1 if not found
+func (em *EFMigrationManager) findTargetMigrationIndex(applied []Migration, target string) int {
+	for i, migration := range applied {
+		if migration.ID == target || migration.Name == target {
+			return i
+		}
+	}
+	return -1
+}
+
+// rollbackMigrations rolls back the given migrations in reverse order
+func (em *EFMigrationManager) rollbackMigrations(migrations []Migration) error {
+	// Sort in reverse order for rollback
+	sort.Slice(migrations, func(i, j int) bool {
+		return migrations[i].Version > migrations[j].Version
+	})
+
+	em.logger.Printf("Rolling back %d migration(s)...", len(migrations))
+
+	for _, migration := range migrations {
+		if loadedMigration, exists := em.loadedMigrations[migration.ID]; exists {
+			if err := em.rollbackMigration(loadedMigration); err != nil {
+				return fmt.Errorf("failed to rollback migration %s: %w", migration.ID, err)
+			}
+		} else {
+			if err := em.rollbackMigration(migration); err != nil {
+				return fmt.Errorf("failed to rollback migration %s: %w", migration.ID, err)
+			}
+		}
+	}
+	return nil
+}
+
 // RollbackMigration rolls back to a specific migration (equivalent to Update-Database with target)
 func (em *EFMigrationManager) RollbackMigration(targetMigration string) error {
-	// Get applied migrations
 	history, err := em.GetMigrationHistory()
 	if err != nil {
 		return err
 	}
 
-	// Find target migration
-	targetIndex := -1
-	for i, migration := range history.Applied {
-		if migration.ID == targetMigration || migration.Name == targetMigration {
-			targetIndex = i
-			break
-		}
-	}
-
+	targetIndex := em.findTargetMigrationIndex(history.Applied, targetMigration)
 	if targetIndex == -1 {
 		return fmt.Errorf("migration not found: %s", targetMigration)
 	}
 
-	// Get migrations to rollback (all after target)
 	toRollback := history.Applied[targetIndex+1:]
-
-	// Sort in reverse order for rollback
-	sort.Slice(toRollback, func(i, j int) bool {
-		return toRollback[i].Version > toRollback[j].Version
-	})
-
-	em.logger.Printf("Rolling back %d migration(s)...", len(toRollback))
-
-	for _, migration := range toRollback {
-		// Get the loaded migration with DOWN SQL from filesystem
-		if loadedMigration, exists := em.loadedMigrations[migration.ID]; exists {
-			// Use the loaded migration which has the DOWN SQL
-			if err := em.rollbackMigration(loadedMigration); err != nil {
-				return fmt.Errorf("failed to rollback migration %s: %w", migration.ID, err)
-			}
-		} else {
-			// Fallback to the migration from history (might not have DOWN SQL)
-			if err := em.rollbackMigration(migration); err != nil {
-				return fmt.Errorf("failed to rollback migration %s: %w", migration.ID, err)
-			}
-		}
+	if err := em.rollbackMigrations(toRollback); err != nil {
+		return err
 	}
 
 	em.logger.Println("✓ Rollback completed successfully")
@@ -612,7 +625,7 @@ func (em *EFMigrationManager) GetAppliedMigrations() ([]string, error) {
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			log.Printf("Warning: Failed to close rows: %v", closeErr)
+			log.Printf(warnFailedToCloseRows, closeErr)
 		}
 	}()
 
@@ -741,3 +754,5 @@ func (em *EFMigrationManager) getTableName(entity interface{}) string {
 
 	return result.String()
 }
+
+const warnFailedToCloseRows = "Warning: Failed to close rows: %v"
