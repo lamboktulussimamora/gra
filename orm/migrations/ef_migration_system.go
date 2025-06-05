@@ -64,7 +64,7 @@ type EFMigrationManager struct {
 	autoMigrate       bool
 	pendingMigrations []Migration
 	loadedMigrations  map[string]Migration // Store all loaded migrations with their SQL
-	driver            DatabaseDriver         // Database driver for placeholder conversion
+	driver            DatabaseDriver       // Database driver for placeholder conversion
 }
 
 // EFMigrationConfig configures the migration manager
