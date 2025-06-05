@@ -116,6 +116,7 @@ func (ctx *EFContext) insert(entity EntityInterface) error {
 	// Set timestamps
 	ctx.setTimestamps(v, true)
 
+	// #nosec G201 -- Table and columns are controlled by ORM, not user input
 	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING id",
 		tableName, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
 

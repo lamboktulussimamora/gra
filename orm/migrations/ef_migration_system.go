@@ -332,6 +332,7 @@ func (em *EFMigrationManager) GetMigrationHistory() (*MigrationHistory, error) {
 	}
 
 	// Get all migrations from history table
+	// #nosec G201 -- Table name is controlled by migration manager, not user input
 	query := fmt.Sprintf(`
 		SELECT migration_id, name, version, description, up_sql, down_sql, 
 		       applied_at, state
@@ -617,7 +618,7 @@ func (em *EFMigrationManager) rollbackMigration(migration Migration) error {
 
 // GetAppliedMigrations returns list of applied migrations
 func (em *EFMigrationManager) GetAppliedMigrations() ([]string, error) {
-	query := fmt.Sprintf("SELECT migration_id FROM %s ORDER BY applied_at", em.migrationTable)
+	query := fmt.Sprintf("SELECT migration_id FROM %s ORDER BY applied_at", em.migrationTable) // #nosec G201 -- Table name is controlled by migration manager, not user input
 
 	rows, err := em.db.Query(query)
 	if err != nil {

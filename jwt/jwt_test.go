@@ -28,6 +28,7 @@ const (
 	errMsgExpectedSubject = "Expected subject to be '%s', got %v"
 	errMsgExpectedJTI     = "Expected jti to be '%s', got %v"
 	errMsgExpectedName    = "Expected name to be '%s', got %v"
+	// #nosec G101 -- This is a test error message, not a credential
 	errMsgExpiredToken    = "Expected ErrExpiredToken, got %v"
 	errMsgMissingKey      = "Expected ErrMissingKey, got %v"
 	errMsgMissingSubject  = "Expected ErrMissingSubject, got %v"
