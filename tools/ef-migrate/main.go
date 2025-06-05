@@ -61,7 +61,7 @@ func main() {
 	args := flag.Args()
 	if len(args) == 0 {
 		printUsage()
-		os.Exit(1)
+		return
 	}
 
 	command := args[0]
@@ -152,7 +152,7 @@ func main() {
 	default:
 		fmt.Printf("❌ Unknown command: %s\n\n", command)
 		printUsage()
-		os.Exit(1)
+		return
 	}
 }
 
