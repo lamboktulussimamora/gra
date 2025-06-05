@@ -64,7 +64,7 @@ type EFMigrationManager struct {
 	autoMigrate       bool
 	pendingMigrations []Migration
 	loadedMigrations  map[string]Migration // Store all loaded migrations with their SQL
-	driver            string               // Database driver for placeholder conversion
+	driver            DatabaseDriver         // Database driver for placeholder conversion
 }
 
 // EFMigrationConfig configures the migration manager
@@ -111,19 +111,19 @@ func NewEFMigrationManager(db *sql.DB, config *EFMigrationConfig) *EFMigrationMa
 }
 
 // detectDatabaseDriver detects the database driver type
-func (em *EFMigrationManager) detectDatabaseDriver() string {
+func (em *EFMigrationManager) detectDatabaseDriver() DatabaseDriver {
 	// Test queries to detect database type
 	if _, err := em.db.Query("SELECT 1::integer"); err == nil {
-		return "postgres"
+		return PostgreSQL
 	}
 	if _, err := em.db.Query("SELECT sqlite_version()"); err == nil {
-		return "sqlite3"
+		return SQLite
 	}
 	if _, err := em.db.Query("SELECT VERSION()"); err == nil {
-		return "mysql"
+		return MySQL
 	}
 	// Default to sqlite3 if detection fails
-	return "sqlite3"
+	return SQLite
 }
 
 // ConvertQueryPlaceholders converts query placeholders based on database driver (exported for testing)
@@ -154,7 +154,7 @@ func (em *EFMigrationManager) convertQueryPlaceholders(query string) string {
 // getAutoIncrementSQL returns the appropriate auto-increment SQL for the database type
 func (em *EFMigrationManager) getAutoIncrementSQL() string {
 	switch em.driver {
-	case "sqlite3":
+	case SQLite:
 		return "INTEGER PRIMARY KEY AUTOINCREMENT"
 	default: // postgres
 		return "SERIAL PRIMARY KEY"
@@ -258,7 +258,7 @@ func (em *EFMigrationManager) EnsureSchema() error {
 		return err
 	}
 
-	if em.driver == "sqlite3" {
+	if em.driver == SQLite {
 		em.debugSQLiteSchema()
 	}
 
