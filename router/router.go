@@ -234,7 +234,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var handler HandlerFunc
 	var params map[string]string
 
-	matchedRoutes := []Route{}
+	matchedPath := false
 
 	for _, route := range r.routes {
 		if match, pathParams := pathMatch(route.Path, req.URL.Path); match {
@@ -243,15 +243,15 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				params = pathParams
 				break
 			}
-			if route.Method == req.Method {
-				matchedRoutes = append(matchedRoutes, route)
+			if handler == nil {
+				matchedPath = true
 			}
 		}
 	}
 
 	// If no handler was found but we matched some routes with a different method,
-	// its a method not allowed
-	if handler == nil && len(matchedRoutes) > 0 {
+	// it's a method not allowed
+	if handler == nil && matchedPath {
 		handler = r.methodNotAllowed
 	}
 

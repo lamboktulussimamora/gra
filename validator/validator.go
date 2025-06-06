@@ -409,7 +409,7 @@ func (v *Validator) validateMin(field reflect.Value, fieldName, arg, customMessa
 			return
 		}
 		if field.Float() < minVal {
-			v.addError(fieldName, fmt.Sprintf("%s must be at least %.2f", fieldName, minVal), customMessage)
+			v.addError(fieldName, fmt.Sprintf("%s must be at least %.6f", fieldName, minVal), customMessage)
 		}
 	}
 }
