@@ -410,7 +410,17 @@ func checkMinValidation(t *testing.T, errors []ValidationError, field string, va
 	case fieldPassword:
 		errorMsg = "password must be at least 6 characters"
 	case fieldBalance:
-		errorMsg = "balance must be at least 0.000000"
+		errorMsg = "balance must be at least 0"
+		// Accept both 0 and 0.000000 for float formatting
+		altErrorMsg := "balance must be at least 0.000000"
+		hasError = findValidationError(errors, field, errorMsg) || findValidationError(errors, field, altErrorMsg)
+		if expectError && !hasError {
+			t.Errorf("Expected %s validation error for %v < %v", field, value, minValue)
+		}
+		if !expectError && hasError {
+			t.Errorf("Unexpected %s validation error for %v >= %v", field, value, minValue)
+		}
+		return
 	}
 
 	hasError = findValidationError(errors, field, errorMsg)

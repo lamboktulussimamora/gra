@@ -421,7 +421,7 @@ func TestNew(t *testing.T) {
 	// Test that the logger works correctly
 	var buf bytes.Buffer
 	logger.logger.SetOutput(&buf)
-	logger.logger.Print("test")
+	logger.Info("This is info")
 	output := buf.String()
 
 	expectedOutput := "[CUSTOM] INFO: This is info"
