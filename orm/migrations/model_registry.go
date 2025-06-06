@@ -277,7 +277,8 @@ func getExplicitSQLTypeFromMigrationTag(field reflect.StructField) (string, bool
 	if migrationTag == "" || !strings.Contains(migrationTag, "type:") {
 		return "", false
 	}
-	for _, part := range strings.Split(migrationTag, ",") {
+	for _, part := range strings.FieldsFunc(migrationTag, func(r rune) bool { return r == ',' }) {
+		part = strings.TrimSpace(part)
 		part = strings.TrimSpace(part)
 		if strings.HasPrefix(part, "type:") {
 			return strings.TrimPrefix(part, "type:"), true

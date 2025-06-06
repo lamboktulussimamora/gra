@@ -51,7 +51,7 @@ run_tests_with_coverage() {
     print_status "Running Go tests with coverage..."
     
     # Clean previous coverage files
-    rm -f $COVERAGE_FILE $COVERAGE_HTML
+    rm -f "$COVERAGE_FILE" "$COVERAGE_HTML"
     
     # Run tests with coverage
     if go test -v -race -coverprofile=$COVERAGE_FILE ./...; then
