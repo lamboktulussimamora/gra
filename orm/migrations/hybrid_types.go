@@ -49,11 +49,11 @@ const (
 
 	// Aliases for backward compatibility
 	// Automatic is an alias for ModeAutomatic.
-	Automatic = ModeAutomatic
+	Automatic        = ModeAutomatic
 	// Interactive is an alias for ModeInteractive.
-	Interactive = ModeInteractive
+	Interactive      = ModeInteractive
 	// GenerateOnly is an alias for ModeGenerateOnly.
-	GenerateOnly = ModeGenerateOnly
+	GenerateOnly     = ModeGenerateOnly
 	// ForceDestructive is an alias for ModeForceDestructive.
 	ForceDestructive = ModeForceDestructive
 )
