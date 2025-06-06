@@ -246,13 +246,13 @@ func (mf *MigrationFile) Errors() []string {
 	return errors
 }
 
-// ModelRegistry manages registered models
+// ModelRegistry manages registered models for migration operations.
 type ModelRegistry struct {
 	models map[string]*ModelSnapshot
 	driver DatabaseDriver
 }
 
-// DatabaseDriver represents the type of database
+// DatabaseDriver represents the type of database (e.g., PostgreSQL, MySQL, SQLite).
 type DatabaseDriver string
 
 const (
