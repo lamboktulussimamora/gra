@@ -34,10 +34,12 @@ type BaseEntity struct {
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
+// GetID returns the ID of the BaseEntity.
 func (b *BaseEntity) GetID() interface{} {
 	return b.ID
 }
 
+// SetID sets the ID of the BaseEntity.
 func (b *BaseEntity) SetID(id interface{}) {
 	if idVal, ok := id.(uint); ok {
 		b.ID = idVal
