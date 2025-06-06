@@ -12,7 +12,7 @@ import (
 	_ "github.com/lib/pq" // Import for PostgreSQL driver (required for database/sql)
 )
 
-// Example models - these would typically be in your models package
+// User represents an example user model for migration demonstration.
 type User struct {
 	ID        int64     `db:"id" migration:"primary_key,auto_increment"`
 	Email     string    `db:"email" migration:"unique,not_null,max_length:255"`
@@ -22,7 +22,7 @@ type User struct {
 	UpdatedAt time.Time `db:"updated_at" migration:"not_null,default:CURRENT_TIMESTAMP"`
 }
 
-// User represents an example user model for migration demonstration.
+// Post represents an example blog post model for migration demonstration.
 type Post struct {
 	ID          int64     `db:"id" migration:"primary_key,auto_increment"`
 	UserID      int64     `db:"user_id" migration:"not_null,foreign_key:users.id"`
@@ -33,7 +33,7 @@ type Post struct {
 	UpdatedAt   time.Time `db:"updated_at" migration:"not_null,default:CURRENT_TIMESTAMP"`
 }
 
-// Post represents an example blog post model for migration demonstration.
+// Comment represents an example comment model for migration demonstration.
 type Comment struct {
 	ID        int64     `db:"id" migration:"primary_key,auto_increment"`
 	PostID    int64     `db:"post_id" migration:"not_null,foreign_key:posts.id"`
@@ -41,8 +41,6 @@ type Comment struct {
 	Content   string    `db:"content" migration:"not_null,type:TEXT"`
 	CreatedAt time.Time `db:"created_at" migration:"not_null,default:CURRENT_TIMESTAMP"`
 }
-
-// Comment represents an example comment model for migration demonstration.
 
 func main() {
 	// Database connection (adjust for your environment)
