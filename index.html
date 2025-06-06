@@ -11417,14 +11417,16 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) <span class
                                 params = pathParams
                                 break</span>
                         }
-                        <span class="cov8" title="1">if handler == nil </span><span class="cov8" title="1">{
+                        // If the route path matches but the HTTP method does not, mark as matchedPath
+                        // to indicate a potential method mismatch for proper handling later.
+                        <span class="cov8" title="1">if route.Method != req.Method </span><span class="cov8" title="1">{
                                 matchedPath = true
                         }</span>
                 }
         }
 
         // If no handler was found but we matched some routes with a different method,
-        // it's a method not allowed
+        // it's a method not allowed. This ensures proper handling of method mismatches.
         <span class="cov8" title="1">if handler == nil &amp;&amp; matchedPath </span><span class="cov8" title="1">{
                 handler = r.methodNotAllowed
         }</span>
