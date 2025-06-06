@@ -60,7 +60,7 @@ type QL struct {
 }
 
 // MigrationSQL is kept for backward compatibility.
-// Deprecated: Use QL instead.
+// Deprecated: Use QL instead. This alias will be removed in a future release.
 type MigrationSQL = QL
 
 // MigrationMetadata contains metadata about the migration
