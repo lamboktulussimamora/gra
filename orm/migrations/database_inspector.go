@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+// Warning message constants
+const (
+	warnFailedToCloseRows = "Warning: Failed to close rows: %v\n"
+)
+
 // DatabaseInspector reads current database schema state
 type DatabaseInspector struct {
 	db     *sql.DB
@@ -141,7 +146,7 @@ func (di *DatabaseInspector) getPostgreSQLColumns(table *TableSchema) error {
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			fmt.Printf(warnFailedToCloseRows, closeErr)
 		}
 	}()
 
@@ -216,7 +221,7 @@ func (di *DatabaseInspector) getPostgreSQLPrimaryKeys(table *TableSchema) error 
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			fmt.Printf(warnFailedToCloseRows, closeErr)
 		}
 	}()
 
@@ -252,7 +257,7 @@ func (di *DatabaseInspector) getPostgreSQLIndexes(table *TableSchema) error {
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			fmt.Printf(warnFailedToCloseRows, closeErr)
 		}
 	}()
 
@@ -329,7 +334,7 @@ func (di *DatabaseInspector) getPostgreSQLConstraints(table *TableSchema) error 
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			fmt.Printf(warnFailedToCloseRows, closeErr)
 		}
 	}()
 
@@ -445,7 +450,7 @@ func (di *DatabaseInspector) getSQLiteColumns(table *TableSchema) error {
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			fmt.Printf(warnFailedToCloseRows, closeErr)
 		}
 	}()
 
@@ -495,7 +500,7 @@ func (di *DatabaseInspector) getSQLiteIndexes(table *TableSchema) error {
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			fmt.Printf(warnFailedToCloseRows, closeErr)
 		}
 	}()
 

@@ -759,4 +759,4 @@ func (em *EFMigrationManager) getTableName(entity interface{}) string {
 	return result.String()
 }
 
-const warnFailedToCloseRows = "Warning: Failed to close rows: %v"
+

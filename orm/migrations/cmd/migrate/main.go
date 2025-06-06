@@ -13,6 +13,11 @@ import (
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
 )
 
+// Error message constants
+const (
+	errMigrationNameRequired = "migration name is required"
+)
+
 // Config contains configuration for the migration CLI.
 type Config struct {
 	DatabaseURL   string
@@ -180,7 +185,7 @@ func registerModels(_ *migrations.HybridMigrator, modelsDir string) error {
 // cmdAddMigration creates a new migration
 func cmdAddMigration(migrator *migrations.HybridMigrator, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("migration name is required")
+		return fmt.Errorf(errMigrationNameRequired)
 	}
 
 	name := args[0]
@@ -302,7 +307,7 @@ func cmdMigrationStatus(migrator *migrations.HybridMigrator) error {
 // cmdGenerateMigration generates a migration script without applying it
 func cmdGenerateMigration(migrator *migrations.HybridMigrator, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("migration name is required")
+		return fmt.Errorf(errMigrationNameRequired)
 	}
 
 	name := args[0]
@@ -324,7 +329,7 @@ func cmdGenerateMigration(migrator *migrations.HybridMigrator, args []string) er
 // cmdForceMigration creates a migration with force destructive mode
 func cmdForceMigration(migrator *migrations.HybridMigrator, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("migration name is required")
+		return fmt.Errorf(errMigrationNameRequired)
 	}
 
 	name := args[0]

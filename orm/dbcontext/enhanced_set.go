@@ -374,40 +374,65 @@ func (es *EnhancedSet[T]) scanRows(rows *sql.Rows) ([]T, error) {
 	}
 
 	for rows.Next() {
-		entity := reflect.New(es.builder.entityType).Interface()
-		valuePtrs := make([]interface{}, len(columns))
-
-		// Map columns to struct fields
-		entityVal := reflect.ValueOf(entity).Elem()
-		for i, col := range columns {
-			field := es.findFieldByDbTag(entityVal, col)
-			if field.IsValid() && field.CanSet() {
-				valuePtrs[i] = field.Addr().Interface()
-			} else {
-				var temp interface{}
-				valuePtrs[i] = &temp
-			}
-		}
-
-		err := rows.Scan(valuePtrs...)
+		entity, err := es.scanSingleRow(rows, columns)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan row: %w", err)
+			return nil, err
 		}
-
-		// Convert to T type
-		if convertedEntity, ok := entity.(T); ok {
-			results = append(results, convertedEntity)
-		} else {
-			// Handle pointer types
-			if entityPtr := reflect.ValueOf(entity); entityPtr.Kind() == reflect.Ptr {
-				if convertedEntity, ok := entityPtr.Elem().Interface().(T); ok {
-					results = append(results, convertedEntity)
-				}
-			}
-		}
+		results = append(results, entity)
 	}
 
 	return results, nil
+}
+
+// scanSingleRow scans a single row into an entity
+func (es *EnhancedSet[T]) scanSingleRow(rows *sql.Rows, columns []string) (T, error) {
+	var zero T
+	entity := reflect.New(es.builder.entityType).Interface()
+	valuePtrs := es.prepareValuePointers(entity, columns)
+
+	err := rows.Scan(valuePtrs...)
+	if err != nil {
+		return zero, fmt.Errorf("failed to scan row: %w", err)
+	}
+
+	return es.convertToEntityType(entity)
+}
+
+// prepareValuePointers prepares pointers for scanning row values
+func (es *EnhancedSet[T]) prepareValuePointers(entity interface{}, columns []string) []interface{} {
+	valuePtrs := make([]interface{}, len(columns))
+	entityVal := reflect.ValueOf(entity).Elem()
+
+	for i, col := range columns {
+		field := es.findFieldByDbTag(entityVal, col)
+		if field.IsValid() && field.CanSet() {
+			valuePtrs[i] = field.Addr().Interface()
+		} else {
+			var temp interface{}
+			valuePtrs[i] = &temp
+		}
+	}
+
+	return valuePtrs
+}
+
+// convertToEntityType converts the scanned entity to the correct type T
+func (es *EnhancedSet[T]) convertToEntityType(entity interface{}) (T, error) {
+	var zero T
+
+	// Try direct conversion first
+	if convertedEntity, ok := entity.(T); ok {
+		return convertedEntity, nil
+	}
+
+	// Handle pointer types
+	if entityPtr := reflect.ValueOf(entity); entityPtr.Kind() == reflect.Ptr {
+		if convertedEntity, ok := entityPtr.Elem().Interface().(T); ok {
+			return convertedEntity, nil
+		}
+	}
+
+	return zero, fmt.Errorf("failed to convert entity to type %T", zero)
 }
 
 // findFieldByDbTag finds a struct field by its db tag
@@ -427,7 +452,20 @@ func (qb *QueryBuilder) buildSelectQuery() (string, []interface{}) {
 	var query strings.Builder
 	var args []interface{}
 
-	// SELECT clause
+	qb.buildSelectClause(&query)
+	qb.buildFromClause(&query)
+	qb.buildJoinClauses(&query)
+	qb.buildWhereClause(&query, &args)
+	qb.buildGroupByClause(&query)
+	qb.buildHavingClause(&query, &args)
+	qb.buildOrderByClause(&query)
+	qb.buildLimitOffsetClauses(&query)
+
+	return query.String(), args
+}
+
+// buildSelectClause builds the SELECT part of the query
+func (qb *QueryBuilder) buildSelectClause(query *strings.Builder) {
 	query.WriteString("SELECT ")
 	if qb.distinct {
 		query.WriteString("DISTINCT ")
@@ -438,96 +476,118 @@ func (qb *QueryBuilder) buildSelectQuery() (string, []interface{}) {
 	} else {
 		query.WriteString("*")
 	}
+}
 
-	// FROM clause
+// buildFromClause builds the FROM part of the query
+func (qb *QueryBuilder) buildFromClause(query *strings.Builder) {
 	query.WriteString(" FROM ")
 	query.WriteString(qb.tableName)
+}
 
-	// JOIN clauses
+// buildJoinClauses builds all JOIN clauses
+func (qb *QueryBuilder) buildJoinClauses(query *strings.Builder) {
 	for _, join := range qb.joinClauses {
 		query.WriteString(fmt.Sprintf(" %s JOIN %s ON %s", join.Type, join.Table, join.Condition))
 	}
+}
 
-	// WHERE clause
-	if len(qb.whereClauses) > 0 {
-		query.WriteString(" WHERE ")
-		for i, where := range qb.whereClauses {
-			if i > 0 {
-				query.WriteString(" ")
-				query.WriteString(where.Logic)
-				query.WriteString(" ")
-			}
-
-			query.WriteString(where.Column)
-			query.WriteString(" ")
-			query.WriteString(where.Operator)
-
-			if where.Value != nil {
-				if where.Operator == "IN" || strings.Contains(where.Operator, "IN (") {
-					// Handle IN clause with multiple values
-					if values, ok := where.Value.([]interface{}); ok {
-						args = append(args, values...)
-					}
-				} else {
-					query.WriteString(" ?")
-					args = append(args, where.Value)
-				}
-			}
-		}
+// buildWhereClause builds the WHERE part of the query
+func (qb *QueryBuilder) buildWhereClause(query *strings.Builder, args *[]interface{}) {
+	if len(qb.whereClauses) == 0 {
+		return
 	}
 
-	// GROUP BY clause
+	query.WriteString(" WHERE ")
+	for i, where := range qb.whereClauses {
+		if i > 0 {
+			query.WriteString(" ")
+			query.WriteString(where.Logic)
+			query.WriteString(" ")
+		}
+
+		qb.buildWhereCondition(query, args, where)
+	}
+}
+
+// buildWhereCondition builds a single WHERE condition
+func (qb *QueryBuilder) buildWhereCondition(query *strings.Builder, args *[]interface{}, where WhereClause) {
+	query.WriteString(where.Column)
+	query.WriteString(" ")
+	query.WriteString(where.Operator)
+
+	if where.Value != nil {
+		if where.Operator == "IN" || strings.Contains(where.Operator, "IN (") {
+			// Handle IN clause with multiple values
+			if values, ok := where.Value.([]interface{}); ok {
+				*args = append(*args, values...)
+			}
+		} else {
+			query.WriteString(" ?")
+			*args = append(*args, where.Value)
+		}
+	}
+}
+
+// buildGroupByClause builds the GROUP BY part of the query
+func (qb *QueryBuilder) buildGroupByClause(query *strings.Builder) {
 	if len(qb.groupBy) > 0 {
 		query.WriteString(" GROUP BY ")
 		query.WriteString(strings.Join(qb.groupBy, ", "))
 	}
+}
 
-	// HAVING clause
-	if len(qb.having) > 0 {
-		query.WriteString(" HAVING ")
-		for i, having := range qb.having {
-			if i > 0 {
-				query.WriteString(" ")
-				query.WriteString(having.Logic)
-				query.WriteString(" ")
-			}
+// buildHavingClause builds the HAVING part of the query
+func (qb *QueryBuilder) buildHavingClause(query *strings.Builder, args *[]interface{}) {
+	if len(qb.having) == 0 {
+		return
+	}
 
-			query.WriteString(having.Column)
+	query.WriteString(" HAVING ")
+	for i, having := range qb.having {
+		if i > 0 {
 			query.WriteString(" ")
-			query.WriteString(having.Operator)
+			query.WriteString(having.Logic)
+			query.WriteString(" ")
+		}
 
-			if having.Value != nil {
-				query.WriteString(" ?")
-				args = append(args, having.Value)
-			}
+		query.WriteString(having.Column)
+		query.WriteString(" ")
+		query.WriteString(having.Operator)
+
+		if having.Value != nil {
+			query.WriteString(" ?")
+			*args = append(*args, having.Value)
 		}
 	}
+}
 
-	// ORDER BY clause
-	if len(qb.orderClauses) > 0 {
-		query.WriteString(" ORDER BY ")
-		var orderParts []string
-		for _, order := range qb.orderClauses {
-			orderPart := order.Column
-			if order.Desc {
-				orderPart += " DESC"
-			}
-			orderParts = append(orderParts, orderPart)
-		}
-		query.WriteString(strings.Join(orderParts, ", "))
+// buildOrderByClause builds the ORDER BY part of the query
+func (qb *QueryBuilder) buildOrderByClause(query *strings.Builder) {
+	if len(qb.orderClauses) == 0 {
+		return
 	}
 
-	// LIMIT clause
+	query.WriteString(" ORDER BY ")
+	var orderParts []string
+	for _, order := range qb.orderClauses {
+		orderPart := order.Column
+		if order.Desc {
+			orderPart += " DESC"
+		}
+		orderParts = append(orderParts, orderPart)
+	}
+	query.WriteString(strings.Join(orderParts, ", "))
+}
+
+// buildLimitOffsetClauses builds the LIMIT and OFFSET parts of the query
+func (qb *QueryBuilder) buildLimitOffsetClauses(query *strings.Builder) {
 	if qb.limit > 0 {
 		query.WriteString(fmt.Sprintf(" LIMIT %d", qb.limit))
 	}
 
-	// OFFSET clause
 	if qb.offset > 0 {
 		query.WriteString(fmt.Sprintf(" OFFSET %d", qb.offset))
 	}
-
-	return query.String(), args
 }
 
 // getTableNameFromType gets the table name from a reflect.Type

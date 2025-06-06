@@ -2,12 +2,12 @@
 # Direct database migration runner
 # This script handles all migration operations directly with the database
 
-# Default parameters
-DB_HOST="localhost"
-DB_PORT="5432"
-DB_USER="postgres"
-DB_PASSWORD="MyPassword_123"
-DB_NAME="gra"
+# Default parameters (can be overridden by environment variables)
+DB_HOST="${POSTGRES_HOST:-localhost}"
+DB_PORT="${POSTGRES_PORT:-5432}"
+DB_USER="${POSTGRES_USER:-postgres}"
+DB_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
+DB_NAME="${POSTGRES_DB:-gra}"
 
 # Color codes for output
 RED='\033[0;31m'

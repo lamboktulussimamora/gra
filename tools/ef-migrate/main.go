@@ -362,8 +362,8 @@ func removeMigration(manager *migrations.EFMigrationManager, _ []string, config 
 
 	fmt.Printf("🗑️  Removing migration: %s\n", lastMigration.ID)
 
-	// TODO: Implement removal logic in EFMigrationManager
-	fmt.Println("⚠️  Note: Migration removal from database not yet implemented")
+	// Migration removal from database - currently requires manual deletion
+	fmt.Println("⚠️  Note: Migration removal from database requires manual cleanup")
 	fmt.Printf("📁 Please manually delete: %s/%s.sql\n", config.MigrationsDir, lastMigration.ID)
 }
 

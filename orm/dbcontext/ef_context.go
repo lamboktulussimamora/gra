@@ -11,6 +11,11 @@ import (
 	"unicode"
 )
 
+// Error messages constants
+const (
+	errDatabaseConnectionNil = "database connection is nil"
+)
+
 // EFContext is a simple Entity Framework Core-inspired ORM
 type EFContext struct {
 	db *sql.DB
@@ -49,7 +54,7 @@ func (b *BaseEntity) SetID(id interface{}) {
 // Add adds an entity to the context (Entity Framework style)
 func (ctx *EFContext) Add(entity EntityInterface) error {
 	if ctx.db == nil {
-		return errors.New("database connection is nil")
+		return errors.New(errDatabaseConnectionNil)
 	}
 	return ctx.insert(entity)
 }
@@ -57,7 +62,7 @@ func (ctx *EFContext) Add(entity EntityInterface) error {
 // Update updates an entity in the context
 func (ctx *EFContext) Update(entity EntityInterface) error {
 	if ctx.db == nil {
-		return errors.New("database connection is nil")
+		return errors.New(errDatabaseConnectionNil)
 	}
 	return ctx.update(entity)
 }
@@ -65,7 +70,7 @@ func (ctx *EFContext) Update(entity EntityInterface) error {
 // Remove removes an entity from the context
 func (ctx *EFContext) Remove(entity EntityInterface) error {
 	if ctx.db == nil {
-		return errors.New("database connection is nil")
+		return errors.New(errDatabaseConnectionNil)
 	}
 	return ctx.delete(entity)
 }
@@ -73,7 +78,7 @@ func (ctx *EFContext) Remove(entity EntityInterface) error {
 // Find finds an entity by ID
 func (ctx *EFContext) Find(entity EntityInterface, id interface{}) error {
 	if ctx.db == nil {
-		return errors.New("database connection is nil")
+		return errors.New(errDatabaseConnectionNil)
 	}
 	return ctx.findByID(entity, id)
 }
@@ -140,40 +145,58 @@ func (ctx *EFContext) processStructFields(v reflect.Value, columns *[]string, va
 		field := t.Field(i)
 		fieldValue := v.Field(i)
 
-		// Skip unexported fields
-		if !fieldValue.CanInterface() {
+		if !ctx.shouldProcessField(field, fieldValue, operation) {
 			continue
 		}
 
-		// Handle embedded structs (like BaseEntity)
-		if field.Anonymous && field.Type.Kind() == reflect.Struct {
-			ctx.processStructFields(fieldValue, columns, values, placeholders, placeholderNum, operation)
-			continue
-		}
-
-		// Skip ID field for inserts
-		if operation == "insert" && (field.Name == "ID" || strings.ToLower(field.Name) == "id") {
-			continue
-		}
-
-		// Skip ID field for updates too
-		if operation == "update" && (field.Name == "ID" || strings.ToLower(field.Name) == "id") {
-			continue
-		}
-
-		// Get column name
-		columnName := ctx.getColumnNameFromField(field)
-
-		// Skip fields marked to be ignored
-		if ctx.shouldSkipField(field) {
-			continue
-		}
-
-		*columns = append(*columns, columnName)
-		*values = append(*values, fieldValue.Interface())
-		*placeholders = append(*placeholders, "$"+strconv.Itoa(*placeholderNum))
-		*placeholderNum++
+		ctx.addFieldToQuery(field, fieldValue, columns, values, placeholders, placeholderNum)
 	}
+}
+
+// shouldProcessField determines if a field should be processed based on operation and field properties
+func (ctx *EFContext) shouldProcessField(field reflect.StructField, fieldValue reflect.Value, operation string) bool {
+	// Skip unexported fields
+	if !fieldValue.CanInterface() {
+		return false
+	}
+
+	// Handle embedded structs (like BaseEntity) - these are processed recursively
+	if field.Anonymous && field.Type.Kind() == reflect.Struct {
+		return true
+	}
+
+	// Skip ID field for inserts and updates
+	if ctx.isIDField(field) {
+		return false
+	}
+
+	// Skip fields marked to be ignored
+	if ctx.shouldSkipField(field) {
+		return false
+	}
+
+	return true
+}
+
+// isIDField checks if a field is an ID field
+func (ctx *EFContext) isIDField(field reflect.StructField) bool {
+	return field.Name == "ID" || strings.ToLower(field.Name) == "id"
+}
+
+// addFieldToQuery adds field data to the query building arrays
+func (ctx *EFContext) addFieldToQuery(field reflect.StructField, fieldValue reflect.Value, columns *[]string, values *[]interface{}, placeholders *[]string, placeholderNum *int) {
+	// Handle embedded structs recursively
+	if field.Anonymous && field.Type.Kind() == reflect.Struct {
+		ctx.processStructFields(fieldValue, columns, values, placeholders, placeholderNum, "insert")
+		return
+	}
+
+	// Get column name and add to query
+	columnName := ctx.getColumnNameFromField(field)
+	*columns = append(*columns, columnName)
+	*values = append(*values, fieldValue.Interface())
+	*placeholders = append(*placeholders, "$"+strconv.Itoa(*placeholderNum))
+	*placeholderNum++
 }
 
 // extractFieldsForInsert extracts fields for INSERT (excludes ID, includes timestamps)
