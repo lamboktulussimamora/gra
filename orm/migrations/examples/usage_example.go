@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/lamboktulussimamora/gra/orm/migrations"
-	_ "github.com/lib/pq" // PostgreSQL driver
+	_ "github.com/lib/pq" // Import for PostgreSQL driver (required for database/sql)
 )
 
 // Example models - these would typically be in your models package

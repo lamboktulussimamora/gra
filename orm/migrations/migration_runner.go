@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/lamboktulussimamora/gra/orm/models"
-	_ "github.com/lib/pq"
+	_ "github.com/lib/pq" // Import for PostgreSQL driver (required for database/sql)
 )
 
 // SQL and error message constants for migration runner

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	_ "github.com/lib/pq" // Import for PostgreSQL driver (required for database/sql)
 	_ "github.com/mattn/go-sqlite3"
 )
 

@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/lamboktulussimamora/gra/orm/models"
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3" // Import for SQLite driver (required for database/sql)
 )
 
 // IntegrationDemo demonstrates the complete migration workflow
