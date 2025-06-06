@@ -113,8 +113,8 @@ func checkVersionResult(t *testing.T, version string, err error, expectedVer str
 	}
 }
 
-// setupOptions creates versioning options with the provided settings
-func setupOptions(supportedVersions []string, defaultVersion string, strictVersioning bool) *Options {
+// setupVersioningOptions creates versioning options with the provided settings
+func setupVersioningOptions(supportedVersions []string, defaultVersion string, strictVersioning bool) *Options {
 	return New().
 		WithStrategy(&PathVersionStrategy{Prefix: "v"}).
 		WithSupportedVersions(supportedVersions...).
@@ -274,7 +274,7 @@ func TestVersioningMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			v := setupOptions(tt.supportedVers, tt.defaultVer, tt.strictVersioning)
+			v := setupVersioningOptions(tt.supportedVers, tt.defaultVer, tt.strictVersioning)
 			var capturedVersion string
 			handler := func(c *context.Context) {
 				if versionInfo, exists := GetAPIVersion(c); exists {

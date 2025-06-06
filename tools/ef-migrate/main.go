@@ -62,7 +62,7 @@ func main() {
 	args := flag.Args()
 	if len(args) == 0 {
 		printUsage()
-		return
+		os.Exit(1)
 	}
 
 	command := args[0]
@@ -70,7 +70,7 @@ func main() {
 	// Handle help command before database setup
 	if command == "help" || command == "-h" || command == "--help" {
 		printUsage()
-		return
+		os.Exit(1)
 	}
 
 	// Setup database connection
@@ -102,7 +102,7 @@ func main() {
 	db, err := sql.Open(driverName, config.ConnectionString)
 	if err != nil {
 		log.Printf("❌ Failed to connect to database: %v", err)
-		return
+		os.Exit(1)
 	}
 	defer func() {
 		if cerr := db.Close(); cerr != nil {

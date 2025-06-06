@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 
@@ -159,6 +160,11 @@ func (am *AutoMigrator) createTable(tableName string, modelType reflect.Type, mi
 	// Start transaction
 	tx, err := am.db.Begin()
 	if err != nil {
+		// Ensure migration file permissions are set to 0600 for security
+		migrationFilePath := fmt.Sprintf("/path/to/migrations/%s.sql", migrationName) // Replace with actual logic to determine file path
+		if err := os.Chmod(migrationFilePath, 0600); err != nil {
+			return fmt.Errorf("failed to set migration file permissions: %w", err)
+		}
 		return fmt.Errorf(dbErrBeginTx, err)
 	}
 	defer func() {

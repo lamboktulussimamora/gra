@@ -125,7 +125,7 @@ func (em *EFMigrationManager) detectDatabaseDriver() DatabaseDriver {
 	if _, err := em.db.Query("SELECT VERSION()"); err == nil {
 		return MySQL
 	}
-	// Default to sqlite3 if detection fails
+	// Default to SQLite if detection fails
 	return SQLite
 }
 
@@ -136,7 +136,7 @@ func (em *EFMigrationManager) ConvertQueryPlaceholders(query string) string {
 
 // convertQueryPlaceholders converts query placeholders based on database driver
 func (em *EFMigrationManager) convertQueryPlaceholders(query string) string {
-	if em.driver != "postgres" {
+	if em.driver != PostgreSQL {
 		return query // SQLite and MySQL use ? placeholders
 	}
 

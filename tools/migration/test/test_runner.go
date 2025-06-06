@@ -26,7 +26,7 @@ func main() {
 	db, err := sql.Open("postgres", *conn)
 	if err != nil {
 		log.Printf("%v", err)
-		return
+		os.Exit(1)
 	}
 	defer func() {
 		if cerr := db.Close(); cerr != nil {
@@ -36,7 +36,7 @@ func main() {
 
 	if err := db.Ping(); err != nil {
 		log.Printf("Connection failed: %v", err)
-		return
+		os.Exit(1)
 	}
 
 	fmt.Println("✓ Database connection successful!")

@@ -561,7 +561,7 @@ func (mr *ModelRegistry) calculateSnapshotChecksum(snapshot ModelSnapshot) strin
 
 	// Calculate SHA256 hash
 	data := strings.Join(parts, "|")
-	hash := sha256.Sum256([]byte(data))
+	hash := sha256.Sum256([]byte(data)) // Ensure related logic handles SHA256 hash length
 	return fmt.Sprintf("%x", hash)
 }
 

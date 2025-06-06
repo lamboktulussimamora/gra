@@ -61,11 +61,9 @@ func TestNew(t *testing.T) {
 	v := New()
 	if v == nil {
 		t.Fatal("New() returned nil")
-		return
 	}
 	if v.errors == nil {
 		t.Fatal("New() should initialize errors slice")
-		return
 	}
 	if len(v.errors) != 0 {
 		t.Fatalf("New validator should have 0 errors, got %d", len(v.errors))
