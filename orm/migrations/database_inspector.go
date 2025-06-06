@@ -511,86 +511,144 @@ func (di *DatabaseInspector) getSQLiteIndexes(table *TableSchema) error {
 	}()
 
 	for rows.Next() {
-		var seq int
-		var name, unique, origin string
-		var partial int
-
-		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
-			return fmt.Errorf("failed to scan index info: %w", err)
+		if err := di.processSQLiteIndexRow(rows, table); err != nil {
+			return err
 		}
-
-		// Skip auto-created indexes for primary keys and unique constraints
-		if strings.HasPrefix(name, "sqlite_autoindex_") {
-			continue
-		}
-
-		index := &IndexInfo{
-			Name:   name,
-			Unique: unique == "1",
-			Type:   "btree", // SQLite primarily uses btree indexes
-		}
-
-		// Get index columns
-		colRows, err := di.db.Query(fmt.Sprintf("PRAGMA index_info(%s)", name))
-		if err != nil {
-			return fmt.Errorf("failed to get index columns: %w", err)
-		}
-
-		var columns []string
-		for colRows.Next() {
-			var seqno, cid int
-			var colName string
-			if err := colRows.Scan(&seqno, &cid, &colName); err != nil {
-				return fmt.Errorf("failed to scan index column: %w", err)
-			}
-			columns = append(columns, colName)
-		}
-		// Error-checked colRows.Close()
-		if closeErr := colRows.Close(); closeErr != nil {
-			di.logger.Warnf(logFailedToCloseColRows, closeErr)
-		}
-
-		index.Columns = columns
-		table.Indexes[name] = index
 	}
 
 	return nil
 }
 
-// parseSQLiteDataType parses SQLite data type to extract length, precision, scale
-func (di *DatabaseInspector) parseSQLiteDataType(column *DatabaseColumnInfo, dataType string) {
-	// SQLite data types can be like VARCHAR(255), DECIMAL(10,2), etc.
-	upperType := strings.ToUpper(dataType)
+// processSQLiteIndexRow processes a single index row from SQLite PRAGMA index_list
+func (di *DatabaseInspector) processSQLiteIndexRow(rows *sql.Rows, table *TableSchema) error {
+	var seq int
+	var name, unique, origin string
+	var partial int
 
-	// Extract length for VARCHAR, CHAR, etc.
-	if strings.Contains(upperType, "VARCHAR") || strings.Contains(upperType, "CHAR") {
-		if start := strings.Index(upperType, "("); start != -1 {
-			if end := strings.Index(upperType[start:], ")"); end != -1 {
-				lengthStr := upperType[start+1 : start+end]
-				if length := di.parseIntValue(lengthStr); length > 0 {
-					column.MaxLength = &length
-				}
-			}
-		}
+	if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+		return fmt.Errorf("failed to scan index info: %w", err)
 	}
 
-	// Extract precision and scale for DECIMAL, NUMERIC
-	if strings.Contains(upperType, "DECIMAL") || strings.Contains(upperType, "NUMERIC") {
-		if start := strings.Index(upperType, "("); start != -1 {
-			if end := strings.Index(upperType[start:], ")"); end != -1 {
-				params := upperType[start+1 : start+end]
-				parts := strings.Split(params, ",")
-				if len(parts) >= 1 {
-					if precision := di.parseIntValue(strings.TrimSpace(parts[0])); precision > 0 {
-						column.Precision = &precision
-					}
-				}
-				if len(parts) >= 2 {
-					if scale := di.parseIntValue(strings.TrimSpace(parts[1])); scale >= 0 {
-						column.Scale = &scale
-					}
-				}
-			}
+	// Skip auto-created indexes for primary keys and unique constraints
+	if strings.HasPrefix(name, "sqlite_autoindex_") {
+		return nil
+	}
+
+	index := &IndexInfo{
+		Name:   name,
+		Unique: unique == "1",
+		Type:   "btree", // SQLite primarily uses btree indexes
+	}
+
+	// Get index columns
+	columns, err := di.getSQLiteIndexColumns(name)
+	if err != nil {
+		return err
+	}
+
+	index.Columns = columns
+	table.Indexes[name] = index
+	return nil
+}
+
+// getSQLiteIndexColumns retrieves the columns for a specific SQLite index
+func (di *DatabaseInspector) getSQLiteIndexColumns(indexName string) ([]string, error) {
+	colRows, err := di.db.Query(fmt.Sprintf("PRAGMA index_info(%s)", indexName))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get index columns: %w", err)
+	}
+	defer func() {
+		if closeErr := colRows.Close(); closeErr != nil {
+			di.logger.Warnf(logFailedToCloseColRows, closeErr)
+		}
+	}()
+
+	var columns []string
+	for colRows.Next() {
+		var seqno, cid int
+		var colName string
+		if err := colRows.Scan(&seqno, &cid, &colName); err != nil {
+			return nil, fmt.Errorf("failed to scan index column: %w", err)
+		}
+		columns = append(columns, colName)
+	}
+
+	return columns, nil
+}
+
+// parseSQLiteDataType parses SQLite data type to extract length, precision, scale
+func (di *DatabaseInspector) parseSQLiteDataType(column *DatabaseColumnInfo, dataType string) {
+	upperType := strings.ToUpper(dataType)
+
+	// Handle different data type categories
+	if di.isCharacterType(upperType) {
+		di.parseCharacterTypeLength(column, upperType)
+	} else if di.isNumericType(upperType) {
+		di.parseNumericTypePrecision(column, upperType)
+	}
+}
+
+// isCharacterType checks if the data type is a character type
+func (di *DatabaseInspector) isCharacterType(upperType string) bool {
+	return strings.Contains(upperType, "VARCHAR") || strings.Contains(upperType, "CHAR")
+}
+
+// isNumericType checks if the data type is a numeric type
+func (di *DatabaseInspector) isNumericType(upperType string) bool {
+	return strings.Contains(upperType, "DECIMAL") || strings.Contains(upperType, "NUMERIC")
+}
+
+// parseCharacterTypeLength extracts length for VARCHAR, CHAR, etc.
+func (di *DatabaseInspector) parseCharacterTypeLength(column *DatabaseColumnInfo, upperType string) {
+	params := di.extractTypeParameters(upperType)
+	if params != "" {
+		if length := di.parseIntValue(params); length > 0 {
+			column.MaxLength = &length
+		}
+	}
+}
+
+// parseNumericTypePrecision extracts precision and scale for DECIMAL, NUMERIC
+func (di *DatabaseInspector) parseNumericTypePrecision(column *DatabaseColumnInfo, upperType string) {
+	params := di.extractTypeParameters(upperType)
+	if params == "" {
+		return
+	}
+
+	parts := strings.Split(params, ",")
+	di.setPrecisionFromParts(column, parts)
+	di.setScaleFromParts(column, parts)
+}
+
+// extractTypeParameters extracts parameters from type definition like VARCHAR(255) -> "255"
+func (di *DatabaseInspector) extractTypeParameters(upperType string) string {
+	start := strings.Index(upperType, "(")
+	if start == -1 {
+		return ""
+	}
+
+	end := strings.Index(upperType[start:], ")")
+	if end == -1 {
+		return ""
+	}
+
+	return upperType[start+1 : start+end]
+}
+
+// setPrecisionFromParts sets precision from the first part of parameters
+func (di *DatabaseInspector) setPrecisionFromParts(column *DatabaseColumnInfo, parts []string) {
+	if len(parts) >= 1 {
+		if precision := di.parseIntValue(strings.TrimSpace(parts[0])); precision > 0 {
+			column.Precision = &precision
+		}
+	}
+}
+
+// setScaleFromParts sets scale from the second part of parameters
+func (di *DatabaseInspector) setScaleFromParts(column *DatabaseColumnInfo, parts []string) {
+	if len(parts) >= 2 {
+		if scale := di.parseIntValue(strings.TrimSpace(parts[1])); scale >= 0 {
+			column.Scale = &scale
 		}
 	}
 }
@@ -615,11 +673,26 @@ func (di *DatabaseInspector) parseIntValue(s string) int {
 // CompareWithModelSnapshot compares database schema with model snapshots and returns migration changes
 func (di *DatabaseInspector) CompareWithModelSnapshot(dbSchema map[string]*TableSchema, modelSnapshots map[string]*ModelSnapshot) ([]MigrationChange, error) {
 	var changes []MigrationChange
-
-	// Track which tables exist in both database and models
 	processedTables := make(map[string]bool)
 
-	// Check for new tables (exist in model but not in database)
+	// Process model snapshots for create/alter operations
+	modelChanges := di.processModelSnapshots(dbSchema, modelSnapshots, processedTables)
+	changes = append(changes, modelChanges...)
+
+	// Process database tables for drop operations
+	dropChanges := di.processDroppedTables(dbSchema, processedTables)
+	changes = append(changes, dropChanges...)
+
+	// Log final results
+	di.logComparisonResults(changes)
+
+	return changes, nil
+}
+
+// processModelSnapshots handles table creation and column changes for model snapshots
+func (di *DatabaseInspector) processModelSnapshots(dbSchema map[string]*TableSchema, modelSnapshots map[string]*ModelSnapshot, processedTables map[string]bool) []MigrationChange {
+	var changes []MigrationChange
+
 	for modelName, snapshot := range modelSnapshots {
 		tableName := snapshot.TableName
 		processedTables[tableName] = true
@@ -643,7 +716,13 @@ func (di *DatabaseInspector) CompareWithModelSnapshot(dbSchema map[string]*Table
 		}
 	}
 
-	// Check for tables to drop (exist in database but not in models)
+	return changes
+}
+
+// processDroppedTables handles tables that exist in database but not in models
+func (di *DatabaseInspector) processDroppedTables(dbSchema map[string]*TableSchema, processedTables map[string]bool) []MigrationChange {
+	var changes []MigrationChange
+
 	for tableName, tableSchema := range dbSchema {
 		if di.isSystemTable(tableName) {
 			di.logger.Debugf("Skipping system table %s", tableName)
@@ -660,12 +739,15 @@ func (di *DatabaseInspector) CompareWithModelSnapshot(dbSchema map[string]*Table
 		}
 	}
 
+	return changes
+}
+
+// logComparisonResults logs the final comparison results
+func (di *DatabaseInspector) logComparisonResults(changes []MigrationChange) {
 	di.logger.Debugf("CompareWithModelSnapshot: Generated %d changes", len(changes))
 	for i, change := range changes {
 		di.logger.Debugf("Change %d: %s %s.%s", i, change.Type, change.TableName, change.ColumnName)
 	}
-
-	return changes, nil
 }
 
 // compareTableColumns compares columns between database table and model snapshot

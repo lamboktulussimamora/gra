@@ -199,34 +199,40 @@ func (ctx *EnhancedDbContext) SaveChanges() (int, error) {
 	affected := 0
 
 	for entity, state := range ctx.ChangeTracker.entities {
-		switch state {
-		case EntityStateAdded:
-			err := ctx.insertEntity(entity)
-			if err != nil {
-				return affected, err
-			}
-			ctx.ChangeTracker.SetEntityState(entity, EntityStateUnchanged)
-			affected++
-
-		case EntityStateModified:
-			err := ctx.updateEntity(entity)
-			if err != nil {
-				return affected, err
-			}
-			ctx.ChangeTracker.SetEntityState(entity, EntityStateUnchanged)
-			affected++
-
-		case EntityStateDeleted:
-			err := ctx.deleteEntity(entity)
-			if err != nil {
-				return affected, err
-			}
-			delete(ctx.ChangeTracker.entities, entity)
-			affected++
+		err := ctx.processEntityByState(entity, state)
+		if err != nil {
+			return affected, err
 		}
+
+		ctx.updateEntityStateAfterSave(entity, state)
+		affected++
 	}
 
 	return affected, nil
+}
+
+// processEntityByState processes a single entity based on its state
+func (ctx *EnhancedDbContext) processEntityByState(entity interface{}, state EntityState) error {
+	switch state {
+	case EntityStateAdded:
+		return ctx.insertEntity(entity)
+	case EntityStateModified:
+		return ctx.updateEntity(entity)
+	case EntityStateDeleted:
+		return ctx.deleteEntity(entity)
+	default:
+		return nil // EntityStateUnchanged - no action needed
+	}
+}
+
+// updateEntityStateAfterSave updates entity state after successful save operation
+func (ctx *EnhancedDbContext) updateEntityStateAfterSave(entity interface{}, state EntityState) {
+	switch state {
+	case EntityStateAdded, EntityStateModified:
+		ctx.ChangeTracker.SetEntityState(entity, EntityStateUnchanged)
+	case EntityStateDeleted:
+		delete(ctx.ChangeTracker.entities, entity)
+	}
 }
 
 // insertEntity inserts a new entity into the database
@@ -652,25 +658,40 @@ func getFieldData(entity interface{}, excludeID bool, driver string) ([]string, 
 			continue
 		}
 
-		if field.Anonymous && field.Type.Kind() == reflect.Struct {
-			embeddedCols, embeddedVals, embeddedPlaceholders := handleEmbeddedStruct(field, value, excludeID, driver)
-			columns = append(columns, embeddedCols...)
-			values = append(values, embeddedVals...)
-			placeholders = append(placeholders, embeddedPlaceholders...)
-			continue
-		}
-
-		columnName := field.Tag.Get("db")
-		if columnName == "" {
-			columnName = toSnakeCase(field.Name)
-		}
-
-		columns = append(columns, columnName)
-		values = append(values, value.Interface())
-		placeholders = append(placeholders, getPlaceholder(driver, len(placeholders)))
+		fieldColumns, fieldValues, fieldPlaceholders := processFieldForData(field, value, excludeID, driver, len(placeholders))
+		columns = append(columns, fieldColumns...)
+		values = append(values, fieldValues...)
+		placeholders = append(placeholders, fieldPlaceholders...)
 	}
 
 	return columns, values, placeholders
+}
+
+// processFieldForData processes a single field and returns its column data
+func processFieldForData(field reflect.StructField, value reflect.Value, excludeID bool, driver string, currentPlaceholderCount int) ([]string, []interface{}, []string) {
+	// Handle embedded structs
+	if field.Anonymous && field.Type.Kind() == reflect.Struct {
+		return handleEmbeddedStruct(field, value, excludeID, driver)
+	}
+
+	// Handle regular fields
+	return processRegularField(field, value, driver, currentPlaceholderCount)
+}
+
+// processRegularField processes a regular (non-embedded) struct field
+func processRegularField(field reflect.StructField, value reflect.Value, driver string, placeholderIndex int) ([]string, []interface{}, []string) {
+	columnName := getColumnNameFromFieldData(field)
+	placeholder := getPlaceholder(driver, placeholderIndex)
+
+	return []string{columnName}, []interface{}{value.Interface()}, []string{placeholder}
+}
+
+// getColumnNameFromFieldData extracts the column name from field tags or converts field name
+func getColumnNameFromFieldData(field reflect.StructField) string {
+	if columnName := field.Tag.Get("db"); columnName != "" {
+		return columnName
+	}
+	return toSnakeCase(field.Name)
 }
 
 // getUpdateData extracts SET clauses and values for UPDATE

@@ -39,32 +39,65 @@ func (mr *ModelRegistry) GetModels() map[string]*ModelSnapshot {
 
 // createModelSnapshot creates a snapshot of a model's schema
 func (mr *ModelRegistry) createModelSnapshot(model interface{}) ModelSnapshot {
+	modelType := mr.extractModelType(model)
+	tableName := mr.getTableName(model)
+
+	// Initialize snapshot collections
+	columns, indexes, constraints := mr.initializeSnapshotCollections()
+
+	// Process all struct fields
+	mr.processModelFields(modelType, tableName, columns, indexes, constraints)
+
+	// Build and return the complete snapshot
+	return mr.buildModelSnapshot(tableName, modelType, columns, indexes, constraints)
+}
+
+// extractModelType extracts the underlying model type, handling pointer types
+func (mr *ModelRegistry) extractModelType(model interface{}) reflect.Type {
 	modelType := reflect.TypeOf(model)
 	if modelType.Kind() == reflect.Ptr {
 		modelType = modelType.Elem()
 	}
+	return modelType
+}
 
-	tableName := mr.getTableName(model)
+// initializeSnapshotCollections creates empty collections for snapshot data
+func (mr *ModelRegistry) initializeSnapshotCollections() (map[string]*ColumnInfo, map[string]IndexInfo, map[string]*ConstraintInfo) {
 	columns := make(map[string]*ColumnInfo)
 	indexes := make(map[string]IndexInfo)
 	constraints := make(map[string]*ConstraintInfo)
+	return columns, indexes, constraints
+}
 
-	// Process struct fields recursively
+// processModelFields processes all struct fields and populates snapshot collections
+func (mr *ModelRegistry) processModelFields(modelType reflect.Type, tableName string, columns map[string]*ColumnInfo, indexes map[string]IndexInfo, constraints map[string]*ConstraintInfo) {
 	mr.processStructFields(modelType, "", func(field reflect.StructField, dbName string, _ string) {
-		if dbName == "" || dbName == "-" {
-			return // Skip fields without db tags or explicitly excluded
+		if mr.shouldSkipField(dbName) {
+			return
 		}
 
-		columnInfo := mr.createColumnInfo(field, dbName)
-		columns[dbName] = &columnInfo
-
-		// Extract indexes from field tags
-		mr.extractIndexInfo(field, dbName, tableName, indexes)
-
-		// Extract constraints from field tags
-		mr.extractConstraintInfo(field, dbName, tableName, constraints)
+		mr.processFieldForSnapshot(field, dbName, tableName, columns, indexes, constraints)
 	})
+}
 
+// shouldSkipField determines if a field should be skipped during processing
+func (mr *ModelRegistry) shouldSkipField(dbName string) bool {
+	return dbName == "" || dbName == "-"
+}
+
+// processFieldForSnapshot processes a single field and updates snapshot collections
+func (mr *ModelRegistry) processFieldForSnapshot(field reflect.StructField, dbName, tableName string, columns map[string]*ColumnInfo, indexes map[string]IndexInfo, constraints map[string]*ConstraintInfo) {
+	// Create column info
+	columnInfo := mr.createColumnInfo(field, dbName)
+	columns[dbName] = &columnInfo
+
+	// Extract metadata from field tags
+	mr.extractIndexInfo(field, dbName, tableName, indexes)
+	mr.extractConstraintInfo(field, dbName, tableName, constraints)
+}
+
+// buildModelSnapshot constructs the final ModelSnapshot with checksum
+func (mr *ModelRegistry) buildModelSnapshot(tableName string, modelType reflect.Type, columns map[string]*ColumnInfo, indexes map[string]IndexInfo, constraints map[string]*ConstraintInfo) ModelSnapshot {
 	snapshot := ModelSnapshot{
 		TableName:   tableName,
 		ModelType:   modelType,

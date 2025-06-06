@@ -177,61 +177,119 @@ func ParseFieldToColumnForDriver(field reflect.StructField, driver DatabaseDrive
 		return ""
 	}
 
+	columnInfo := extractColumnInfo(field, driver)
+	return buildColumnDefinition(columnInfo)
+}
+
+// columnInfo holds information about a database column
+type columnInfo struct {
+	name         string
+	sqlType      string
+	isPrimaryKey bool
+	isAutoIncr   bool
+	isNotNull    bool
+	isUnique     bool
+	defaultValue string
+	driver       DatabaseDriver
+	sqlTag       string
+	migrationTag string
+}
+
+// extractColumnInfo extracts column information from a struct field
+func extractColumnInfo(field reflect.StructField, driver DatabaseDriver) columnInfo {
 	sqlTag := field.Tag.Get("sql")
 	migrationTag := field.Tag.Get("migration")
-	columnName := dbTag
+	columnName := field.Tag.Get("db")
 
-	// Determine SQL type based on Go type and database driver
 	sqlType := goTypeToSQLTypeForDriver(field.Type, driver)
-
-	// Check for type override in migration tag
 	if migrationTag != "" {
 		if typeMatch := extractSQLValue(migrationTag, "type"); typeMatch != "" {
 			sqlType = typeMatch
 		}
 	}
 
-	parts := []string{fmt.Sprintf("%s %s", columnName, sqlType)}
+	return columnInfo{
+		name:         columnName,
+		sqlType:      sqlType,
+		isPrimaryKey: hasTagAttr(sqlTag, migrationTag, "primary_key"),
+		isAutoIncr:   hasTagAttr(sqlTag, migrationTag, "auto_increment"),
+		isNotNull:    hasTagAttr(sqlTag, migrationTag, "not_null"),
+		isUnique:     hasTagAttr(sqlTag, migrationTag, "unique"),
+		defaultValue: extractDefaultValue(sqlTag, migrationTag),
+		driver:       driver,
+		sqlTag:       sqlTag,
+		migrationTag: migrationTag,
+	}
+}
 
-	if hasTagAttr(sqlTag, migrationTag, "primary_key") {
+// buildColumnDefinition builds the complete column definition string
+func buildColumnDefinition(info columnInfo) string {
+	parts := []string{fmt.Sprintf("%s %s", info.name, info.sqlType)}
+
+	if info.isPrimaryKey {
 		parts = append(parts, "PRIMARY KEY")
 	}
 
-	parts = handleAutoIncrement(parts, sqlType, driver, sqlTag, migrationTag)
+	if info.isAutoIncr {
+		parts = handleAutoIncrementForColumn(parts, info)
+	}
 
-	if hasTagAttr(sqlTag, migrationTag, "not_null") {
+	if info.isNotNull {
 		parts = append(parts, "NOT NULL")
 	}
 
-	if hasTagAttr(sqlTag, migrationTag, "unique") {
+	if info.isUnique {
 		parts = append(parts, "UNIQUE")
 	}
 
-	parts = handleDefaultValue(parts, sqlTag, migrationTag)
+	if info.defaultValue != "" {
+		parts = appendDefaultValue(parts, info.defaultValue)
+	}
 
 	return strings.Join(parts, " ")
+}
+
+// extractDefaultValue extracts default value from tags
+func extractDefaultValue(sqlTag, migrationTag string) string {
+	if sqlTag != "" {
+		if defaultMatch := extractSQLValue(sqlTag, "default"); defaultMatch != "" {
+			return defaultMatch
+		}
+	}
+	if migrationTag != "" {
+		return extractSQLValue(migrationTag, "default")
+	}
+	return ""
+}
+
+// handleAutoIncrementForColumn handles auto-increment for a specific column
+func handleAutoIncrementForColumn(parts []string, info columnInfo) []string {
+	switch info.driver {
+	case PostgreSQL:
+		return handleAutoIncrementPostgres(parts, info.sqlType)
+	case SQLite:
+		return handleAutoIncrementSQLite(parts, info.sqlType, info.sqlTag, info.migrationTag)
+	case MySQL:
+		return handleAutoIncrementMySQL(parts, info.sqlType)
+	default:
+		return parts
+	}
+}
+
+// appendDefaultValue appends default value to column parts
+func appendDefaultValue(parts []string, defaultValue string) []string {
+	if defaultValue == "CURRENT_TIMESTAMP" {
+		return append(parts, "DEFAULT CURRENT_TIMESTAMP")
+	}
+	if defaultValue != "null" {
+		return append(parts, fmt.Sprintf("DEFAULT %s", defaultValue))
+	}
+	return parts
 }
 
 // hasTagAttr checks if either sqlTag or migrationTag contains the attribute
 func hasTagAttr(sqlTag, migrationTag, attr string) bool {
 	return strings.Contains(sqlTag, attr) || strings.Contains(migrationTag, attr)
-}
-
-// handleAutoIncrement appends auto-increment logic to parts
-func handleAutoIncrement(parts []string, sqlType string, driver DatabaseDriver, sqlTag, migrationTag string) []string {
-	if !hasTagAttr(sqlTag, migrationTag, "auto_increment") {
-		return parts
-	}
-	switch driver {
-	case PostgreSQL:
-		return handleAutoIncrementPostgres(parts, sqlType)
-	case SQLite:
-		return handleAutoIncrementSQLite(parts, sqlType, sqlTag, migrationTag)
-	case MySQL:
-		return handleAutoIncrementMySQL(parts, sqlType)
-	default:
-		return parts
-	}
 }
 
 func handleAutoIncrementPostgres(parts []string, sqlType string) []string {
@@ -262,23 +320,10 @@ func handleAutoIncrementMySQL(parts []string, sqlType string) []string {
 	return parts
 }
 
-// handleDefaultValue appends default value logic to parts
+// handleDefaultValue appends default value logic to parts (legacy function)
 func handleDefaultValue(parts []string, sqlTag, migrationTag string) []string {
-	var defaultMatch string
-	if sqlTag != "" {
-		defaultMatch = extractSQLValue(sqlTag, "default")
-	}
-	if defaultMatch == "" && migrationTag != "" {
-		defaultMatch = extractSQLValue(migrationTag, "default")
-	}
-	if defaultMatch != "" {
-		if defaultMatch == "CURRENT_TIMESTAMP" {
-			parts = append(parts, "DEFAULT CURRENT_TIMESTAMP")
-		} else if defaultMatch != "null" {
-			parts = append(parts, fmt.Sprintf("DEFAULT %s", defaultMatch))
-		}
-	}
-	return parts
+	defaultValue := extractDefaultValue(sqlTag, migrationTag)
+	return appendDefaultValue(parts, defaultValue)
 }
 
 // goTypeToSQLTypeForDriver converts Go types to SQL types for a specific database driver

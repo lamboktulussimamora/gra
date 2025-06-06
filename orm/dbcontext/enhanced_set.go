@@ -233,37 +233,28 @@ func (es *EnhancedSet[T]) RightJoin(table string, condition string) *EnhancedSet
 // ToList executes the query and returns all results
 func (es *EnhancedSet[T]) ToList() ([]T, error) {
 	query, args := es.builder.buildSelectQuery()
-
-	var db *sql.DB
-	if es.builder.ctx.tx != nil {
-		// Use transaction if available
-		rows, err := es.builder.ctx.tx.Query(query, args...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to execute query: %w", err)
-		}
-		defer func() {
-			if closeErr := rows.Close(); closeErr != nil {
-				// Log close error but don't override the main operation
-				logger.Get().Warnf("Warning: failed to close rows: %v", closeErr)
-			}
-		}()
-
-		return es.scanRows(rows)
-	}
-	// Use regular database connection
-	db = es.builder.ctx.Database.db
-	rows, err := db.Query(query, args...)
+	rows, err := es.executeQuery(query, args)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
+		return nil, err
 	}
-	defer func() {
-		if closeErr := rows.Close(); closeErr != nil {
-			// Log close error but don't override the main operation
-			logger.Get().Warnf("Warning: failed to close rows: %v", closeErr)
-		}
-	}()
+	defer es.closeRowsWithWarning(rows)
 
 	return es.scanRows(rows)
+}
+
+// executeQuery executes a query using transaction or regular connection
+func (es *EnhancedSet[T]) executeQuery(query string, args []interface{}) (*sql.Rows, error) {
+	if es.builder.ctx.tx != nil {
+		return es.builder.ctx.tx.Query(query, args...)
+	}
+	return es.builder.ctx.Database.db.Query(query, args...)
+}
+
+// closeRowsWithWarning closes rows and logs any errors
+func (es *EnhancedSet[T]) closeRowsWithWarning(rows *sql.Rows) {
+	if closeErr := rows.Close(); closeErr != nil {
+		logger.Get().Warnf("Warning: failed to close rows: %v", closeErr)
+	}
 }
 
 // First executes the query and returns the first result
@@ -428,10 +419,18 @@ func (es *EnhancedSet[T]) convertToEntityType(entity interface{}) (T, error) {
 	}
 
 	// Handle pointer types
-	if entityPtr := reflect.ValueOf(entity); entityPtr.Kind() == reflect.Ptr {
-		if convertedEntity, ok := entityPtr.Elem().Interface().(T); ok {
-			return convertedEntity, nil
-		}
+	return es.convertPointerType(entity, zero)
+}
+
+// convertPointerType handles pointer type conversion
+func (es *EnhancedSet[T]) convertPointerType(entity interface{}, zero T) (T, error) {
+	entityPtr := reflect.ValueOf(entity)
+	if entityPtr.Kind() != reflect.Ptr {
+		return zero, fmt.Errorf("failed to convert entity to type %T", zero)
+	}
+
+	if convertedEntity, ok := entityPtr.Elem().Interface().(T); ok {
+		return convertedEntity, nil
 	}
 
 	return zero, fmt.Errorf("failed to convert entity to type %T", zero)
@@ -517,16 +516,27 @@ func (qb *QueryBuilder) buildWhereCondition(query *strings.Builder, args *[]inte
 	query.WriteString(" ")
 	query.WriteString(where.Operator)
 
-	if where.Value != nil {
-		if where.Operator == "IN" || strings.Contains(where.Operator, "IN (") {
-			// Handle IN clause with multiple values
-			if values, ok := where.Value.([]interface{}); ok {
-				*args = append(*args, values...)
-			}
-		} else {
-			query.WriteString(" ?")
-			*args = append(*args, where.Value)
-		}
+	if where.Value == nil {
+		return
+	}
+
+	if qb.isInOperator(where.Operator) {
+		qb.handleInClause(args, where)
+	} else {
+		query.WriteString(" ?")
+		*args = append(*args, where.Value)
+	}
+}
+
+// isInOperator checks if the operator is an IN clause
+func (qb *QueryBuilder) isInOperator(operator string) bool {
+	return operator == "IN" || strings.Contains(operator, "IN (")
+}
+
+// handleInClause handles IN clause with multiple values
+func (qb *QueryBuilder) handleInClause(args *[]interface{}, where WhereClause) {
+	if values, ok := where.Value.([]interface{}); ok {
+		*args = append(*args, values...)
 	}
 }
 

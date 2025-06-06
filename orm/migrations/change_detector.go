@@ -25,22 +25,47 @@ func NewChangeDetector(registry *ModelRegistry, inspector *DatabaseInspector) *C
 
 // DetectChanges compares current model state with database and returns migration changes
 func (cd *ChangeDetector) DetectChanges() (*MigrationPlan, error) {
-	// Get current model snapshots
-	modelSnapshots := cd.registry.GetModels()
-
-	// Get current database schema
-	dbSchema, err := cd.inspector.GetCurrentSchema()
+	// Get current model snapshots and database schema
+	modelSnapshots, dbSchema, err := cd.gatherCurrentState()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read database schema: %w", err)
+		return nil, err
 	}
 
 	// Compare and generate changes
+	changes, err := cd.generateChanges(dbSchema, modelSnapshots)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create and configure migration plan
+	plan := cd.createMigrationPlan(changes, modelSnapshots, dbSchema)
+
+	return plan, nil
+}
+
+// gatherCurrentState retrieves current model snapshots and database schema
+func (cd *ChangeDetector) gatherCurrentState() (map[string]*ModelSnapshot, map[string]*TableSchema, error) {
+	modelSnapshots := cd.registry.GetModels()
+
+	dbSchema, err := cd.inspector.GetCurrentSchema()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read database schema: %w", err)
+	}
+
+	return modelSnapshots, dbSchema, nil
+}
+
+// generateChanges compares schemas and generates migration changes
+func (cd *ChangeDetector) generateChanges(dbSchema map[string]*TableSchema, modelSnapshots map[string]*ModelSnapshot) ([]MigrationChange, error) {
 	changes, err := cd.inspector.CompareWithModelSnapshot(dbSchema, modelSnapshots)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compare schemas: %w", err)
 	}
+	return changes, nil
+}
 
-	// Create migration plan
+// createMigrationPlan creates and configures a migration plan
+func (cd *ChangeDetector) createMigrationPlan(changes []MigrationChange, modelSnapshots map[string]*ModelSnapshot, dbSchema map[string]*TableSchema) *MigrationPlan {
 	plan := &MigrationPlan{
 		Changes:        changes,
 		ModelSnapshots: modelSnapshots,
@@ -53,7 +78,7 @@ func (cd *ChangeDetector) DetectChanges() (*MigrationPlan, error) {
 	// Sort changes by dependency order
 	cd.sortChangesByDependency(plan.Changes)
 
-	return plan, nil
+	return plan
 }
 
 // MigrationPlan represents a complete migration plan
@@ -177,31 +202,56 @@ func (cd *ChangeDetector) isDataLosingAlterColumn(change MigrationChange) bool {
 		return false
 	}
 
+	oldColumn, newColumn, ok := cd.extractColumnInfoFromChange(change)
+	if !ok {
+		return false
+	}
+
+	return cd.hasDataLosingColumnChanges(oldColumn, newColumn)
+}
+
+// extractColumnInfoFromChange extracts old and new column info from a change
+func (cd *ChangeDetector) extractColumnInfoFromChange(change MigrationChange) (*DatabaseColumnInfo, *ColumnInfo, bool) {
 	oldColumn, okOld := change.OldValue.(*DatabaseColumnInfo)
 	newColumn, okNew := change.NewValue.(*ColumnInfo)
 
 	if !okOld || !okNew {
-		return false
+		return nil, nil, false
 	}
 
+	return oldColumn, newColumn, true
+}
+
+// hasDataLosingColumnChanges checks for potentially data-losing changes
+func (cd *ChangeDetector) hasDataLosingColumnChanges(oldColumn *DatabaseColumnInfo, newColumn *ColumnInfo) bool {
 	// Check for potentially data-losing changes
-	// 1. Making column non-nullable when it was nullable
-	if oldColumn.IsNullable && !newColumn.IsNullable {
+	if cd.isNullabilityChangeDataLosing(oldColumn, newColumn) {
 		return true
 	}
 
-	// 2. Reducing string length
-	if oldColumn.MaxLength != nil && newColumn.MaxLength != nil {
-		if *newColumn.MaxLength < *oldColumn.MaxLength {
-			return true
-		}
+	if cd.isLengthReductionDataLosing(oldColumn, newColumn) {
+		return true
 	}
 
-	// 3. Changing data type to incompatible type
 	if cd.isIncompatibleTypeChange(oldColumn.DataType, newColumn.DataType) {
 		return true
 	}
 
+	return false
+}
+
+// isNullabilityChangeDataLosing checks if nullability change might lose data
+func (cd *ChangeDetector) isNullabilityChangeDataLosing(oldColumn *DatabaseColumnInfo, newColumn *ColumnInfo) bool {
+	// Making column non-nullable when it was nullable
+	return oldColumn.IsNullable && !newColumn.IsNullable
+}
+
+// isLengthReductionDataLosing checks if length reduction might lose data
+func (cd *ChangeDetector) isLengthReductionDataLosing(oldColumn *DatabaseColumnInfo, newColumn *ColumnInfo) bool {
+	// Reducing string length
+	if oldColumn.MaxLength != nil && newColumn.MaxLength != nil {
+		return *newColumn.MaxLength < *oldColumn.MaxLength
+	}
 	return false
 }
 
@@ -211,7 +261,14 @@ func (cd *ChangeDetector) isIncompatibleTypeChange(oldType, newType string) bool
 	newType = strings.ToUpper(strings.TrimSpace(newType))
 
 	// Define incompatible type changes
-	incompatibleChanges := map[string][]string{
+	incompatibleChanges := cd.getIncompatibleTypeMap()
+
+	return cd.checkTypeIncompatibility(oldType, newType, incompatibleChanges)
+}
+
+// getIncompatibleTypeMap returns a map of incompatible type changes
+func (cd *ChangeDetector) getIncompatibleTypeMap() map[string][]string {
+	return map[string][]string{
 		"TEXT":      {"INTEGER", "BIGINT", "BOOLEAN", "TIMESTAMP", "DATE"},
 		"VARCHAR":   {"INTEGER", "BIGINT", "BOOLEAN", "TIMESTAMP", "DATE"},
 		"INTEGER":   {"BOOLEAN", "TIMESTAMP", "DATE"},
@@ -220,12 +277,18 @@ func (cd *ChangeDetector) isIncompatibleTypeChange(oldType, newType string) bool
 		"TIMESTAMP": {"INTEGER", "BIGINT", "BOOLEAN"},
 		"DATE":      {"INTEGER", "BIGINT", "BOOLEAN"},
 	}
+}
 
-	if incompatibleTypes, exists := incompatibleChanges[oldType]; exists {
-		for _, incompatible := range incompatibleTypes {
-			if strings.HasPrefix(newType, incompatible) {
-				return true
-			}
+// checkTypeIncompatibility checks if the new type is incompatible with the old type
+func (cd *ChangeDetector) checkTypeIncompatibility(oldType, newType string, incompatibleChanges map[string][]string) bool {
+	incompatibleTypes, exists := incompatibleChanges[oldType]
+	if !exists {
+		return false
+	}
+
+	for _, incompatible := range incompatibleTypes {
+		if strings.HasPrefix(newType, incompatible) {
+			return true
 		}
 	}
 
@@ -244,22 +307,9 @@ func (cd *ChangeDetector) ValidateMigrationPlan(plan *MigrationPlan) error {
 	var errors []string
 	warnings := make([]string, 0, len(plan.Changes))
 
-	// Check for circular dependencies
-	if err := cd.checkCircularDependencies(plan.Changes); err != nil {
-		errors = append(errors, fmt.Sprintf("Circular dependency detected: %v", err))
-	}
-
-	// Check for orphaned foreign keys
-	orphanedFKs := cd.findOrphanedForeignKeys(plan.Changes)
-	for _, fk := range orphanedFKs {
-		warnings = append(warnings, fmt.Sprintf("Foreign key %s references table that will be dropped", fk))
-	}
-
-	// Check for data loss potential
-	dataLossChanges := cd.findDataLossChanges(plan.Changes)
-	for _, change := range dataLossChanges {
-		warnings = append(warnings, fmt.Sprintf("Potential data loss in %s.%s", change.TableName, change.ColumnName))
-	}
+	// Perform all validation checks
+	errors = cd.performValidationChecks(plan.Changes, errors)
+	warnings = cd.collectValidationWarnings(plan.Changes, warnings)
 
 	plan.Warnings = warnings
 	plan.Errors = errors
@@ -271,25 +321,70 @@ func (cd *ChangeDetector) ValidateMigrationPlan(plan *MigrationPlan) error {
 	return nil
 }
 
+// performValidationChecks runs all error-level validation checks
+func (cd *ChangeDetector) performValidationChecks(changes []MigrationChange, errors []string) []string {
+	// Check for circular dependencies
+	if err := cd.checkCircularDependencies(changes); err != nil {
+		errors = append(errors, fmt.Sprintf("Circular dependency detected: %v", err))
+	}
+	return errors
+}
+
+// collectValidationWarnings gathers all warning-level issues
+func (cd *ChangeDetector) collectValidationWarnings(changes []MigrationChange, warnings []string) []string {
+	// Check for orphaned foreign keys
+	orphanedFKs := cd.findOrphanedForeignKeys(changes)
+	for _, fk := range orphanedFKs {
+		warnings = append(warnings, fmt.Sprintf("Foreign key %s references table that will be dropped", fk))
+	}
+
+	// Check for data loss potential
+	dataLossChanges := cd.findDataLossChanges(changes)
+	for _, change := range dataLossChanges {
+		warnings = append(warnings, fmt.Sprintf("Potential data loss in %s.%s", change.TableName, change.ColumnName))
+	}
+
+	return warnings
+}
+
 // checkCircularDependencies checks for circular dependencies in migration changes
 func (cd *ChangeDetector) checkCircularDependencies(changes []MigrationChange) error {
 	// Build dependency graph
+	dependencies := cd.buildDependencyGraph(changes)
+
+	// Check for cycles using DFS
+	return cd.detectCyclesInDependencyGraph(dependencies)
+}
+
+// buildDependencyGraph creates a dependency graph from migration changes
+func (cd *ChangeDetector) buildDependencyGraph(changes []MigrationChange) map[string][]string {
 	dependencies := make(map[string][]string)
 
 	for _, change := range changes {
 		if change.Type == CreateTable {
-			// Tables with foreign keys depend on their referenced tables
-			if snapshot, ok := change.NewValue.(*ModelSnapshot); ok {
-				for _, constraint := range snapshot.Constraints {
-					if constraint.Type == foreignKeyConstraintType && constraint.ReferencedTable != "" {
-						dependencies[snapshot.TableName] = append(dependencies[snapshot.TableName], constraint.ReferencedTable)
-					}
-				}
-			}
+			cd.addTableDependencies(change, dependencies)
 		}
 	}
 
-	// Check for cycles using DFS
+	return dependencies
+}
+
+// addTableDependencies adds foreign key dependencies for a table
+func (cd *ChangeDetector) addTableDependencies(change MigrationChange, dependencies map[string][]string) {
+	snapshot, ok := change.NewValue.(*ModelSnapshot)
+	if !ok {
+		return
+	}
+
+	for _, constraint := range snapshot.Constraints {
+		if constraint.Type == foreignKeyConstraintType && constraint.ReferencedTable != "" {
+			dependencies[snapshot.TableName] = append(dependencies[snapshot.TableName], constraint.ReferencedTable)
+		}
+	}
+}
+
+// detectCyclesInDependencyGraph uses DFS to detect circular dependencies
+func (cd *ChangeDetector) detectCyclesInDependencyGraph(dependencies map[string][]string) error {
 	visited := make(map[string]bool)
 	recursionStack := make(map[string]bool)
 
@@ -334,34 +429,69 @@ func (cd *ChangeDetector) findOrphanedForeignKeys(changes []MigrationChange) []s
 	orphaned := make([]string, 0, len(changes))
 
 	// Find tables being dropped
+	droppedTables := cd.identifyDroppedTables(changes)
+
+	// Check for foreign keys referencing dropped tables
+	orphaned = cd.findForeignKeysReferencingDroppedTables(changes, droppedTables, orphaned)
+
+	return orphaned
+}
+
+// identifyDroppedTables creates a set of tables being dropped
+func (cd *ChangeDetector) identifyDroppedTables(changes []MigrationChange) map[string]bool {
 	droppedTables := make(map[string]bool)
 	for _, change := range changes {
 		if change.Type == DropTable {
 			droppedTables[change.TableName] = true
 		}
 	}
+	return droppedTables
+}
 
-	// Check for foreign keys referencing dropped tables
+// findForeignKeysReferencingDroppedTables checks changes for foreign keys referencing dropped tables
+func (cd *ChangeDetector) findForeignKeysReferencingDroppedTables(changes []MigrationChange, droppedTables map[string]bool, orphaned []string) []string {
 	for _, change := range changes {
-		if change.Type == CreateTable || change.Type == AddColumn {
-			var constraints map[string]*ConstraintInfo
+		if cd.isChangeWithConstraints(change) {
+			orphaned = cd.checkConstraintsForOrphanedForeignKeys(change, droppedTables, orphaned)
+		}
+	}
+	return orphaned
+}
 
-			if snapshot, ok := change.NewValue.(*ModelSnapshot); ok {
-				constraints = snapshot.Constraints
-			} else if column, ok := change.NewValue.(*ColumnInfo); ok && len(column.Constraints) > 0 {
-				// Handle individual column constraints
-				constraints = column.Constraints
-			}
+// isChangeWithConstraints checks if a change type can have constraints
+func (cd *ChangeDetector) isChangeWithConstraints(change MigrationChange) bool {
+	return change.Type == CreateTable || change.Type == AddColumn
+}
 
-			for constraintName, constraint := range constraints {
-				if constraint.Type == foreignKeyConstraintType && droppedTables[constraint.ReferencedTable] {
-					orphaned = append(orphaned, constraintName)
-				}
-			}
+// checkConstraintsForOrphanedForeignKeys examines constraints in a change for orphaned foreign keys
+func (cd *ChangeDetector) checkConstraintsForOrphanedForeignKeys(change MigrationChange, droppedTables map[string]bool, orphaned []string) []string {
+	constraints := cd.extractConstraintsFromChange(change)
+
+	for constraintName, constraint := range constraints {
+		if cd.isForeignKeyReferencingDroppedTable(constraint, droppedTables) {
+			orphaned = append(orphaned, constraintName)
 		}
 	}
 
 	return orphaned
+}
+
+// extractConstraintsFromChange gets constraints from a migration change
+func (cd *ChangeDetector) extractConstraintsFromChange(change MigrationChange) map[string]*ConstraintInfo {
+	if snapshot, ok := change.NewValue.(*ModelSnapshot); ok {
+		return snapshot.Constraints
+	}
+
+	if column, ok := change.NewValue.(*ColumnInfo); ok && len(column.Constraints) > 0 {
+		return column.Constraints
+	}
+
+	return nil
+}
+
+// isForeignKeyReferencingDroppedTable checks if a constraint is a foreign key referencing a dropped table
+func (cd *ChangeDetector) isForeignKeyReferencingDroppedTable(constraint *ConstraintInfo, droppedTables map[string]bool) bool {
+	return constraint.Type == foreignKeyConstraintType && droppedTables[constraint.ReferencedTable]
 }
 
 // findDataLossChanges identifies changes that might cause data loss
