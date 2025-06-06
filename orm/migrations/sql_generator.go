@@ -51,12 +51,15 @@ func (sg *SQLGenerator) GenerateMigrationSQL(plan *MigrationPlan) (*MigrationSQL
 	}, nil
 }
 
-// MigrationSQL holds the generated SQL scripts for a migration plan.
-type MigrationSQL struct {
+// QL holds the generated SQL scripts for a migration plan.
+type QL struct {
 	UpScript   string
 	DownScript string
 	Metadata   MigrationMetadata
 }
+
+// MigrationSQL is kept for backward compatibility.
+type MigrationSQL = QL
 
 // MigrationMetadata contains metadata about the migration
 type MigrationMetadata struct {
