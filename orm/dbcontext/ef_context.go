@@ -265,6 +265,6 @@ func (ctx *EFContext) delete(_ EntityInterface) error {
 	return errors.New("delete not yet implemented")
 }
 
-func (ctx *EFContext) findByID(_ EntityInterface, id interface{}) error {
+func (ctx *EFContext) findByID(_ EntityInterface, _ interface{}) error {
 	return errors.New("findByID not yet implemented")
 }
