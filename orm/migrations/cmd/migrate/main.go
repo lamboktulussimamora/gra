@@ -3,6 +3,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -185,7 +186,7 @@ func registerModels(_ *migrations.HybridMigrator, modelsDir string) error {
 // cmdAddMigration creates a new migration
 func cmdAddMigration(migrator *migrations.HybridMigrator, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf(errMigrationNameRequired)
+		return errors.New(errMigrationNameRequired)
 	}
 
 	name := args[0]
@@ -307,7 +308,7 @@ func cmdMigrationStatus(migrator *migrations.HybridMigrator) error {
 // cmdGenerateMigration generates a migration script without applying it
 func cmdGenerateMigration(migrator *migrations.HybridMigrator, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf(errMigrationNameRequired)
+		return errors.New(errMigrationNameRequired)
 	}
 
 	name := args[0]
@@ -329,7 +330,7 @@ func cmdGenerateMigration(migrator *migrations.HybridMigrator, args []string) er
 // cmdForceMigration creates a migration with force destructive mode
 func cmdForceMigration(migrator *migrations.HybridMigrator, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf(errMigrationNameRequired)
+		return errors.New(errMigrationNameRequired)
 	}
 
 	name := args[0]

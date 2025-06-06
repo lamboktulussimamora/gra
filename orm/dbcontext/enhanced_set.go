@@ -487,7 +487,7 @@ func (qb *QueryBuilder) buildFromClause(query *strings.Builder) {
 // buildJoinClauses builds all JOIN clauses
 func (qb *QueryBuilder) buildJoinClauses(query *strings.Builder) {
 	for _, join := range qb.joinClauses {
-		query.WriteString(fmt.Sprintf(" %s JOIN %s ON %s", join.Type, join.Table, join.Condition))
+		fmt.Fprintf(query, " %s JOIN %s ON %s", join.Type, join.Table, join.Condition)
 	}
 }
 
@@ -568,7 +568,7 @@ func (qb *QueryBuilder) buildOrderByClause(query *strings.Builder) {
 	}
 
 	query.WriteString(" ORDER BY ")
-	var orderParts []string
+	orderParts := make([]string, 0, len(qb.orderClauses))
 	for _, order := range qb.orderClauses {
 		orderPart := order.Column
 		if order.Desc {
@@ -582,11 +582,11 @@ func (qb *QueryBuilder) buildOrderByClause(query *strings.Builder) {
 // buildLimitOffsetClauses builds the LIMIT and OFFSET parts of the query
 func (qb *QueryBuilder) buildLimitOffsetClauses(query *strings.Builder) {
 	if qb.limit > 0 {
-		query.WriteString(fmt.Sprintf(" LIMIT %d", qb.limit))
+		fmt.Fprintf(query, " LIMIT %d", qb.limit)
 	}
 
 	if qb.offset > 0 {
-		query.WriteString(fmt.Sprintf(" OFFSET %d", qb.offset))
+		fmt.Fprintf(query, " OFFSET %d", qb.offset)
 	}
 }
 

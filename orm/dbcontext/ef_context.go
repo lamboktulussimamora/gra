@@ -154,7 +154,7 @@ func (ctx *EFContext) processStructFields(v reflect.Value, columns *[]string, va
 }
 
 // shouldProcessField determines if a field should be processed based on operation and field properties
-func (ctx *EFContext) shouldProcessField(field reflect.StructField, fieldValue reflect.Value, operation string) bool {
+func (ctx *EFContext) shouldProcessField(field reflect.StructField, fieldValue reflect.Value, _ string) bool {
 	// Skip unexported fields
 	if !fieldValue.CanInterface() {
 		return false
