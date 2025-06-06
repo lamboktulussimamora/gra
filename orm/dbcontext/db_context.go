@@ -301,22 +301,11 @@ func (ctx *EnhancedDbContext) deleteEntity(entity interface{}) error {
 	// Convert placeholders for PostgreSQL
 	query = convertQueryPlaceholders(query, ctx.driver)
 
-	// Debug output
-	fmt.Printf("DEBUG DELETE: tableName=%s, idValue=%v, query=%s\n", tableName, idValue, query)
-
 	if ctx.tx != nil {
-		result, err := ctx.tx.Exec(query, idValue)
-		if err == nil {
-			rowsAffected, _ := result.RowsAffected()
-			fmt.Printf("DEBUG DELETE TX: rowsAffected=%d\n", rowsAffected)
-		}
+		_, err := ctx.tx.Exec(query, idValue)
 		return err
 	}
-	result, err := ctx.db.Exec(query, idValue)
-	if err == nil {
-		rowsAffected, _ := result.RowsAffected()
-		fmt.Printf("DEBUG DELETE DB: rowsAffected=%d\n", rowsAffected)
-	}
+	_, err := ctx.db.Exec(query, idValue)
 	return err
 }
 

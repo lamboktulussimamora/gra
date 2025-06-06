@@ -4,32 +4,75 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/lamboktulussimamora/gra/context"
 	"github.com/lamboktulussimamora/gra/router"
 )
 
-// Test error message constants to avoid duplication
+// Global test constants to avoid duplication
 const (
-	testUserID                  = "123"
-	testRole                    = "admin"
-	claimsKey                   = "user"
-	errExpectedHandlerCalled    = "Expected handler to be called, but it wasn't"
+	// Test data
+	testUserID        = "123"
+	testRole          = "admin"
+	claimsKey         = "user"
+	testKey           = "test-key"
+	customRequestID   = "custom-id-123"
+	existingRequestID = "existing-id"
+
+	// CSP directives
+	selfDirective = "'self'"
+	noneDirective = "'none'"
+	customCSP     = "default-src 'self'"
+
+	// Origins
+	testOriginExample = "https://example.com"
+	allowOrigin       = "*"
+	allowMethods      = "GET, POST, PUT, DELETE, OPTIONS"
+	allowHeaders      = "Authorization, Content-Type"
+
+	// Error messages
+	expectedHandlerCalled       = "Expected handler to be called"
 	errExpectedHandlerNotCalled = "Expected handler not to be called, but it was"
 	errStatusCodeMismatch       = "Expected status code %d, got %d"
 	errClaimsNotAdded           = "Expected claims to be added to context, but they weren't"
 	errClaimsWrongType          = "Claims not of expected type"
 	errUserIDMismatch           = "Expected userID %v, got %v"
 	errHeaderMismatch           = "Expected %s to be %s, got %s"
-)
 
-// Constants for authorization headers
-const (
+	// Headers
+	headerAllowOrigin     = "Access-Control-Allow-Origin"
+	headerAllowMethods    = "Access-Control-Allow-Methods"
+	headerAllowHeaders    = "Access-Control-Allow-Headers"
+	headerRequestID       = "X-Request-ID"
+	headerCustomRequestID = "X-Custom-Request-ID"
+	headerCSP             = "Content-Security-Policy"
+
+	// Authorization headers
 	bearerTokenPrefix   = "Bearer "
 	validTokenHeader    = bearerTokenPrefix + "valid-token"
 	invalidFormatHeader = "InvalidFormat token"
 	invalidTokenHeader  = bearerTokenPrefix + "invalid-token"
+
+	// Security headers
+	headerXSSProtection       = "X-XSS-Protection"
+	headerContentTypeOptions  = "X-Content-Type-Options"
+	headerFrameOptions        = "X-Frame-Options"
+	headerReferrerPolicy      = "Referrer-Policy"
+	headerHSTS                = "Strict-Transport-Security"
+	headerCrossOriginResource = "Cross-Origin-Resource-Policy"
+
+	// Security header values
+	valueXSSProtection       = "1; mode=block"
+	valueContentTypeOptions  = "nosniff"
+	valueFrameOptions        = "SAMEORIGIN"
+	valueReferrerPolicy      = "no-referrer"
+	valueSameOrigin          = "same-origin"
+	valueCrossOriginResource = valueSameOrigin
+
+	// Error message format for header value mismatch
+	errHeaderValueMismatch = "Expected %s header to be '%s', got '%s'"
 )
 
 // MockJWTAuthenticator is a mock implementation of JWTAuthenticator
@@ -39,8 +82,6 @@ type MockJWTAuthenticator struct {
 }
 
 func (m *MockJWTAuthenticator) ValidateToken(_ string) (any, error) {
-	// This implementation ignores the actual token string value
-	// as we're only testing based on the ShouldSucceed flag
 	if !m.ShouldSucceed {
 		return nil, errors.New("invalid token")
 	}
@@ -49,7 +90,6 @@ func (m *MockJWTAuthenticator) ValidateToken(_ string) (any, error) {
 
 // TestAuth tests the Auth middleware functionality
 func TestAuth(t *testing.T) {
-	// Set up test cases
 	testCases := []struct {
 		name           string
 		authHeader     string
@@ -82,13 +122,11 @@ func TestAuth(t *testing.T) {
 		},
 	}
 
-	// Set up test claims
 	claims := map[string]any{
 		"userID": testUserID,
 		"role":   testRole,
 	}
 
-	// Run each test case
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			runAuthTest(t, tc.authHeader, tc.shouldSucceed, tc.expectedStatus, claims)
@@ -98,51 +136,39 @@ func TestAuth(t *testing.T) {
 
 // runAuthTest executes a single Auth middleware test case
 func runAuthTest(t *testing.T, authHeader string, shouldSucceed bool, expectedStatus int, claims map[string]any) {
-	// Create test variables
 	handlerCalled := false
 	var capturedClaims any
 
-	// Create mock JWT authenticator
 	mockJWT := &MockJWTAuthenticator{
 		ShouldSucceed: shouldSucceed,
 		Claims:        claims,
 	}
 
-	// Create test handler
 	testHandler := func(c *context.Context) {
 		handlerCalled = true
 		capturedClaims = c.Value(claimsKey)
-		c.Status(http.StatusOK).JSON(http.StatusOK, map[string]string{
-			"status": "success",
-		})
+		c.Status(http.StatusOK)
 	}
 
-	// Create auth middleware
 	authMiddleware := Auth(mockJWT, claimsKey)
 	wrappedHandler := authMiddleware(testHandler)
 
-	// Create request and response
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/protected", nil)
 
-	// Set auth header if provided
 	if authHeader != "" {
 		r.Header.Set("Authorization", authHeader)
 	}
 
-	// Execute middleware
 	c := context.New(w, r)
 	wrappedHandler(c)
 
-	// Verify response status code
 	if w.Code != expectedStatus {
 		t.Errorf(errStatusCodeMismatch, expectedStatus, w.Code)
 	}
 
-	// Verify handler execution
 	verifyHandlerExecution(t, expectedStatus, handlerCalled)
 
-	// Verify claims if handler was called
 	if handlerCalled {
 		verifyClaims(t, capturedClaims, claims)
 	}
@@ -154,21 +180,9 @@ func verifyHandlerExecution(t *testing.T, expectedStatus int, handlerCalled bool
 	shouldCallHandler := expectedStatus == http.StatusOK
 
 	if shouldCallHandler && !handlerCalled {
-		t.Error(errExpectedHandlerCalled)
+		t.Error(expectedHandlerCalled)
 	}
 	if !shouldCallHandler && handlerCalled {
-		t.Error(errExpectedHandlerNotCalled)
-	}
-}
-
-// verifyCORSHandlerExecution checks if the handler was called when expected for CORS tests
-func verifyCORSHandlerExecution(t *testing.T, handlerShouldRun bool, handlerCalled bool) {
-	t.Helper()
-
-	if handlerShouldRun && !handlerCalled {
-		t.Error(errExpectedHandlerCalled)
-	}
-	if !handlerShouldRun && handlerCalled {
 		t.Error(errExpectedHandlerNotCalled)
 	}
 }
@@ -193,31 +207,25 @@ func verifyClaims(t *testing.T, capturedClaims any, expectedClaims map[string]an
 }
 
 func TestLogger(t *testing.T) {
-	// Create a handler to verify the logger middleware
 	handlerCalled := false
 	testHandler := func(c *context.Context) {
 		handlerCalled = true
 		c.Status(http.StatusOK)
 	}
 
-	// Create the logger middleware
 	loggerMiddleware := Logger()
 	wrappedHandler := loggerMiddleware(testHandler)
 
-	// Create test request and response
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/test", nil)
 	c := context.New(w, r)
 
-	// Execute middleware and handler
 	wrappedHandler(c)
 
-	// Check if handler was called
 	if !handlerCalled {
-		t.Error(errExpectedHandlerCalled)
+		t.Error(expectedHandlerCalled)
 	}
 
-	// Check status code
 	if w.Code != http.StatusOK {
 		t.Errorf(errStatusCodeMismatch, http.StatusOK, w.Code)
 	}
@@ -250,19 +258,15 @@ func TestRecovery(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Create the recovery middleware
 			recoveryMiddleware := Recovery()
 			wrappedHandler := recoveryMiddleware(tc.handler)
 
-			// Create test request and response
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("GET", "/test", nil)
 			c := context.New(w, r)
 
-			// Execute middleware and handler
 			wrappedHandler(c)
 
-			// Check status code
 			if w.Code != tc.expectedStatus {
 				t.Errorf(errStatusCodeMismatch, tc.expectedStatus, w.Code)
 			}
@@ -291,87 +295,56 @@ func TestCORS(t *testing.T) {
 		},
 	}
 
-	// Constants for CORS header validation
-	const (
-		allowOrigin        = "*"
-		allowMethods       = "GET, POST, PUT, DELETE, OPTIONS"
-		allowHeaders       = "Authorization, Content-Type"
-		headerAllowOrigin  = "Access-Control-Allow-Origin"
-		headerAllowMethods = "Access-Control-Allow-Methods"
-		headerAllowHeaders = "Access-Control-Allow-Headers"
-	)
-
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Track if handler was called
 			handlerCalled := false
 			testHandler := func(c *context.Context) {
 				handlerCalled = true
 				c.Status(http.StatusOK)
 			}
 
-			// Create the CORS middleware
 			corsMiddleware := CORS(allowOrigin)
 			wrappedHandler := corsMiddleware(testHandler)
 
-			// Create test request and response
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(tc.method, "/test", nil)
 			c := context.New(w, r)
 
-			// Execute middleware and handler
 			wrappedHandler(c)
 
-			// Verify handler execution
 			verifyCORSHandlerExecution(t, tc.handlerShouldRun, handlerCalled)
 
-			// Verify status code
 			if w.Code != tc.expectedStatus {
 				t.Errorf(errStatusCodeMismatch, tc.expectedStatus, w.Code)
 			}
 
-			// Verify CORS headers
 			headers := w.Header()
 			if headers.Get(headerAllowOrigin) != allowOrigin {
-				t.Errorf(errHeaderMismatch,
-					headerAllowOrigin, allowOrigin, headers.Get(headerAllowOrigin))
+				t.Errorf(errHeaderMismatch, headerAllowOrigin, allowOrigin, headers.Get(headerAllowOrigin))
 			}
 
 			if headers.Get(headerAllowMethods) != allowMethods {
-				t.Errorf(errHeaderMismatch,
-					headerAllowMethods, allowMethods, headers.Get(headerAllowMethods))
+				t.Errorf(errHeaderMismatch, headerAllowMethods, allowMethods, headers.Get(headerAllowMethods))
 			}
 
 			if headers.Get(headerAllowHeaders) != allowHeaders {
-				t.Errorf(errHeaderMismatch,
-					headerAllowHeaders, allowHeaders, headers.Get(headerAllowHeaders))
+				t.Errorf(errHeaderMismatch, headerAllowHeaders, allowHeaders, headers.Get(headerAllowHeaders))
 			}
 		})
 	}
 }
 
-// Header name and value constants for testing
-const (
-	// Header names
-	headerXSSProtection       = "X-XSS-Protection"
-	headerContentTypeOptions  = "X-Content-Type-Options"
-	headerFrameOptions        = "X-Frame-Options"
-	headerReferrerPolicy      = "Referrer-Policy"
-	headerCSP                 = "Content-Security-Policy"
-	headerHSTS                = "Strict-Transport-Security"
-	headerCrossOriginResource = "Cross-Origin-Resource-Policy"
+// verifyCORSHandlerExecution checks if the handler was called when expected for CORS tests
+func verifyCORSHandlerExecution(t *testing.T, handlerShouldRun bool, handlerCalled bool) {
+	t.Helper()
 
-	// Header default values
-	valueXSSProtection       = "1; mode=block"
-	valueContentTypeOptions  = "nosniff"
-	valueFrameOptions        = "SAMEORIGIN"
-	valueReferrerPolicy      = "no-referrer"
-	valueSameOrigin          = "same-origin"
-	valueCrossOriginResource = valueSameOrigin
-
-	// Error message format for header value mismatch
-	errHeaderValueMismatch = "Expected %s header to be '%s', got '%s'"
-)
+	if handlerShouldRun && !handlerCalled {
+		t.Error(expectedHandlerCalled)
+	}
+	if !handlerShouldRun && handlerCalled {
+		t.Error(errExpectedHandlerNotCalled)
+	}
+}
 
 // verifySecureHeader checks if a security header has the expected value
 func verifySecureHeader(t *testing.T, headers http.Header, headerName string, expectedValue string) {
@@ -382,12 +355,10 @@ func verifySecureHeader(t *testing.T, headers http.Header, headerName string, ex
 }
 
 func TestSecureHeaders(t *testing.T) {
-	// Create a request with a method and URL
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	w := httptest.NewRecorder()
 	c := context.New(w, req)
 
-	// Create handler function
 	handlerFunc := func(c *context.Context) {
 		c.Writer.WriteHeader(http.StatusOK)
 		if _, err := c.Writer.Write([]byte("test")); err != nil {
@@ -395,17 +366,13 @@ func TestSecureHeaders(t *testing.T) {
 		}
 	}
 
-	// Apply secure headers middleware
 	middleware := SecureHeaders()
 	handler := middleware(handlerFunc)
 
-	// Call handler
 	handler(c)
 
-	// Assert headers
 	headers := w.Result().Header
 
-	// Check security headers with helper function
 	verifySecureHeader(t, headers, headerXSSProtection, valueXSSProtection)
 	verifySecureHeader(t, headers, headerContentTypeOptions, valueContentTypeOptions)
 	verifySecureHeader(t, headers, headerFrameOptions, valueFrameOptions)
@@ -414,18 +381,15 @@ func TestSecureHeaders(t *testing.T) {
 }
 
 func TestSecureHeadersWithConfig(t *testing.T) {
-	// Custom values for the test
 	const (
 		customXSSProtection         = "0"
 		customXFrameOptions         = "DENY"
-		customCSP                   = "default-src 'self'"
 		customReferrerPolicy        = valueSameOrigin
 		customHSTSMaxAge            = 300
 		customHSTSMaxAgeHeaderValue = "max-age=300; includeSubDomains"
 		customCrossOriginResource   = valueSameOrigin
 	)
 
-	// Create a custom config
 	config := SecureHeadersConfig{
 		XSSProtection:             customXSSProtection,
 		ContentTypeNosniff:        valueContentTypeOptions,
@@ -437,12 +401,10 @@ func TestSecureHeadersWithConfig(t *testing.T) {
 		CrossOriginResourcePolicy: customCrossOriginResource,
 	}
 
-	// Create a request with a method and URL
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	w := httptest.NewRecorder()
 	c := context.New(w, req)
 
-	// Create handler function
 	handlerFunc := func(c *context.Context) {
 		c.Writer.WriteHeader(http.StatusOK)
 		if _, err := c.Writer.Write([]byte("test")); err != nil {
@@ -450,17 +412,13 @@ func TestSecureHeadersWithConfig(t *testing.T) {
 		}
 	}
 
-	// Apply secure headers middleware with custom config
 	middleware := SecureHeadersWithConfig(config)
 	handler := middleware(handlerFunc)
 
-	// Call handler
 	handler(c)
 
-	// Assert headers
 	headers := w.Result().Header
 
-	// Check security headers with custom values
 	verifySecureHeader(t, headers, headerXSSProtection, customXSSProtection)
 	verifySecureHeader(t, headers, headerContentTypeOptions, valueContentTypeOptions)
 	verifySecureHeader(t, headers, headerFrameOptions, customXFrameOptions)
@@ -468,4 +426,292 @@ func TestSecureHeadersWithConfig(t *testing.T) {
 	verifySecureHeader(t, headers, headerReferrerPolicy, customReferrerPolicy)
 	verifySecureHeader(t, headers, headerHSTS, customHSTSMaxAgeHeaderValue)
 	verifySecureHeader(t, headers, headerCrossOriginResource, valueCrossOriginResource)
+}
+
+func TestRateLimit(t *testing.T) {
+	runRateLimitTest(t, "Within limit", 5, 60, 3, []int{200, 200, 200})
+	runRateLimitTest(t, "Exceed limit", 2, 60, 3, []int{200, 200, 429})
+}
+
+func runRateLimitTest(t *testing.T, name string, limit, windowSeconds, requestCount int, expectedStatus []int) {
+	t.Run(name, func(t *testing.T) {
+		middleware := RateLimit(limit, windowSeconds)
+		handlerCalled := make([]bool, requestCount)
+
+		handler := func(c *context.Context) {
+			for i := range handlerCalled {
+				if !handlerCalled[i] {
+					handlerCalled[i] = true
+					break
+				}
+			}
+			c.Status(http.StatusOK)
+		}
+
+		wrappedHandler := middleware(handler)
+
+		for i := 0; i < requestCount; i++ {
+			req := httptest.NewRequest("GET", "/test", nil)
+			req.RemoteAddr = "192.168.1.1:12345"
+			w := httptest.NewRecorder()
+			ctx := context.New(w, req)
+
+			wrappedHandler(ctx)
+
+			if w.Code != expectedStatus[i] {
+				t.Errorf("Request %d: expected status %d, got %d", i, expectedStatus[i], w.Code)
+			}
+
+			verifyRateLimitHeaders(t, w)
+		}
+	})
+}
+
+func verifyRateLimitHeaders(t *testing.T, w *httptest.ResponseRecorder) {
+	t.Helper()
+	if w.Header().Get("X-RateLimit-Limit") == "" {
+		t.Error("Expected X-RateLimit-Limit header to be set")
+	}
+	if w.Header().Get("X-RateLimit-Remaining") == "" {
+		t.Error("Expected X-RateLimit-Remaining header to be set")
+	}
+	if w.Header().Get("X-RateLimit-Reset") == "" {
+		t.Error("Expected X-RateLimit-Reset header to be set")
+	}
+}
+
+func TestRateLimitWithConfig(t *testing.T) {
+	store := NewInMemoryStore()
+	config := RateLimiterConfig{
+		Store:  store,
+		Limit:  2,
+		Window: 60,
+		KeyFunc: func(_ *context.Context) string {
+			return testKey
+		},
+		ExcludeFunc: func(c *context.Context) bool {
+			return c.Request.URL.Path == "/excluded"
+		},
+		ErrorMessage: "Custom rate limit message",
+	}
+
+	middleware := RateLimitWithConfig(config)
+	handler := func(c *context.Context) {
+		c.Status(http.StatusOK)
+	}
+	wrappedHandler := middleware(handler)
+
+	// Test excluded path
+	req := httptest.NewRequest("GET", "/excluded", nil)
+	w := httptest.NewRecorder()
+	ctx := context.New(w, req)
+	wrappedHandler(ctx)
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected excluded path to pass, got status %d", w.Code)
+	}
+
+	// Test normal rate limiting
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest("GET", "/test", nil)
+		w := httptest.NewRecorder()
+		ctx := context.New(w, req)
+		wrappedHandler(ctx)
+
+		expectedStatus := http.StatusOK
+		if i >= 2 {
+			expectedStatus = http.StatusTooManyRequests
+		}
+
+		if w.Code != expectedStatus {
+			t.Errorf("Request %d: expected status %d, got %d", i, expectedStatus, w.Code)
+		}
+	}
+}
+
+func TestInMemoryStore(t *testing.T) {
+	store := NewInMemoryStore()
+
+	count, exceeded := store.Increment(testKey, 3, 60)
+	if count != 1 || exceeded {
+		t.Errorf("Expected count=1, exceeded=false, got count=%d, exceeded=%t", count, exceeded)
+	}
+
+	store.Increment(testKey, 3, 60)
+	count, exceeded = store.Increment(testKey, 3, 60)
+	if count != 3 || exceeded {
+		t.Errorf("Expected count=3, exceeded=false, got count=%d, exceeded=%t", count, exceeded)
+	}
+
+	count, exceeded = store.Increment(testKey, 3, 60)
+	if count != 3 || !exceeded {
+		t.Errorf("Expected count=3, exceeded=true, got count=%d, exceeded=%t", count, exceeded)
+	}
+}
+
+func TestRequestID(t *testing.T) {
+	middleware := RequestID()
+	handlerCalled := false
+
+	handler := func(c *context.Context) {
+		handlerCalled = true
+		if c.Value("requestID") == nil {
+			t.Error("Expected request ID to be in context")
+		}
+		c.Status(http.StatusOK)
+	}
+
+	wrappedHandler := middleware(handler)
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+	ctx := context.New(w, req)
+
+	wrappedHandler(ctx)
+
+	if !handlerCalled {
+		t.Error(expectedHandlerCalled)
+	}
+
+	if w.Header().Get(headerRequestID) == "" {
+		t.Error("Expected X-Request-ID header to be set in response")
+	}
+}
+
+func TestRequestIDWithConfig(t *testing.T) {
+	config := RequestIDConfig{
+		Generator: func() string {
+			return customRequestID
+		},
+		HeaderName:     headerCustomRequestID,
+		ContextKey:     "customRequestID",
+		ResponseHeader: true,
+	}
+
+	middleware := RequestIDWithConfig(config)
+	handlerCalled := false
+
+	handler := func(c *context.Context) {
+		handlerCalled = true
+		if c.Value("customRequestID") != customRequestID {
+			t.Error("Expected custom request ID to be in context")
+		}
+		c.Status(http.StatusOK)
+	}
+
+	wrappedHandler := middleware(handler)
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+	ctx := context.New(w, req)
+
+	wrappedHandler(ctx)
+
+	if !handlerCalled {
+		t.Error(expectedHandlerCalled)
+	}
+
+	if w.Header().Get(headerCustomRequestID) != customRequestID {
+		t.Error("Expected X-Custom-Request-ID header to be set with custom value")
+	}
+}
+
+func TestRequestIDExistingHeader(t *testing.T) {
+	middleware := RequestID()
+	handlerCalled := false
+
+	handler := func(c *context.Context) {
+		handlerCalled = true
+		if c.Value("requestID") != existingRequestID {
+			t.Error("Expected existing request ID to be preserved")
+		}
+		c.Status(http.StatusOK)
+	}
+
+	wrappedHandler := middleware(handler)
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set(headerRequestID, existingRequestID)
+	w := httptest.NewRecorder()
+	ctx := context.New(w, req)
+
+	wrappedHandler(ctx)
+
+	if !handlerCalled {
+		t.Error(expectedHandlerCalled)
+	}
+
+	if w.Header().Get(headerRequestID) != existingRequestID {
+		t.Error("Expected existing X-Request-ID header to be preserved")
+	}
+}
+
+func TestCSPBuilder(t *testing.T) {
+	builder := NewCSPBuilder()
+
+	csp := builder.
+		DefaultSrc(selfDirective).
+		ScriptSrc(selfDirective, "'unsafe-inline'").
+		StyleSrc(selfDirective, "https://fonts.googleapis.com").
+		ImgSrc(selfDirective, "data:", "https:").
+		ConnectSrc(selfDirective).
+		FontSrc(selfDirective, "https://fonts.gstatic.com").
+		ObjectSrc(noneDirective).
+		MediaSrc(selfDirective).
+		FrameSrc(noneDirective).
+		WorkerSrc(selfDirective).
+		FrameAncestors(noneDirective).
+		FormAction(selfDirective).
+		ReportTo("csp-endpoint").
+		ReportURI("/csp-report").
+		UpgradeInsecureRequests().
+		Build()
+
+	if csp == "" {
+		t.Error("Expected CSP string to be non-empty")
+	}
+
+	expectedDirectives := []string{
+		"default-src " + selfDirective,
+		"script-src " + selfDirective + " 'unsafe-inline'",
+		"style-src " + selfDirective + " https://fonts.googleapis.com",
+		"object-src " + noneDirective,
+		"upgrade-insecure-requests",
+	}
+
+	for _, directive := range expectedDirectives {
+		if !strings.Contains(csp, directive) {
+			t.Errorf("Expected CSP to contain '%s', got: %s", directive, csp)
+		}
+	}
+}
+
+func TestCSPMiddleware(t *testing.T) {
+	builder := NewCSPBuilder().
+		DefaultSrc(selfDirective).
+		ScriptSrc(selfDirective)
+
+	middleware := CSP(builder)
+	handlerCalled := false
+
+	handler := func(c *context.Context) {
+		handlerCalled = true
+		c.Status(http.StatusOK)
+	}
+
+	wrappedHandler := middleware(handler)
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+	ctx := context.New(w, req)
+
+	wrappedHandler(ctx)
+
+	if !handlerCalled {
+		t.Error(expectedHandlerCalled)
+	}
+
+	cspHeader := w.Header().Get(headerCSP)
+	if cspHeader == "" {
+		t.Error("Expected Content-Security-Policy header to be set")
+	}
+
+	if !strings.Contains(cspHeader, "default-src "+selfDirective) {
+		t.Error("Expected CSP header to contain default-src directive")
+	}
 }

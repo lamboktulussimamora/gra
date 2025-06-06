@@ -13,6 +13,11 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// Logging constants
+const (
+	warnFailedToCloseRows = "Failed to close rows: %v"
+)
+
 // MigrationState represents the state of a migration
 type MigrationState int
 
@@ -758,5 +763,3 @@ func (em *EFMigrationManager) getTableName(entity interface{}) string {
 
 	return result.String()
 }
-
-

@@ -2,16 +2,16 @@ package migrations
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 
+	"github.com/lamboktulussimamora/gra/logger"
 	"github.com/lamboktulussimamora/gra/orm/models"
 	_ "github.com/mattn/go-sqlite3" // Import for SQLite driver (required for database/sql)
 )
 
 // IntegrationDemo demonstrates the complete migration workflow
 func IntegrationDemo() {
-	fmt.Println("=== GRA Hybrid Migration Integration Demo ===")
+	logger.Get().Info("=== GRA Hybrid Migration Integration Demo ===")
 
 	// 1. Setup test database
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -33,27 +33,26 @@ func IntegrationDemo() {
 	}()
 
 	// 3. Register existing GRA models
-	fmt.Println("1. Registering GRA models...")
+	logger.Get().Info("1. Registering GRA models...")
 	migrator.DbSet(&models.User{})
 	migrator.DbSet(&models.Product{})
 	migrator.DbSet(&models.Category{})
-	fmt.Println("   ✓ Core models registered")
+	logger.Get().Info("   ✓ Core models registered")
 
 	// 4. Check migration status
-	fmt.Println("2. Checking migration status...")
+	logger.Get().Info("2. Checking migration status...")
 	status, err := migrator.GetMigrationStatus()
 	if err != nil {
 		log.Printf("Failed to get migration status: %v", err)
 		return
 	}
 
-	fmt.Printf("   Applied migrations: %d\n", len(status.AppliedMigrations))
-	fmt.Printf("   Pending migrations: %d\n", len(status.PendingMigrations))
-	fmt.Printf("   Has pending changes: %t\n", status.HasPendingChanges)
-	fmt.Println()
+	logger.Get().Infof("   Applied migrations: %d", len(status.AppliedMigrations))
+	logger.Get().Infof("   Pending migrations: %d", len(status.PendingMigrations))
+	logger.Get().Infof("   Has pending changes: %t", status.HasPendingChanges)
 
 	// 5. Create initial migration
-	fmt.Println("3. Creating initial migration...")
+	logger.Get().Info("3. Creating initial migration...")
 	migrationFile, err := migrator.AddMigration(
 		"create_initial_schema",
 		ModeGenerateOnly, // Generate files only for review
@@ -64,27 +63,26 @@ func IntegrationDemo() {
 	}
 
 	if migrationFile != nil {
-		fmt.Printf("   ✓ Migration created: %s\n", migrationFile.Filename)
-		fmt.Printf("   Changes: %d\n", len(migrationFile.Changes))
-		fmt.Printf("   Has destructive changes: %t\n", migrationFile.HasDestructiveChanges())
+		logger.Get().Infof("   ✓ Migration created: %s", migrationFile.Filename)
+		logger.Get().Infof("   Changes: %d", len(migrationFile.Changes))
+		logger.Get().Infof("   Has destructive changes: %t", migrationFile.HasDestructiveChanges())
 
 		if warnings := migrationFile.GetWarnings(); len(warnings) > 0 {
-			fmt.Println("   Warnings:")
+			logger.Get().Info("   Warnings:")
 			for _, warning := range warnings {
-				fmt.Printf("     - %s\n", warning)
+				logger.Get().Infof("     - %s", warning)
 			}
 		}
 	} else {
-		fmt.Println("   No changes detected")
+		logger.Get().Info("   No changes detected")
 	}
-	fmt.Println()
 
-	fmt.Println("=== Demo Complete ===")
-	fmt.Println("The hybrid migration system is working correctly!")
-	fmt.Println("Key features demonstrated:")
-	fmt.Println("  ✓ Model registration (EF Core-style DbSet)")
-	fmt.Println("  ✓ Change detection from struct definitions")
-	fmt.Println("  ✓ Migration file generation")
-	fmt.Println("  ✓ Safety checks and warnings")
-	fmt.Println("  ✓ Multiple migration modes")
+	logger.Get().Info("=== Demo Complete ===")
+	logger.Get().Info("The hybrid migration system is working correctly!")
+	logger.Get().Info("Key features demonstrated:")
+	logger.Get().Info("  ✓ Model registration (EF Core-style DbSet)")
+	logger.Get().Info("  ✓ Change detection from struct definitions")
+	logger.Get().Info("  ✓ Migration file generation")
+	logger.Get().Info("  ✓ Safety checks and warnings")
+	logger.Get().Info("  ✓ Multiple migration modes")
 }

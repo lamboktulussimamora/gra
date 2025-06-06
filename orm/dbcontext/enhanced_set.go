@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/lamboktulussimamora/gra/logger"
 )
 
 // WhereClause represents a WHERE condition
@@ -241,8 +243,8 @@ func (es *EnhancedSet[T]) ToList() ([]T, error) {
 		}
 		defer func() {
 			if closeErr := rows.Close(); closeErr != nil {
-				// Log but don't affect return value
-				fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+				// Log close error but don't override the main operation
+				logger.Get().Warnf("Warning: failed to close rows: %v", closeErr)
 			}
 		}()
 
@@ -256,8 +258,8 @@ func (es *EnhancedSet[T]) ToList() ([]T, error) {
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			// Log but don't affect return value
-			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			// Log close error but don't override the main operation
+			logger.Get().Warnf("Warning: failed to close rows: %v", closeErr)
 		}
 	}()
 
