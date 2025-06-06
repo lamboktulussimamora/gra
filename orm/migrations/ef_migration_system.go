@@ -17,8 +17,11 @@ import (
 type MigrationState int
 
 const (
+	// MigrationStatePending indicates a migration that is pending and not yet applied.
 	MigrationStatePending MigrationState = iota
+	// MigrationStateApplied indicates a migration that has been successfully applied.
 	MigrationStateApplied
+	// MigrationStateFailed indicates a migration that failed to apply.
 	MigrationStateFailed
 )
 
