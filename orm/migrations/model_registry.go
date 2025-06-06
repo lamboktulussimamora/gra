@@ -77,8 +77,8 @@ func (mr *ModelRegistry) createModelSnapshot(model interface{}) ModelSnapshot {
 	return snapshot
 }
 
-// processStructFields recursively processes struct fields including embedded ones
-// The 'prefix' parameter is used for nested/embedded structs.
+// processStructFields recursively processes struct fields including embedded ones.
+// The 'prefix' parameter is used for nested/embedded structs. (revive: parameter is used)
 func (mr *ModelRegistry) processStructFields(structType reflect.Type, prefix string, callback func(reflect.StructField, string, string)) {
 	for i := 0; i < structType.NumField(); i++ {
 		field := structType.Field(i)
