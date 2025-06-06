@@ -53,6 +53,7 @@ func TestNew(t *testing.T) {
 
 	if c == nil {
 		t.Fatal(errContextNil)
+		return
 	}
 
 	if c.Writer != w {
