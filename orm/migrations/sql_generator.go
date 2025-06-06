@@ -60,8 +60,18 @@ type QL struct {
 }
 
 // MigrationSQL is kept for backward compatibility.
-// Deprecated: Use QL instead. This alias will be removed in a future release.
-type MigrationSQL = QL
+// Deprecated: MigrationSQL is an alias for MigrationSQLStatements and will be removed in a future release.
+// This alias exists for backward compatibility and should not be used in new code.
+type MigrationSQL = MigrationSQLStatements
+
+// revive:disable-next-line:type-stutter -- Kept for backward compatibility; removal would be a breaking change.
+// MigrationSQLStatements holds the generated SQL scripts for a migration plan.
+// Deprecated: MigrationSQLStatements stutters the package name. Use QLStatements instead.
+type MigrationSQLStatements struct {
+	UpScript   string
+	DownScript string
+	Metadata   MigrationMetadata
+}
 
 // MigrationMetadata contains metadata about the migration
 type MigrationMetadata struct {

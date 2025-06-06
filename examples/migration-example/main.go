@@ -2,7 +2,6 @@
 // This example shows how to use the MigrationRunner to handle automatic database migrations.
 // It includes creating the necessary tables for the ecommerce application
 // and displaying the migration status.
-
 package main
 
 import (
