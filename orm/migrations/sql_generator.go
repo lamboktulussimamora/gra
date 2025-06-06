@@ -348,7 +348,8 @@ func (sg *SQLGenerator) collectColumnDefsAndPKs(snapshot *ModelSnapshot) ([]stri
 		columnDef := sg.generateColumnDefinition(column)
 		columnDefs = append(columnDefs, fmt.Sprintf("    %s %s", columnName, columnDef))
 		if column.IsPrimaryKey {
-			if !(sg.driver == SQLite && column.IsIdentity) {
+			// Only skip if both conditions are true (De Morgan's law)
+			if sg.driver != SQLite || !column.IsIdentity {
 				primaryKeys = append(primaryKeys, columnName)
 			}
 		}
