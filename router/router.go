@@ -243,7 +243,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				params = pathParams
 				break
 			}
-			if handler == nil {
+			if route.Method != req.Method {
 				matchedPath = true
 			}
 		}
