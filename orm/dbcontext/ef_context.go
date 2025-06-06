@@ -257,14 +257,14 @@ func (ctx *EFContext) toSnakeCaseEF(s string) string {
 }
 
 // Helper methods for other operations (simplified for now)
-func (ctx *EFContext) update(entity EntityInterface) error {
+func (ctx *EFContext) update(_ EntityInterface) error {
 	return errors.New("update not yet implemented")
 }
 
-func (ctx *EFContext) delete(entity EntityInterface) error {
+func (ctx *EFContext) delete(_ EntityInterface) error {
 	return errors.New("delete not yet implemented")
 }
 
-func (ctx *EFContext) findByID(entity EntityInterface, id interface{}) error {
+func (ctx *EFContext) findByID(_ EntityInterface, id interface{}) error {
 	return errors.New("findByID not yet implemented")
 }

@@ -90,9 +90,9 @@ func (mr *ModelRegistry) processStructFields(structType reflect.Type, prefix str
 		// Handle embedded structs
 		if field.Anonymous {
 			if field.Type.Kind() == reflect.Struct {
-				mr.processStructFields(field.Type, prefix, callback)
+				mr.processStructFields(field.Type, "", callback)
 			} else if field.Type.Kind() == reflect.Ptr && field.Type.Elem().Kind() == reflect.Struct {
-				mr.processStructFields(field.Type.Elem(), prefix, callback)
+				mr.processStructFields(field.Type.Elem(), "", callback)
 			}
 			continue
 		}

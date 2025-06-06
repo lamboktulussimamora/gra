@@ -70,7 +70,7 @@ func NewHybridMigrator(db *sql.DB, driver DatabaseDriver, migrationsDir string) 
 
 // DbSet registers a model with the migrator (EF Core-style).
 // The tableName parameter is currently ignored; table name is extracted from struct tags.
-func (hm *HybridMigrator) DbSet(model interface{}, tableName ...string) {
+func (hm *HybridMigrator) DbSet(model interface{}, _ ...string) {
 	// Note: RegisterModel now extracts table name from struct tags
 	// The tableName parameter is ignored for now - could be enhanced later
 	hm.registry.RegisterModel(model)

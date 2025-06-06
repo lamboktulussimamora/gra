@@ -280,7 +280,7 @@ func (sg *SQLGenerator) reverseChange(change MigrationChange) *MigrationChange {
 }
 
 // generateChangeSQL generates SQL for a specific change
-func (sg *SQLGenerator) generateChangeSQL(change MigrationChange, isUp bool) (string, error) {
+func (sg *SQLGenerator) generateChangeSQL(change MigrationChange, _ bool) (string, error) {
 	switch change.Type {
 	case CreateTable:
 		return sg.generateCreateTableSQL(change)
