@@ -265,23 +265,38 @@ func cmdMigrationStatus(migrator *migrations.HybridMigrator) error {
 	fmt.Printf("Migration Status\n")
 	fmt.Printf("================\n\n")
 
-	// Applied migrations
-	fmt.Printf("Applied Migrations (%d):\n", len(status.AppliedMigrations))
-	if len(status.AppliedMigrations) == 0 {
+	// Display applied migrations
+	displayAppliedMigrations(status.AppliedMigrations)
+
+	// Display pending migrations
+	displayPendingMigrations(status.PendingMigrations)
+
+	// Display current changes
+	displayCurrentChanges(status)
+
+	return nil
+}
+
+// displayAppliedMigrations shows applied migrations section
+func displayAppliedMigrations(appliedMigrations []*migrations.MigrationFile) {
+	fmt.Printf("Applied Migrations (%d):\n", len(appliedMigrations))
+	if len(appliedMigrations) == 0 {
 		fmt.Printf("  None\n")
 	} else {
-		for _, migration := range status.AppliedMigrations {
+		for _, migration := range appliedMigrations {
 			fmt.Printf("  ✓ %s (%s)\n", migration.Name, migration.Timestamp.Format("2006-01-02 15:04:05"))
 		}
 	}
 	fmt.Printf("\n")
+}
 
-	// Pending migrations
-	fmt.Printf("Pending Migrations (%d):\n", len(status.PendingMigrations))
-	if len(status.PendingMigrations) == 0 {
+// displayPendingMigrations shows pending migrations section
+func displayPendingMigrations(pendingMigrations []*migrations.MigrationFile) {
+	fmt.Printf("Pending Migrations (%d):\n", len(pendingMigrations))
+	if len(pendingMigrations) == 0 {
 		fmt.Printf("  None\n")
 	} else {
-		for _, migration := range status.PendingMigrations {
+		for _, migration := range pendingMigrations {
 			icon := "○"
 			if migration.HasDestructiveChanges() {
 				icon = "⚠️"
@@ -290,8 +305,10 @@ func cmdMigrationStatus(migrator *migrations.HybridMigrator) error {
 		}
 	}
 	fmt.Printf("\n")
+}
 
-	// Current changes
+// displayCurrentChanges shows current changes section
+func displayCurrentChanges(status *migrations.MigrationStatus) {
 	if status.HasPendingChanges {
 		fmt.Printf("Pending Changes:\n")
 		fmt.Printf("  %s\n", status.Summary)
@@ -301,8 +318,6 @@ func cmdMigrationStatus(migrator *migrations.HybridMigrator) error {
 	} else {
 		fmt.Printf("No pending changes detected\n")
 	}
-
-	return nil
 }
 
 // cmdGenerateMigration generates a migration script without applying it

@@ -40,7 +40,8 @@ type CLIConfig struct {
 	SSLMode  string
 }
 
-func main() {
+// parseCommandLineArgs parses command line arguments and returns config and command.
+func parseCommandLineArgs() (CLIConfig, string, []string) {
 	config := CLIConfig{}
 
 	// Define CLI flags
@@ -66,13 +67,13 @@ func main() {
 	}
 
 	command := args[0]
+	commandArgs := args[1:]
 
-	// Handle help command before database setup
-	if command == "help" || command == "-h" || command == "--help" {
-		printUsage()
-		os.Exit(1)
-	}
+	return config, command, commandArgs
+}
 
+// setupDatabaseConnection establishes database connection with proper driver detection.
+func setupDatabaseConnection(config CLIConfig) (*sql.DB, error) {
 	// Setup database connection
 	if config.ConnectionString == "" {
 		config.ConnectionString = os.Getenv("DATABASE_URL")
@@ -82,8 +83,7 @@ func main() {
 				config.ConnectionString = buildPostgreSQLConnectionString(config)
 				fmt.Printf("🔗 Built connection string from parameters for database: %s\n", config.Database)
 			} else {
-				log.Printf("❌ Database connection required. Use -connection flag, DATABASE_URL env var, or provide -host, -user, -database flags")
-				return
+				return nil, fmt.Errorf("database connection required. Use -connection flag, DATABASE_URL env var, or provide -host, -user, -database flags")
 			}
 		}
 	}
@@ -101,15 +101,14 @@ func main() {
 
 	db, err := sql.Open(driverName, config.ConnectionString)
 	if err != nil {
-		log.Printf("❌ Failed to connect to database: %v", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	defer func() {
-		if cerr := db.Close(); cerr != nil {
-			log.Printf("Warning: failed to close db: %v", cerr)
-		}
-	}()
 
+	return db, nil
+}
+
+// setupMigrationManager creates and configures the migration manager.
+func setupMigrationManager(db *sql.DB, config CLIConfig) (*migrations.EFMigrationManager, error) {
 	// Create migration manager
 	migrationConfig := migrations.DefaultEFMigrationConfig()
 	if config.Verbose {
@@ -122,39 +121,72 @@ func main() {
 
 	// Initialize schema if needed
 	if err := manager.EnsureSchema(); err != nil {
-		log.Printf("❌ Failed to initialize migration schema: %v", err)
-		return
+		return nil, fmt.Errorf("failed to initialize migration schema: %w", err)
 	}
 
 	// Load migrations from filesystem before executing commands
 	if err := loadMigrationsFromFilesystem(manager, config.MigrationsDir); err != nil {
-		log.Printf("❌ Failed to load migrations from filesystem: %v", err)
-		return
+		return nil, fmt.Errorf("failed to load migrations from filesystem: %w", err)
 	}
 
-	// Execute command
+	return manager, nil
+}
+
+// executeCommand routes and executes the appropriate migration command.
+func executeCommand(manager *migrations.EFMigrationManager, command string, args []string, config CLIConfig) {
 	switch command {
 	case "add-migration", "add":
-		addMigration(manager, args[1:], config)
+		addMigration(manager, args, config)
 	case "update-database", "update":
-		updateDatabase(manager, args[1:], config)
+		updateDatabase(manager, args, config)
 	case "get-migration", "list":
 		getMigrations(manager, config)
 	case "rollback":
-		rollbackMigration(manager, args[1:], config)
+		rollbackMigration(manager, args, config)
 	case "status":
 		showStatus(manager, config)
 	case "script":
-		generateScript(manager, args[1:], config)
+		generateScript(manager, args, config)
 	case "remove-migration", "remove":
-		removeMigration(manager, args[1:], config)
+		removeMigration(manager, args, config)
 	case "help", "-h", "--help":
 		printUsage()
 	default:
 		fmt.Printf("❌ Unknown command: %s\n\n", command)
 		printUsage()
+	}
+}
+
+func main() {
+	config, command, commandArgs := parseCommandLineArgs()
+
+	// Handle help command before database setup
+	if command == "help" || command == "-h" || command == "--help" {
+		printUsage()
+		os.Exit(1)
+	}
+
+	// Setup database connection
+	db, err := setupDatabaseConnection(config)
+	if err != nil {
+		log.Printf("❌ %v", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if cerr := db.Close(); cerr != nil {
+			log.Printf("Warning: failed to close db: %v", cerr)
+		}
+	}()
+
+	// Setup migration manager
+	manager, err := setupMigrationManager(db, config)
+	if err != nil {
+		log.Printf("❌ %v", err)
 		return
 	}
+
+	// Execute command
+	executeCommand(manager, command, commandArgs, config)
 }
 
 // addMigration implements Add-Migration command
@@ -604,6 +636,66 @@ func loadMigrationsFromFilesystem(manager *migrations.EFMigrationManager, migrat
 	return nil
 }
 
+// detectSectionType determines if a line indicates a section transition.
+func detectSectionType(line string) (isDownSection bool, isSectionMarker bool) {
+	trimmed := strings.TrimSpace(line)
+
+	if !strings.HasPrefix(trimmed, "--") {
+		return false, false
+	}
+
+	lowerTrimmed := strings.ToLower(trimmed)
+	if strings.Contains(lowerTrimmed, "down migration") || strings.Contains(lowerTrimmed, "rollback") {
+		return true, true
+	}
+
+	if strings.Contains(lowerTrimmed, "up migration") {
+		return false, true
+	}
+
+	return false, false
+}
+
+// shouldIncludeInUpSection determines if a line should be included in the UP section.
+func shouldIncludeInUpSection(line string) bool {
+	trimmed := strings.TrimSpace(line)
+
+	if !strings.HasPrefix(trimmed, "--") {
+		return true
+	}
+
+	// Include specific header comments
+	if strings.Contains(trimmed, "Migration:") ||
+		strings.Contains(trimmed, "Description:") ||
+		strings.Contains(trimmed, "Created:") ||
+		strings.Contains(trimmed, "Version:") {
+		return false
+	}
+
+	return true
+}
+
+// cleanDownSQL removes comment prefixes from DOWN SQL lines.
+func cleanDownSQL(downSQL string) string {
+	if downSQL == "" {
+		return ""
+	}
+
+	downLines := strings.Split(downSQL, "\n")
+	var cleanDownLines []string
+
+	for _, line := range downLines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "-- ") {
+			cleanDownLines = append(cleanDownLines, strings.TrimPrefix(trimmed, "-- "))
+		} else {
+			cleanDownLines = append(cleanDownLines, line)
+		}
+	}
+
+	return strings.TrimSpace(strings.Join(cleanDownLines, "\n"))
+}
+
 // parseMigrationContent parses migration file content to extract UP and DOWN SQL
 func parseMigrationContent(content string) (upSQL, downSQL string) {
 	lines := strings.Split(content, "\n")
@@ -611,52 +703,25 @@ func parseMigrationContent(content string) (upSQL, downSQL string) {
 	var inDownSection bool
 
 	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
+		isDown, isSectionMarker := detectSectionType(line)
 
-		// Skip comments and empty lines for section detection
-		if strings.HasPrefix(trimmed, "--") {
-			if strings.Contains(strings.ToLower(trimmed), "down migration") ||
-				strings.Contains(strings.ToLower(trimmed), "rollback") {
-				inDownSection = true
-				continue
-			}
-			if strings.Contains(strings.ToLower(trimmed), "up migration") {
-				inDownSection = false
-				continue
-			}
+		if isSectionMarker {
+			inDownSection = isDown
+			continue
 		}
 
 		// Add lines to appropriate section
 		if inDownSection {
 			downLines = append(downLines, line)
 		} else {
-			// Skip header comments for UP section
-			if !strings.HasPrefix(trimmed, "--") || strings.Contains(trimmed, "Migration:") || strings.Contains(trimmed, "Description:") || strings.Contains(trimmed, "Created:") || strings.Contains(trimmed, "Version:") {
-				if !strings.HasPrefix(trimmed, "--") {
-					upLines = append(upLines, line)
-				}
-			} else {
+			if shouldIncludeInUpSection(line) {
 				upLines = append(upLines, line)
 			}
 		}
 	}
 
 	upSQL = strings.TrimSpace(strings.Join(upLines, "\n"))
-	downSQL = strings.TrimSpace(strings.Join(downLines, "\n"))
-
-	// Remove comment prefixes from DOWN SQL
-	if downSQL != "" {
-		downLines = strings.Split(downSQL, "\n")
-		var cleanDownLines []string
-		for _, line := range downLines {
-			if strings.HasPrefix(strings.TrimSpace(line), "-- ") {
-				cleanDownLines = append(cleanDownLines, strings.TrimPrefix(strings.TrimSpace(line), "-- "))
-			} else {
-				cleanDownLines = append(cleanDownLines, line)
-			}
-		}
-		downSQL = strings.TrimSpace(strings.Join(cleanDownLines, "\n"))
-	}
+	downSQL = cleanDownSQL(strings.TrimSpace(strings.Join(downLines, "\n")))
 
 	return upSQL, downSQL
 }

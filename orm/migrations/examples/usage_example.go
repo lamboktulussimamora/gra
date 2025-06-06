@@ -42,49 +42,40 @@ type Comment struct {
 	CreatedAt time.Time `db:"created_at" migration:"not_null,default:CURRENT_TIMESTAMP"`
 }
 
-func main() {
-	// Database connection (adjust for your environment)
+// initializeDatabase establishes and tests the database connection.
+func initializeDatabase() (*sql.DB, error) {
 	db, err := sql.Open("postgres", "postgres://user:password@localhost/testdb?sslmode=disable")
 	if err != nil {
-		log.Printf("Failed to connect to database: %v", err)
-		return
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
-			log.Printf("Warning: Failed to close database: %v", closeErr)
-		}
-	}()
 
-	// Test database connection
 	if err := db.Ping(); err != nil {
-		log.Printf("Failed to ping database: %v", err)
-		return
+		db.Close()
+		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	// Create hybrid migrator
+	return db, nil
+}
+
+// setupMigrator creates and configures the hybrid migrator with models.
+func setupMigrator(db *sql.DB) *migrations.HybridMigrator {
 	migrator := migrations.NewHybridMigrator(
 		db,
 		migrations.PostgreSQL,
 		"./migrations", // migrations directory
 	)
 
-	fmt.Println("=== Hybrid Migration System Example ===")
-
-	// Example 1: Register models (EF Core-style DbSet)
 	fmt.Println("1. Registering models...")
 	migrator.DbSet(&User{})    // Will use "users" table (pluralized)
 	migrator.DbSet(&Post{})    // Will use "posts" table (pluralized)
 	migrator.DbSet(&Comment{}) // Will use "comments" table (pluralized)
 	fmt.Println("   ✓ Models registered")
 
-	// Example 2: Check current migration status
-	fmt.Println("2. Checking migration status...")
-	status, err := migrator.GetMigrationStatus()
-	if err != nil {
-		log.Printf("Failed to get migration status: %v", err)
-		return
-	}
+	return migrator
+}
 
+// displayMigrationStatus shows the current migration status information.
+func displayMigrationStatus(status *migrations.MigrationStatus) {
 	fmt.Printf("   Applied migrations: %d\n", len(status.AppliedMigrations))
 	fmt.Printf("   Pending migrations: %d\n", len(status.PendingMigrations))
 	fmt.Printf("   Has pending changes: %t\n", status.HasPendingChanges)
@@ -93,62 +84,113 @@ func main() {
 		fmt.Printf("   Changes summary: %s\n", status.Summary)
 	}
 	fmt.Println()
+}
 
-	// Example 3: Create a new migration (if there are changes)
-	if status.HasPendingChanges {
-		fmt.Println("3. Creating migration for detected changes...")
+// displayMigrationFileInfo shows information about a created migration file.
+func displayMigrationFileInfo(migrationFile *migrations.MigrationFile) {
+	fmt.Printf("   ✓ Migration created: %s\n", migrationFile.Filename)
+	fmt.Printf("   Has destructive changes: %t\n", migrationFile.HasDestructiveChanges())
+	fmt.Printf("   Changes count: %d\n", len(migrationFile.Changes))
 
-		migrationFile, err := migrator.AddMigration(
-			"initial_schema",
-			migrations.ModeInteractive, // Will prompt for destructive changes
-		)
-		if err != nil {
-			log.Printf("Failed to create migration: %v", err)
-			return
+	if warnings := migrationFile.GetWarnings(); len(warnings) > 0 {
+		fmt.Println("   Warnings:")
+		for _, warning := range warnings {
+			fmt.Printf("     - %s\n", warning)
 		}
+	}
+	fmt.Println()
+}
 
-		fmt.Printf("   ✓ Migration created: %s\n", migrationFile.Filename)
-		fmt.Printf("   Has destructive changes: %t\n", migrationFile.HasDestructiveChanges())
-		fmt.Printf("   Changes count: %d\n", len(migrationFile.Changes))
-
-		if warnings := migrationFile.GetWarnings(); len(warnings) > 0 {
-			fmt.Println("   Warnings:")
-			for _, warning := range warnings {
-				fmt.Printf("     - %s\n", warning)
-			}
-		}
-		fmt.Println()
-
-		// Example 4: Apply the migration
-		fmt.Println("4. Applying migrations...")
-		err = migrator.ApplyMigrations(migrations.ModeAutomatic)
-		if err != nil {
-			// If automatic mode fails due to destructive changes, try interactive
-			fmt.Printf("   Automatic mode failed: %v\n", err)
-			fmt.Println("   Trying interactive mode...")
-
-			err = migrator.ApplyMigrations(migrations.ModeInteractive)
-			if err != nil {
-				log.Printf("Failed to apply migrations: %v", err)
-				return
-			}
-		}
-		fmt.Println("   ✓ Migrations applied successfully")
-	} else {
+// createAndApplyMigration creates a new migration and applies it if needed.
+func createAndApplyMigration(migrator *migrations.HybridMigrator, status *migrations.MigrationStatus) error {
+	if !status.HasPendingChanges {
 		fmt.Println("3. No changes detected, skipping migration creation")
+		return nil
 	}
 
-	// Example 5: Show final status
+	fmt.Println("3. Creating migration for detected changes...")
+	migrationFile, err := migrator.AddMigration(
+		"initial_schema",
+		migrations.ModeInteractive, // Will prompt for destructive changes
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create migration: %w", err)
+	}
+
+	displayMigrationFileInfo(migrationFile)
+
+	// Apply the migration
+	fmt.Println("4. Applying migrations...")
+	err = migrator.ApplyMigrations(migrations.ModeAutomatic)
+	if err != nil {
+		// If automatic mode fails due to destructive changes, try interactive
+		fmt.Printf("   Automatic mode failed: %v\n", err)
+		fmt.Println("   Trying interactive mode...")
+
+		err = migrator.ApplyMigrations(migrations.ModeInteractive)
+		if err != nil {
+			return fmt.Errorf("failed to apply migrations: %w", err)
+		}
+	}
+	fmt.Println("   ✓ Migrations applied successfully")
+
+	return nil
+}
+
+// showFinalStatus displays the final migration status after all operations.
+func showFinalStatus(migrator *migrations.HybridMigrator) error {
 	fmt.Println("5. Final migration status...")
 	finalStatus, err := migrator.GetMigrationStatus()
 	if err != nil {
-		log.Printf("Failed to get final status: %v", err)
-		return
+		return fmt.Errorf("failed to get final status: %w", err)
 	}
 
 	fmt.Printf("   Applied migrations: %d\n", len(finalStatus.AppliedMigrations))
 	fmt.Printf("   Pending migrations: %d\n", len(finalStatus.PendingMigrations))
 	fmt.Printf("   Database is up to date: %t\n", !finalStatus.HasPendingChanges)
+
+	return nil
+}
+
+func main() {
+	// Initialize database connection
+	db, err := initializeDatabase()
+	if err != nil {
+		log.Printf("Database initialization failed: %v", err)
+		return
+	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
+
+	fmt.Println("=== Hybrid Migration System Example ===")
+
+	// Setup migrator and register models
+	migrator := setupMigrator(db)
+
+	// Check current migration status
+	fmt.Println("2. Checking migration status...")
+	status, err := migrator.GetMigrationStatus()
+	if err != nil {
+		log.Printf("Failed to get migration status: %v", err)
+		return
+	}
+
+	displayMigrationStatus(status)
+
+	// Create and apply migrations if needed
+	if err := createAndApplyMigration(migrator, status); err != nil {
+		log.Printf("Migration process failed: %v", err)
+		return
+	}
+
+	// Show final status
+	if err := showFinalStatus(migrator); err != nil {
+		log.Printf("Failed to show final status: %v", err)
+		return
+	}
 
 	fmt.Println("\n=== Example Complete ===")
 }
