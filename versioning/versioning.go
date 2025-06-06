@@ -193,7 +193,7 @@ func (s *PathVersionStrategy) ExtractVersion(c *context.Context) (string, error)
 }
 
 // Apply doesn't need to do anything for path versioning
-func (s *PathVersionStrategy) Apply(_ *context.Context, version string) {
+func (s *PathVersionStrategy) Apply(_ *context.Context, _ string) {
 	// Path versioning is handled by the router, so we don't need to do anything here
 }
 
@@ -226,7 +226,7 @@ func (s *QueryVersionStrategy) ExtractVersion(c *context.Context) (string, error
 }
 
 // Apply doesn't need to do anything for query versioning
-func (s *QueryVersionStrategy) Apply(_ *context.Context, version string) {
+func (s *QueryVersionStrategy) Apply(_ *context.Context, _ string) {
 	// Query versioning is extracted from the request, so we don't need to do anything here
 }
 
