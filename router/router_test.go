@@ -19,6 +19,7 @@ func TestNew(t *testing.T) {
 
 	if r == nil {
 		t.Fatal("New() returned nil")
+		return
 	}
 
 	if r.routes == nil {
