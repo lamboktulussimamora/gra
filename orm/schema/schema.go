@@ -171,11 +171,6 @@ func collectConstraintsForDriver(_ reflect.Type, _ DatabaseDriver) []string {
 	return nil
 }
 
-// parseFieldToColumn converts a struct field to a SQL column definition
-func parseFieldToColumn(_ reflect.StructField) string {
-	return ""
-}
-
 // ParseFieldToColumnForDriver converts a struct field to a SQL column definition for a specific database driver
 func ParseFieldToColumnForDriver(field reflect.StructField, driver DatabaseDriver) string {
 	dbTag := field.Tag.Get("db")
@@ -285,11 +280,6 @@ func handleDefaultValue(parts []string, sqlTag, migrationTag string) []string {
 		}
 	}
 	return parts
-}
-
-// goTypeToSQLType converts Go types to PostgreSQL types
-func goTypeToSQLType(t reflect.Type) string {
-	return goTypeToSQLTypeForDriver(t, PostgreSQL)
 }
 
 // goTypeToSQLTypeForDriver converts Go types to SQL types for a specific database driver

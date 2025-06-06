@@ -708,62 +708,6 @@ func (di *DatabaseInspector) compareTableColumns(dbTable *TableSchema, modelSnap
 	return changes
 }
 
-// compareTableStructure compares a model snapshot with database table structure
-func (di *DatabaseInspector) compareTableStructure(
-	snapshot *ModelSnapshot,
-	dbTable *TableSchema,
-	modelName string,
-) []MigrationChange {
-	var changes []MigrationChange
-
-	// Find columns to add
-	for columnName, columnInfo := range snapshot.Columns {
-		if _, exists := dbTable.Columns[columnName]; !exists {
-			changes = append(changes, MigrationChange{
-				Type:       AddColumn,
-				TableName:  snapshot.TableName,
-				ModelName:  modelName,
-				ColumnName: columnName,
-				NewValue:   columnInfo,
-			})
-		}
-	}
-
-	// Find columns to drop
-	for columnName, dbColumn := range dbTable.Columns {
-		if _, exists := snapshot.Columns[columnName]; !exists {
-			changes = append(changes, MigrationChange{
-				Type:       DropColumn,
-				TableName:  snapshot.TableName,
-				ColumnName: columnName,
-				OldValue:   dbColumn,
-			})
-		}
-	}
-
-	// Find columns to modify
-	for columnName, columnInfo := range snapshot.Columns {
-		if dbColumn, exists := dbTable.Columns[columnName]; exists {
-			if di.hasColumnChanged(columnInfo, dbColumn) {
-				changes = append(changes, MigrationChange{
-					Type:       AlterColumn,
-					TableName:  snapshot.TableName,
-					ModelName:  modelName,
-					ColumnName: columnName,
-					OldValue:   dbColumn,
-					NewValue:   columnInfo,
-				})
-			}
-		}
-	}
-
-	// Compare indexes
-	indexChanges := di.compareIndexes(snapshot, dbTable, modelName)
-	changes = append(changes, indexChanges...)
-
-	return changes
-}
-
 // hasColumnChanged checks if a column definition has changed
 func (di *DatabaseInspector) hasColumnChanged(modelColumn *ColumnInfo, dbColumn *DatabaseColumnInfo) bool {
 	// Debug: Log column comparison
@@ -852,42 +796,6 @@ func (di *DatabaseInspector) isDataTypeCompatible(modelType, dbType string) bool
 	}
 
 	return false
-}
-
-// compareIndexes compares indexes between model and database
-func (di *DatabaseInspector) compareIndexes(
-	snapshot *ModelSnapshot,
-	dbTable *TableSchema,
-	modelName string,
-) []MigrationChange {
-	var changes []MigrationChange
-
-	// Find indexes to create
-	for indexName, indexInfo := range snapshot.Indexes {
-		if _, exists := dbTable.Indexes[indexName]; !exists {
-			changes = append(changes, MigrationChange{
-				Type:      CreateIndex,
-				TableName: snapshot.TableName,
-				ModelName: modelName,
-				IndexName: indexName,
-				NewValue:  indexInfo,
-			})
-		}
-	}
-
-	// Find indexes to drop
-	for indexName, dbIndex := range dbTable.Indexes {
-		if _, exists := snapshot.Indexes[indexName]; !exists {
-			changes = append(changes, MigrationChange{
-				Type:      DropIndex,
-				TableName: snapshot.TableName,
-				IndexName: indexName,
-				OldValue:  dbIndex,
-			})
-		}
-	}
-
-	return changes
 }
 
 // isSystemTable checks if a table is a system table that should be excluded from migrations
