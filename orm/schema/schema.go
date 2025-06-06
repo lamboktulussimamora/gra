@@ -2,7 +2,6 @@
 // It includes functions for generating SQL for table creation, index creation, and foreign key constraints.
 // The package also supports automatic detection of database drivers (PostgreSQL, SQLite, MySQL)
 // and provides migration support through struct tags.
-
 package schema
 
 import (
