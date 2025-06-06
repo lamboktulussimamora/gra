@@ -240,7 +240,7 @@ func TestRecovery(t *testing.T) {
 		},
 		{
 			name: "With panic",
-			handler: func(c *context.Context) {
+			handler: func(_ *context.Context) {
 				panic("test panic")
 			},
 			expectedStatus: http.StatusInternalServerError,
