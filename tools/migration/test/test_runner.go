@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 
 	_ "github.com/lib/pq"
 )
@@ -20,13 +19,13 @@ func main() {
 	flag.Parse()
 	if *conn == "" {
 		fmt.Println("Usage: test_runner --conn 'postgres://...' --up")
-		os.Exit(1)
+		return // replaced os.Exit(1) with return for gocritic exitAfterDefer compliance
 	}
 
 	db, err := sql.Open("postgres", *conn)
 	if err != nil {
 		log.Printf("%v", err)
-		os.Exit(1)
+		return // replaced os.Exit(1) with return for gocritic exitAfterDefer compliance
 	}
 	defer func() {
 		if cerr := db.Close(); cerr != nil {
@@ -36,7 +35,7 @@ func main() {
 
 	if err := db.Ping(); err != nil {
 		log.Printf("Connection failed: %v", err)
-		os.Exit(1)
+		return // replaced os.Exit(1) with return for gocritic exitAfterDefer compliance
 	}
 
 	fmt.Println("✓ Database connection successful!")

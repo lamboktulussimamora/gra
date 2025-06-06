@@ -36,6 +36,8 @@ const (
 	tableSchemaMigrations = "schema_migrations"
 )
 
+const errNilDB = "db is nil"
+
 var (
 	upFlag     = flag.Bool("up", false, "Apply pending migrations")
 	downFlag   = flag.Bool("down", false, "Roll back the last applied migration")
@@ -47,6 +49,9 @@ var (
 const warnCloseDB = "Warning: failed to close db: %v"
 
 func closeDBWithWarn(db *sql.DB) {
+	if db == nil {
+		return
+	}
 	if cerr := db.Close(); cerr != nil {
 		log.Printf(warnCloseDB, cerr)
 	}
@@ -113,6 +118,9 @@ func main() {
 
 // ensureMigrationTable creates the schema_migrations table if it does not exist.
 func ensureMigrationTable(db *sql.DB) error {
+	if db == nil {
+		return fmt.Errorf("%s", errNilDB)
+	}
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS ` + tableSchemaMigrations + ` (
 			version INTEGER PRIMARY KEY,
@@ -120,29 +128,32 @@ func ensureMigrationTable(db *sql.DB) error {
 		)
 	`)
 	if err != nil {
-		return fmt.Errorf("failed to create schema_migrations table: %v", err)
+		return fmt.Errorf("failed to create schema_migrations table: %w", err)
 	}
 	return nil
 }
 
 // getAppliedMigrations returns a map of applied migration versions.
 func getAppliedMigrations(db *sql.DB) (map[int]bool, error) {
+	if db == nil {
+		return nil, fmt.Errorf("%s", errNilDB)
+	}
 	applied := make(map[int]bool)
 
 	rows, err := db.Query("SELECT version FROM " + tableSchemaMigrations + " ORDER BY version")
 	if err != nil {
-		return nil, fmt.Errorf("failed to query applied migrations: %v", err)
+		return nil, fmt.Errorf("failed to query applied migrations: %w", err)
 	}
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			fmt.Printf("Warning: failed to close rows: %v\n", cerr)
+			log.Printf("Warning: failed to close rows: %v", cerr)
 		}
 	}()
 
 	for rows.Next() {
 		var version int
 		if err := rows.Scan(&version); err != nil {
-			return nil, fmt.Errorf("failed to scan migration version: %v", err)
+			return nil, fmt.Errorf("failed to scan migration version: %w", err)
 		}
 		applied[version] = true
 	}
@@ -265,32 +276,35 @@ func applyMigration(db *sql.DB, migration struct {
 	Description string
 	SQL         string
 }) error {
+	if db == nil {
+		return fmt.Errorf("%s", errNilDB)
+	}
 	if *verbose {
 		fmt.Printf("Applying migration %d: %s\n", migration.Version, migration.Description)
 	}
 
 	tx, err := db.Begin()
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction for migration %d: %v", migration.Version, err)
+		return fmt.Errorf("failed to begin transaction for migration %d: %w", migration.Version, err)
 	}
 
 	if _, err := tx.Exec(migration.SQL); err != nil {
 		if rerr := tx.Rollback(); rerr != nil {
-			fmt.Printf("Warning: failed to rollback transaction: %v\n", rerr)
+			log.Printf("Warning: failed to rollback transaction: %v", rerr)
 		}
-		return fmt.Errorf("failed to apply migration %d: %v", migration.Version, err)
+		return fmt.Errorf("failed to apply migration %d: %w", migration.Version, err)
 	}
 
 	_, err = tx.Exec("INSERT INTO "+tableSchemaMigrations+" (version) VALUES ($1)", migration.Version)
 	if err != nil {
 		if rerr := tx.Rollback(); rerr != nil {
-			fmt.Printf("Warning: failed to rollback transaction: %v\n", rerr)
+			log.Printf("Warning: failed to rollback transaction: %v", rerr)
 		}
-		return fmt.Errorf("failed to record migration %d: %v", migration.Version, err)
+		return fmt.Errorf("failed to record migration %d: %w", migration.Version, err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit migration %d: %v", migration.Version, err)
+		return fmt.Errorf("failed to commit migration %d: %w", migration.Version, err)
 	}
 
 	fmt.Printf("✓ Applied migration %d: %s\n", migration.Version, migration.Description)
