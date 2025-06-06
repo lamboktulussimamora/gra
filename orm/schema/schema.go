@@ -320,12 +320,6 @@ func handleAutoIncrementMySQL(parts []string, sqlType string) []string {
 	return parts
 }
 
-// handleDefaultValue appends default value logic to parts (legacy function)
-func handleDefaultValue(parts []string, sqlTag, migrationTag string) []string {
-	defaultValue := extractDefaultValue(sqlTag, migrationTag)
-	return appendDefaultValue(parts, defaultValue)
-}
-
 // goTypeToSQLTypeForDriver converts Go types to SQL types for a specific database driver
 func goTypeToSQLTypeForDriver(t reflect.Type, driver DatabaseDriver) string {
 	// Handle pointers

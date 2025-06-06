@@ -713,10 +713,8 @@ func parseMigrationContent(content string) (upSQL, downSQL string) {
 		// Add lines to appropriate section
 		if inDownSection {
 			downLines = append(downLines, line)
-		} else {
-			if shouldIncludeInUpSection(line) {
-				upLines = append(upLines, line)
-			}
+		} else if shouldIncludeInUpSection(line) {
+			upLines = append(upLines, line)
 		}
 	}
 
