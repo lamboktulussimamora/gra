@@ -52,6 +52,7 @@ func (sg *SQLGenerator) GenerateMigrationSQL(plan *MigrationPlan) (*MigrationSQL
 }
 
 // QL holds the generated SQL scripts for a migration plan.
+// Deprecated: MigrationSQL stutters the package name. Use QL instead.
 type QL struct {
 	UpScript   string
 	DownScript string
@@ -59,6 +60,7 @@ type QL struct {
 }
 
 // MigrationSQL is kept for backward compatibility.
+// Deprecated: Use QL instead.
 type MigrationSQL = QL
 
 // MigrationMetadata contains metadata about the migration
