@@ -1,3 +1,4 @@
+// Package main provides a test runner for migration tests.
 package main
 
 import (
