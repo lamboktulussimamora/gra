@@ -152,5 +152,3 @@ func main() {
 
 	fmt.Println("\n=== Example Complete ===")
 }
-
-// Remove stray closing brace and comment block at the end of the file to fix syntax error.
