@@ -51,7 +51,7 @@ func (sg *SQLGenerator) GenerateMigrationSQL(plan *MigrationPlan) (*MigrationSQL
 	}, nil
 }
 
-// MigrationSQL contains the generated SQL scripts
+// MigrationSQL holds the generated SQL scripts for a migration plan.
 type MigrationSQL struct {
 	UpScript   string
 	DownScript string
