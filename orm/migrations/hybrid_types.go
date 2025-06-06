@@ -49,11 +49,11 @@ const (
 
 	// Aliases for backward compatibility
 	// Automatic is an alias for ModeAutomatic.
-	Automatic        = ModeAutomatic
+	Automatic = ModeAutomatic
 	// Interactive is an alias for ModeInteractive.
-	Interactive      = ModeInteractive
+	Interactive = ModeInteractive
 	// GenerateOnly is an alias for ModeGenerateOnly.
-	GenerateOnly     = ModeGenerateOnly
+	GenerateOnly = ModeGenerateOnly
 	// ForceDestructive is an alias for ModeForceDestructive.
 	ForceDestructive = ModeForceDestructive
 )
@@ -258,6 +258,8 @@ type DatabaseDriver string
 const (
 	// PostgreSQL is the constant for the PostgreSQL database driver.
 	PostgreSQL DatabaseDriver = "postgres"
-	// MySQL      DatabaseDriver = "mysql"
-	// SQLite     DatabaseDriver = "sqlite3"
+	// MySQL is the constant for the MySQL database driver.
+	MySQL DatabaseDriver = "mysql"
+	// SQLite is the constant for the SQLite database driver.
+	SQLite DatabaseDriver = "sqlite3"
 )
