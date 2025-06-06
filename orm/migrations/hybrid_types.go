@@ -47,14 +47,17 @@ const (
 	// ModeForceDestructive applies all changes automatically.
 	ModeForceDestructive
 
-	// Aliases for backward compatibility
 	// Automatic is an alias for ModeAutomatic.
+	// Automatic applies only safe changes (alias for ModeAutomatic).
 	Automatic = ModeAutomatic
 	// Interactive is an alias for ModeInteractive.
+	// Interactive prompts for destructive changes (alias for ModeInteractive).
 	Interactive = ModeInteractive
 	// GenerateOnly is an alias for ModeGenerateOnly.
+	// GenerateOnly generates SQL files, doesn't apply them (alias for ModeGenerateOnly).
 	GenerateOnly = ModeGenerateOnly
 	// ForceDestructive is an alias for ModeForceDestructive.
+	// ForceDestructive applies all changes automatically (alias for ModeForceDestructive).
 	ForceDestructive = ModeForceDestructive
 )
 
