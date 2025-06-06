@@ -256,7 +256,8 @@ type ModelRegistry struct {
 type DatabaseDriver string
 
 const (
+	// PostgreSQL is the constant for the PostgreSQL database driver.
 	PostgreSQL DatabaseDriver = "postgres"
-	MySQL      DatabaseDriver = "mysql"
-	SQLite     DatabaseDriver = "sqlite3"
+	// MySQL      DatabaseDriver = "mysql"
+	// SQLite     DatabaseDriver = "sqlite3"
 )
