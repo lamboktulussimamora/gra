@@ -45,7 +45,7 @@ func TestHandleAndHTTPMethods(t *testing.T) {
 	// focus on verifying router registration logic and route matching,
 	// not the handler's execution behavior. It serves as a placeholder
 	// that allows us to test if routes are properly registered.
-	dummyHandler := func(c *context.Context) {
+	dummyHandler := func(_ *context.Context) {
 		// This function is intentionally empty as we're only testing route registration
 	}
 
@@ -266,7 +266,7 @@ func TestChain(t *testing.T) {
 		}
 	}
 
-	handler := func(c *context.Context) {
+	handler := func(_ *context.Context) {
 		order = append(order, "handler")
 	}
 
