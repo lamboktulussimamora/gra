@@ -32,6 +32,16 @@ command_exists() {
 }
 
 main() {
+    FORCE=false
+    for arg in "$@"; do
+        case $arg in
+            --force|--yes)
+                FORCE=true
+                shift
+                ;;
+        esac
+    done
+
     print_status "🚀 Setting up GRA Framework development environment..."
     echo ""
     
@@ -63,7 +73,8 @@ main() {
     if ! command_exists golangci-lint; then
         MISSING_TOOLS+=("golangci-lint")
     else
-        GOLANGCI_VERSION=$(golangci-lint --version | awk '{print $4}')
+        # Robust version extraction for golangci-lint >= v1.64.x
+        GOLANGCI_VERSION=$(golangci-lint --version | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
         print_success "golangci-lint $GOLANGCI_VERSION installed"
     fi
     
@@ -108,14 +119,20 @@ main() {
     
     if [ -f "$HOOK_DEST" ]; then
         print_warning "Pre-commit hook already exists"
-        read -p "Replace existing pre-commit hook? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_status "Keeping existing pre-commit hook"
-        else
+        if [ "$FORCE" = true ]; then
             cp "$HOOK_SOURCE" "$HOOK_DEST"
             chmod +x "$HOOK_DEST"
-            print_success "Pre-commit hook updated"
+            print_success "Pre-commit hook updated (forced)"
+        else
+            read -p "Replace existing pre-commit hook? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                print_status "Keeping existing pre-commit hook"
+            else
+                cp "$HOOK_SOURCE" "$HOOK_DEST"
+                chmod +x "$HOOK_DEST"
+                print_success "Pre-commit hook updated"
+            fi
         fi
     else
         cp "$HOOK_SOURCE" "$HOOK_DEST"
