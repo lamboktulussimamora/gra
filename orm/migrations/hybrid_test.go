@@ -216,27 +216,22 @@ func TestSQLGeneration(t *testing.T) {
 		t.Fatalf(errFailedToDetectChanges, err)
 	}
 
-	migrationSQL, err := migrator.sqlGenerator.GenerateMigrationSQL(plan)
+	migrationQL, err := migrator.sqlGenerator.GenerateMigrationSQL(plan)
 	if err != nil {
-		t.Fatalf("Failed to generate SQL: %v", err)
+		t.Fatalf("failed to generate migration SQL: %v", err)
 	}
 
 	// Check that SQL is generated
-	if migrationSQL.UpScript == "" {
+	if migrationQL.UpScript == "" {
 		t.Error("Up script should not be empty")
 	}
-
-	if migrationSQL.DownScript == "" {
+	if migrationQL.DownScript == "" {
 		t.Error("Down script should not be empty")
 	}
-
-	// Check that CREATE TABLE is in up script
-	if !contains(migrationSQL.UpScript, "CREATE TABLE") {
+	if !contains(migrationQL.UpScript, "CREATE TABLE") {
 		t.Error("Up script should contain CREATE TABLE")
 	}
-
-	// Check that DROP TABLE is in down script
-	if !contains(migrationSQL.DownScript, "DROP TABLE") {
+	if !contains(migrationQL.DownScript, "DROP TABLE") {
 		t.Error("Down script should contain DROP TABLE")
 	}
 }

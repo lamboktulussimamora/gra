@@ -20,9 +20,9 @@ func NewSQLGenerator(driver DatabaseDriver) *SQLGenerator {
 }
 
 // GenerateMigrationSQL generates SQL scripts for a migration plan
-func (sg *SQLGenerator) GenerateMigrationSQL(plan *MigrationPlan) (*MigrationSQL, error) {
+func (sg *SQLGenerator) GenerateMigrationSQL(plan *MigrationPlan) (*QLStatements, error) {
 	if len(plan.Changes) == 0 {
-		return &MigrationSQL{
+		return &QLStatements{
 			UpScript:   "-- No changes detected\n",
 			DownScript: "-- No changes to revert\n",
 		}, nil
@@ -38,7 +38,7 @@ func (sg *SQLGenerator) GenerateMigrationSQL(plan *MigrationPlan) (*MigrationSQL
 		return nil, fmt.Errorf("failed to generate down script: %w", err)
 	}
 
-	return &MigrationSQL{
+	return &QLStatements{
 		UpScript:   upScript,
 		DownScript: downScript,
 		Metadata: MigrationMetadata{
@@ -52,22 +52,14 @@ func (sg *SQLGenerator) GenerateMigrationSQL(plan *MigrationPlan) (*MigrationSQL
 }
 
 // QL holds the generated SQL scripts for a migration plan.
-// Deprecated: MigrationSQL stutters the package name. Use QL instead.
 type QL struct {
 	UpScript   string
 	DownScript string
 	Metadata   MigrationMetadata
 }
 
-// MigrationSQL is kept for backward compatibility.
-// Deprecated: MigrationSQL is an alias for MigrationSQLStatements and will be removed in a future release.
-// This alias exists for backward compatibility and should not be used in new code.
-type MigrationSQL = MigrationSQLStatements
-
-// revive:disable-next-line:type-stutter -- Kept for backward compatibility; removal would be a breaking change.
-// MigrationSQLStatements holds the generated SQL scripts for a migration plan.
-// Deprecated: MigrationSQLStatements stutters the package name. Use QLStatements instead.
-type MigrationSQLStatements struct {
+// QLStatements holds the generated SQL scripts for a migration plan.
+type QLStatements struct {
 	UpScript   string
 	DownScript string
 	Metadata   MigrationMetadata

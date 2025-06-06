@@ -50,7 +50,7 @@ func (mr *ModelRegistry) createModelSnapshot(model interface{}) ModelSnapshot {
 	constraints := make(map[string]*ConstraintInfo)
 
 	// Process struct fields recursively
-	mr.processStructFields(modelType, "", func(field reflect.StructField, dbName string, prefix string) {
+	mr.processStructFields(modelType, "", func(field reflect.StructField, dbName string, _ string) {
 		if dbName == "" || dbName == "-" {
 			return // Skip fields without db tags or explicitly excluded
 		}
@@ -77,7 +77,6 @@ func (mr *ModelRegistry) createModelSnapshot(model interface{}) ModelSnapshot {
 	return snapshot
 }
 
-// revive:disable:unused-parameter
 // The 'prefix' parameter is required for nested/embedded struct support and is used in dbName construction.
 func (mr *ModelRegistry) processStructFields(structType reflect.Type, prefix string, callback func(reflect.StructField, string, string)) {
 	for i := 0; i < structType.NumField(); i++ {
@@ -107,8 +106,6 @@ func (mr *ModelRegistry) processStructFields(structType reflect.Type, prefix str
 		callback(field, dbName, prefix)
 	}
 }
-
-// revive:enable:unused-parameter
 
 // createColumnInfo creates column information from a struct field
 func (mr *ModelRegistry) createColumnInfo(field reflect.StructField, dbName string) ColumnInfo {

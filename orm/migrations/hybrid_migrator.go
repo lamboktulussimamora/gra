@@ -112,7 +112,7 @@ func (hm *HybridMigrator) AddMigration(name string, mode MigrationMode) (*Migrat
 	}
 
 	// Generate SQL
-	migrationSQL, err := hm.sqlGenerator.GenerateMigrationSQL(plan)
+	migrationQL, err := hm.sqlGenerator.GenerateMigrationSQL(plan)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate SQL: %w", err)
 	}
@@ -121,8 +121,8 @@ func (hm *HybridMigrator) AddMigration(name string, mode MigrationMode) (*Migrat
 	migrationFile := &MigrationFile{
 		Name:      name,
 		Timestamp: time.Now(),
-		UpSQL:     []string{migrationSQL.UpScript},
-		DownSQL:   []string{migrationSQL.DownScript},
+		UpSQL:     []string{migrationQL.UpScript},
+		DownSQL:   []string{migrationQL.DownScript},
 		Checksum:  plan.PlanChecksum,
 		Changes:   plan.Changes,
 		Mode:      mode,
