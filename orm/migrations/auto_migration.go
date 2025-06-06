@@ -3,6 +3,7 @@ package migrations
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -143,7 +144,7 @@ func (am *AutoMigrator) migrateModel(model interface{}) error {
 		// Schema changed, need to update
 		am.logger("⚠ Table %s schema changed, updating...", tableName)
 		return am.updateTableSchema(tableName, modelType, migrationName, checksum)
-	case err == sql.ErrNoRows:
+	case errors.Is(err, sql.ErrNoRows):
 		// Migration doesn't exist, create table
 		return am.createTable(tableName, modelType, migrationName, checksum)
 	default:
