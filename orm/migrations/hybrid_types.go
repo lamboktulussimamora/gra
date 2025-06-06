@@ -6,36 +6,55 @@ import (
 	"time"
 )
 
-// ChangeType represents the type of migration change
+// ChangeType represents the type of migration change.
 type ChangeType string
 
 const (
-	CreateTable    ChangeType = "CreateTable"
-	DropTable      ChangeType = "DropTable"
-	AddColumn      ChangeType = "AddColumn"
-	DropColumn     ChangeType = "DropColumn"
-	AlterColumn    ChangeType = "AlterColumn"
-	RenameColumn   ChangeType = "RenameColumn"
-	AddIndex       ChangeType = "AddIndex"
-	CreateIndex    ChangeType = "CreateIndex" // Alias for AddIndex
-	DropIndex      ChangeType = "DropIndex"
-	AddConstraint  ChangeType = "AddConstraint"
+	// CreateTable indicates a table creation operation.
+	CreateTable ChangeType = "CreateTable"
+	// DropTable indicates a table drop operation.
+	DropTable ChangeType = "DropTable"
+	// AddColumn indicates a column addition operation.
+	AddColumn ChangeType = "AddColumn"
+	// DropColumn indicates a column drop operation.
+	DropColumn ChangeType = "DropColumn"
+	// AlterColumn indicates a column alteration operation.
+	AlterColumn ChangeType = "AlterColumn"
+	// RenameColumn indicates a column rename operation.
+	RenameColumn ChangeType = "RenameColumn"
+	// AddIndex indicates an index addition operation.
+	AddIndex ChangeType = "AddIndex"
+	// CreateIndex is an alias for AddIndex.
+	CreateIndex ChangeType = "CreateIndex" // Alias for AddIndex
+	// DropIndex indicates an index drop operation.
+	DropIndex ChangeType = "DropIndex"
+	// AddConstraint indicates a constraint addition operation.
+	AddConstraint ChangeType = "AddConstraint"
+	// DropConstraint indicates a constraint drop operation.
 	DropConstraint ChangeType = "DropConstraint"
 )
 
-// MigrationMode defines how migrations should be applied
+// MigrationMode defines how migrations should be applied.
 type MigrationMode int
 
 const (
-	ModeAutomatic        MigrationMode = iota // Only safe changes
-	ModeInteractive                           // Prompt for destructive changes
-	ModeGenerateOnly                          // Generate SQL files, don't apply
-	ModeForceDestructive                      // Apply all changes automatically
+	// ModeAutomatic applies only safe changes.
+	ModeAutomatic MigrationMode = iota
+	// ModeInteractive prompts for destructive changes.
+	ModeInteractive
+	// ModeGenerateOnly generates SQL files, doesn't apply them.
+	ModeGenerateOnly
+	// ModeForceDestructive applies all changes automatically.
+	ModeForceDestructive
 
 	// Aliases for backward compatibility
-	Automatic        = ModeAutomatic
-	Interactive      = ModeInteractive
-	GenerateOnly     = ModeGenerateOnly
+	// Automatic is an alias for ModeAutomatic.
+	Automatic = ModeAutomatic
+	// Interactive is an alias for ModeInteractive.
+	Interactive = ModeInteractive
+	// GenerateOnly is an alias for ModeGenerateOnly.
+	GenerateOnly = ModeGenerateOnly
+	// ForceDestructive is an alias for ModeForceDestructive.
 	ForceDestructive = ModeForceDestructive
 )
 

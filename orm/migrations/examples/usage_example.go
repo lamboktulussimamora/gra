@@ -23,7 +23,6 @@ type User struct {
 }
 
 // User represents a user in the example migration system.
-
 type Post struct {
 	ID          int64     `db:"id" migration:"primary_key,auto_increment"`
 	UserID      int64     `db:"user_id" migration:"not_null,foreign_key:users.id"`
@@ -35,7 +34,6 @@ type Post struct {
 }
 
 // Post represents a blog post in the example migration system.
-
 type Comment struct {
 	ID        int64     `db:"id" migration:"primary_key,auto_increment"`
 	PostID    int64     `db:"post_id" migration:"not_null,foreign_key:posts.id"`
