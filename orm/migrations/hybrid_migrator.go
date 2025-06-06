@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-// HybridMigrator provides EF Core-style migration functionality
+const errInitMigrationHistory = "failed to initialize migration history: %w"
+
+// HybridMigrator provides EF Core-style migration functionality.
+// It manages model registration, migration file generation, and migration application.
 type HybridMigrator struct {
 	db               *sql.DB
 	driver           DatabaseDriver
@@ -24,13 +27,13 @@ type HybridMigrator struct {
 	efManager        *EFMigrationManager // EF migration system for proper SQL execution
 }
 
-// HybridMigrationHistory tracks applied migrations for the hybrid system
+// HybridMigrationHistory tracks applied migrations for the hybrid system.
 type HybridMigrationHistory struct {
 	db     *sql.DB
 	driver DatabaseDriver
 }
 
-// MigrationRecord represents a migration in the history table
+// MigrationRecord represents a migration in the history table.
 type MigrationRecord struct {
 	ID            int64
 	Name          string
@@ -39,7 +42,8 @@ type MigrationRecord struct {
 	IsDestructive bool
 }
 
-// NewHybridMigrator creates a new hybrid migrator
+// NewHybridMigrator creates a new hybrid migrator.
+// It sets up the model registry, inspector, change detector, SQL generator, and migration managers.
 func NewHybridMigrator(db *sql.DB, driver DatabaseDriver, migrationsDir string) *HybridMigrator {
 	registry := NewModelRegistry(driver)
 	inspector := NewDatabaseInspector(db, driver)
@@ -64,23 +68,26 @@ func NewHybridMigrator(db *sql.DB, driver DatabaseDriver, migrationsDir string) 
 	}
 }
 
-// DbSet registers a model with the migrator (EF Core-style)
-func (hm *HybridMigrator) DbSet(model interface{}, tableName ...string) {
+// DbSet registers a model with the migrator (EF Core-style).
+// The tableName parameter is currently ignored; table name is extracted from struct tags.
+func (hm *HybridMigrator) DbSet(model interface{}, _ ...string) {
 	// Note: RegisterModel now extracts table name from struct tags
 	// The tableName parameter is ignored for now - could be enhanced later
 	hm.registry.RegisterModel(model)
 }
 
-// AddMigration detects changes and creates a new migration file
+// AddMigration detects changes and creates a new migration file.
+// Returns the created MigrationFile or an error if migration creation fails.
 func (hm *HybridMigrator) AddMigration(name string, mode MigrationMode) (*MigrationFile, error) {
 	// Ensure migrations directory exists
-	if err := os.MkdirAll(hm.migrationsDir, 0755); err != nil {
+	// #nosec G301 -- Directory must be user-accessible for migration files
+	if err := os.MkdirAll(hm.migrationsDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create migrations directory: %w", err)
 	}
 
 	// Initialize migration history table if needed
 	if err := hm.migrationHistory.ensureHistoryTable(); err != nil {
-		return nil, fmt.Errorf("failed to initialize migration history: %w", err)
+		return nil, fmt.Errorf(errInitMigrationHistory, err)
 	}
 
 	// Detect changes
@@ -105,7 +112,7 @@ func (hm *HybridMigrator) AddMigration(name string, mode MigrationMode) (*Migrat
 	}
 
 	// Generate SQL
-	migrationSQL, err := hm.sqlGenerator.GenerateMigrationSQL(plan)
+	migrationQL, err := hm.sqlGenerator.GenerateMigrationSQL(plan)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate SQL: %w", err)
 	}
@@ -114,8 +121,8 @@ func (hm *HybridMigrator) AddMigration(name string, mode MigrationMode) (*Migrat
 	migrationFile := &MigrationFile{
 		Name:      name,
 		Timestamp: time.Now(),
-		UpSQL:     []string{migrationSQL.UpScript},
-		DownSQL:   []string{migrationSQL.DownScript},
+		UpSQL:     []string{migrationQL.UpScript},
+		DownSQL:   []string{migrationQL.DownScript},
 		Checksum:  plan.PlanChecksum,
 		Changes:   plan.Changes,
 		Mode:      mode,
@@ -132,64 +139,71 @@ func (hm *HybridMigrator) AddMigration(name string, mode MigrationMode) (*Migrat
 	return migrationFile, nil
 }
 
-// ApplyMigrations applies pending migrations
+// ApplyMigrations applies all pending migrations in the specified mode.
+// Returns an error if application fails or if there are schema changes requiring migration files.
 func (hm *HybridMigrator) ApplyMigrations(mode MigrationMode) error {
-	// Initialize EF migration schema first
 	if err := hm.efManager.EnsureSchema(); err != nil {
 		return fmt.Errorf("failed to initialize EF migration schema: %w", err)
 	}
-
-	// Initialize migration history table
 	if err := hm.migrationHistory.ensureHistoryTable(); err != nil {
-		return fmt.Errorf("failed to initialize migration history: %w", err)
+		return fmt.Errorf(errInitMigrationHistory, err)
 	}
-
-	// Get pending migrations first
 	pendingMigrations, err := hm.getPendingMigrations()
 	if err != nil {
 		return fmt.Errorf("failed to get pending migrations: %w", err)
 	}
-
-	// Check for detected changes that don't have migration files yet
-	plan, err := hm.changeDetector.DetectChanges()
+	// plan is only needed for error checking, so we can ignore the value
+	_, err = hm.getMigrationPlanForPending(pendingMigrations)
 	if err != nil {
-		return fmt.Errorf("failed to detect changes: %w", err)
+		return err
 	}
-
-	// If there are no pending migrations but there are detected changes,
-	// it means there are schema changes that need migration files created first
-	if len(pendingMigrations) == 0 && len(plan.Changes) > 0 {
-		return fmt.Errorf("detected %d schema changes that require migration files. Use CreateMigration() to create migration files first", len(plan.Changes))
-	}
-
-	// If there are pending migrations, validate them against migration mode
 	if len(pendingMigrations) > 0 {
-		// Create a plan from the pending migrations to validate mode compatibility
-		migrationPlan := &MigrationPlan{
-			Changes:        []MigrationChange{}, // We validate individual migrations later
-			HasDestructive: false,               // Will be set per migration
-			RequiresReview: false,               // Will be set per migration
-		}
-
-		// Check if any pending migration is destructive
-		for _, migration := range pendingMigrations {
-			if migration.HasDestructiveChanges() {
-				migrationPlan.HasDestructive = true
-				break
-			}
-		}
-
-		// Validate migration mode for pending migrations
-		if err := hm.validateMigrationMode(migrationPlan, mode); err != nil {
+		if err := hm.validatePendingMigrationsMode(pendingMigrations, mode); err != nil {
 			return fmt.Errorf("pending migrations validation failed: %w", err)
 		}
 	}
-
 	if len(pendingMigrations) == 0 {
 		fmt.Println("No pending migrations")
 		return nil
 	}
+	return hm.applyPendingMigrations(pendingMigrations, mode)
+}
 
+// getMigrationPlanForPending checks for detected changes that don't have migration files yet.
+func (hm *HybridMigrator) getMigrationPlanForPending(pendingMigrations []*MigrationFile) (*MigrationPlan, error) {
+	plan, err := hm.changeDetector.DetectChanges()
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect changes: %w", err)
+	}
+	if len(pendingMigrations) == 0 && len(plan.Changes) > 0 {
+		return nil, fmt.Errorf("detected %d schema changes that require migration files. Use CreateMigration() to create migration files first", len(plan.Changes))
+	}
+	return plan, nil
+}
+
+// validatePendingMigrationsMode validates the migration mode for a list of pending migrations.
+func (hm *HybridMigrator) validatePendingMigrationsMode(pendingMigrations []*MigrationFile, mode MigrationMode) error {
+	// Create a plan from the pending migrations to validate mode compatibility
+	migrationPlan := &MigrationPlan{
+		Changes:        []MigrationChange{}, // We validate individual migrations later
+		HasDestructive: false,               // Will be set per migration
+		RequiresReview: false,               // Will be set per migration
+	}
+
+	// Check if any pending migration is destructive
+	for _, migration := range pendingMigrations {
+		if migration.HasDestructiveChanges() {
+			migrationPlan.HasDestructive = true
+			break
+		}
+	}
+
+	// Validate migration mode for pending migrations
+	return hm.validateMigrationMode(migrationPlan, mode)
+}
+
+// applyPendingMigrations applies a list of pending migrations.
+func (hm *HybridMigrator) applyPendingMigrations(pendingMigrations []*MigrationFile, mode MigrationMode) error {
 	// Apply each migration
 	for _, migration := range pendingMigrations {
 		fmt.Printf("Applying migration: %s\n", migration.Name)
@@ -218,7 +232,8 @@ func (hm *HybridMigrator) ApplyMigrations(mode MigrationMode) error {
 	return nil
 }
 
-// RevertMigration reverts the last applied migration
+// RevertMigration reverts the last applied migration.
+// Returns an error if no migrations are available to revert or if revert fails.
 func (hm *HybridMigrator) RevertMigration() error {
 	// Get last applied migration
 	lastMigration, err := hm.migrationHistory.getLastApplied()
@@ -256,7 +271,7 @@ func (hm *HybridMigrator) RevertMigration() error {
 	return nil
 }
 
-// GetMigrationStatus returns the current migration status
+// GetMigrationStatus returns the current migration status, including pending/applied migrations and detected changes.
 func (hm *HybridMigrator) GetMigrationStatus() (*MigrationStatus, error) {
 	// Initialize EF migration schema first
 	if err := hm.efManager.EnsureSchema(); err != nil {
@@ -265,7 +280,7 @@ func (hm *HybridMigrator) GetMigrationStatus() (*MigrationStatus, error) {
 
 	// Initialize migration history table
 	if err := hm.migrationHistory.ensureHistoryTable(); err != nil {
-		return nil, fmt.Errorf("failed to initialize migration history: %w", err)
+		return nil, fmt.Errorf(errInitMigrationHistory, err)
 	}
 
 	// Get all migration files
@@ -320,7 +335,7 @@ func (hm *HybridMigrator) GetMigrationStatus() (*MigrationStatus, error) {
 	return status, nil
 }
 
-// MigrationStatus represents the current migration status
+// MigrationStatus represents the current migration status, including pending/applied migrations and detected changes.
 type MigrationStatus struct {
 	PendingMigrations     []*MigrationFile
 	AppliedMigrations     []*MigrationFile
@@ -330,7 +345,8 @@ type MigrationStatus struct {
 	Summary               string
 }
 
-// validateMigrationMode validates if the migration can be applied in the given mode
+// validateMigrationMode validates if the migration can be applied in the given mode.
+// Returns an error if the migration plan is not compatible with the mode.
 func (hm *HybridMigrator) validateMigrationMode(plan *MigrationPlan, mode MigrationMode) error {
 	switch mode {
 	case Automatic:
@@ -355,7 +371,7 @@ func (hm *HybridMigrator) validateMigrationMode(plan *MigrationPlan, mode Migrat
 	return nil
 }
 
-// generateMigrationFilename generates a filename for a migration
+// generateMigrationFilename generates a filename for a migration using the name and timestamp.
 func (hm *HybridMigrator) generateMigrationFilename(name string, timestamp time.Time) string {
 	// Format: YYYYMMDDHHMMSS_migration_name.sql
 	timestampStr := timestamp.Format("20060102150405")
@@ -363,13 +379,14 @@ func (hm *HybridMigrator) generateMigrationFilename(name string, timestamp time.
 	return fmt.Sprintf("%s_%s.sql", timestampStr, safeName)
 }
 
-// saveMigrationFile saves a migration file to disk
+// saveMigrationFile saves a migration file to disk with strict permissions.
 func (hm *HybridMigrator) saveMigrationFile(migration *MigrationFile) error {
 	content := hm.formatMigrationFileContent(migration)
-	return os.WriteFile(migration.FilePath, []byte(content), 0644)
+	// #nosec G306 -- Migration files are not sensitive, but 0600 is stricter
+	return os.WriteFile(migration.FilePath, []byte(content), 0600)
 }
 
-// formatMigrationFileContent formats the migration file content
+// formatMigrationFileContent formats the migration file content for disk storage.
 func (hm *HybridMigrator) formatMigrationFileContent(migration *MigrationFile) string {
 	var content strings.Builder
 
@@ -418,7 +435,7 @@ func (hm *HybridMigrator) formatMigrationFileContent(migration *MigrationFile) s
 	return content.String()
 }
 
-// getPendingMigrations returns migrations that haven't been applied
+// getPendingMigrations returns migrations that haven't been applied yet.
 func (hm *HybridMigrator) getPendingMigrations() ([]*MigrationFile, error) {
 	allMigrations, err := hm.getAllMigrationFiles()
 	if err != nil {
@@ -447,7 +464,7 @@ func (hm *HybridMigrator) getPendingMigrations() ([]*MigrationFile, error) {
 	return pending, nil
 }
 
-// getAllMigrationFiles loads all migration files from the migrations directory
+// getAllMigrationFiles loads all migration files from the migrations directory.
 func (hm *HybridMigrator) getAllMigrationFiles() ([]*MigrationFile, error) {
 	var migrations []*MigrationFile
 
@@ -481,47 +498,45 @@ func (hm *HybridMigrator) getAllMigrationFiles() ([]*MigrationFile, error) {
 	return migrations, nil
 }
 
-// parseMigrationFile parses a migration file from disk
+// parseMigrationFileMetadata parses migration metadata from a line and updates the migration struct.
+func parseMigrationFileMetadata(line string, migration *MigrationFile) {
+	// Parse metadata from comments
+	switch {
+	case strings.HasPrefix(line, "-- Migration:"):
+		migration.Name = strings.TrimSpace(strings.TrimPrefix(line, "-- Migration:"))
+	case strings.HasPrefix(line, "-- Created:"):
+		timestampStr := strings.TrimSpace(strings.TrimPrefix(line, "-- Created:"))
+		if timestamp, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+			migration.Timestamp = timestamp
+		}
+	case strings.HasPrefix(line, "-- Checksum:"):
+		migration.Checksum = strings.TrimSpace(strings.TrimPrefix(line, "-- Checksum:"))
+	case strings.HasPrefix(line, "-- Mode:"):
+		modeStr := strings.TrimSpace(strings.TrimPrefix(line, "-- Mode:"))
+		migration.Mode = ParseMigrationMode(modeStr)
+	case strings.HasPrefix(line, "-- Has Destructive:"):
+		destructiveStr := strings.TrimSpace(strings.TrimPrefix(line, "-- Has Destructive:"))
+		hasDestructive := destructiveStr == "true"
+		migration.ParsedHasDestructive = &hasDestructive
+	}
+}
+
+// parseMigrationFile parses a migration file from disk.
 func (hm *HybridMigrator) parseMigrationFile(filePath string) (*MigrationFile, error) {
+	// #nosec G304 -- File path is determined by migration manager logic, not user input
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
-
 	lines := strings.Split(string(content), "\n")
 	migration := &MigrationFile{
 		FilePath: filePath,
 	}
-
 	var upScript, downScript strings.Builder
 	var currentSection string
-
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-
-		// Parse metadata from comments
-		if strings.HasPrefix(line, "-- Migration:") {
-			migration.Name = strings.TrimSpace(strings.TrimPrefix(line, "-- Migration:"))
-		} else if strings.HasPrefix(line, "-- Created:") {
-			timestampStr := strings.TrimSpace(strings.TrimPrefix(line, "-- Created:"))
-			if timestamp, err := time.Parse(time.RFC3339, timestampStr); err == nil {
-				migration.Timestamp = timestamp
-			}
-		} else if strings.HasPrefix(line, "-- Checksum:") {
-			migration.Checksum = strings.TrimSpace(strings.TrimPrefix(line, "-- Checksum:"))
-		} else if strings.HasPrefix(line, "-- Mode:") {
-			modeStr := strings.TrimSpace(strings.TrimPrefix(line, "-- Mode:"))
-			migration.Mode = ParseMigrationMode(modeStr)
-		} else if strings.HasPrefix(line, "-- Has Destructive:") {
-			// Parse the destructive flag from file metadata
-			destructiveStr := strings.TrimSpace(strings.TrimPrefix(line, "-- Has Destructive:"))
-			hasDestructive := destructiveStr == "true"
-			migration.ParsedHasDestructive = &hasDestructive
-		} else if strings.HasPrefix(line, "-- Requires Review:") {
-			// This is calculated dynamically from Changes and Mode, skip parsing
-		}
-
-		// Parse sections
+		parseMigrationFileMetadata(line, migration)
 		if line == "-- +migrate Up" {
 			currentSection = "up"
 			continue
@@ -531,25 +546,23 @@ func (hm *HybridMigrator) parseMigrationFile(filePath string) (*MigrationFile, e
 		}
 
 		// Add content to appropriate section
-		if currentSection == "up" {
+		switch currentSection {
+		case "up":
 			upScript.WriteString(line + "\n")
-		} else if currentSection == "down" {
+		case "down":
 			downScript.WriteString(line + "\n")
 		}
 	}
-
-	// Convert the concatenated scripts back to slices
 	if upScript.Len() > 0 {
 		migration.UpSQL = []string{strings.TrimSpace(upScript.String())}
 	}
 	if downScript.Len() > 0 {
 		migration.DownSQL = []string{strings.TrimSpace(downScript.String())}
 	}
-
 	return migration, nil
 }
 
-// loadMigrationFile loads a specific migration file by name
+// loadMigrationFile loads a specific migration file by name.
 func (hm *HybridMigrator) loadMigrationFile(name string) (*MigrationFile, error) {
 	allMigrations, err := hm.getAllMigrationFiles()
 	if err != nil {
@@ -565,13 +578,13 @@ func (hm *HybridMigrator) loadMigrationFile(name string) (*MigrationFile, error)
 	return nil, fmt.Errorf("migration not found: %s", name)
 }
 
-// generateMigrationID generates a unique migration ID from name and timestamp
+// generateMigrationID generates a unique migration ID from name and timestamp.
 func (hm *HybridMigrator) generateMigrationID(name string, timestamp time.Time) string {
 	version := timestamp.Unix()
 	return fmt.Sprintf("%d_%s", version, strings.ReplaceAll(name, " ", "_"))
 }
 
-// applyMigration applies a single migration using the EF migration system
+// applyMigration applies a single migration using the EF migration system.
 func (hm *HybridMigrator) applyMigration(migration *MigrationFile) error {
 	// Ensure EF migration schema is initialized
 	if err := hm.efManager.EnsureSchema(); err != nil {
@@ -597,45 +610,9 @@ func (hm *HybridMigrator) applyMigration(migration *MigrationFile) error {
 	return nil
 }
 
-// executeMigrationScript executes a migration script
-func (hm *HybridMigrator) executeMigrationScript(script string) error {
-	// Split script into individual statements
-	statements := hm.splitSQL(script)
-
-	// Execute each statement
-	for _, statement := range statements {
-		statement = strings.TrimSpace(statement)
-		if statement == "" || strings.HasPrefix(statement, "--") {
-			continue
-		}
-
-		if _, err := hm.db.Exec(statement); err != nil {
-			return fmt.Errorf("failed to execute statement '%s': %w", statement, err)
-		}
-	}
-
-	return nil
-}
-
-// splitSQL splits a SQL script into individual statements
-func (hm *HybridMigrator) splitSQL(script string) []string {
-	// Simple SQL splitting - could be enhanced for more complex cases
-	statements := strings.Split(script, ";")
-
-	var result []string
-	for _, stmt := range statements {
-		stmt = strings.TrimSpace(stmt)
-		if stmt != "" {
-			result = append(result, stmt)
-		}
-	}
-
-	return result
-}
-
 // Migration History Management
 
-// ensureHistoryTable creates the migration history table if it doesn't exist
+// ensureHistoryTable creates the migration history table if it doesn't exist.
 func (mh *HybridMigrationHistory) ensureHistoryTable() error {
 	var createTableSQL string
 
@@ -678,7 +655,7 @@ func (mh *HybridMigrationHistory) ensureHistoryTable() error {
 	return err
 }
 
-// addRecord adds a migration record to the history
+// addRecord adds a migration record to the history.
 func (mh *HybridMigrationHistory) addRecord(migration *MigrationFile) error {
 	query := `
 		INSERT INTO __migration_history (name, checksum, is_destructive)
@@ -688,14 +665,14 @@ func (mh *HybridMigrationHistory) addRecord(migration *MigrationFile) error {
 	return err
 }
 
-// removeRecord removes a migration record from the history
+// removeRecord removes a migration record from the history by ID.
 func (mh *HybridMigrationHistory) removeRecord(id int64) error {
 	query := `DELETE FROM __migration_history WHERE id = ?`
 	_, err := mh.db.Exec(query, id)
 	return err
 }
 
-// getLastApplied returns the last applied migration
+// getLastApplied returns the last applied migration record, or nil if none exist.
 func (mh *HybridMigrationHistory) getLastApplied() (*MigrationRecord, error) {
 	query := `
 		SELECT id, name, checksum, applied_at, is_destructive
@@ -723,7 +700,7 @@ func (mh *HybridMigrationHistory) getLastApplied() (*MigrationRecord, error) {
 	return &record, nil
 }
 
-// getAppliedMigrations returns all applied migrations
+// getAppliedMigrations returns all applied migration records in order.
 func (mh *HybridMigrationHistory) getAppliedMigrations() ([]*MigrationRecord, error) {
 	query := `
 		SELECT id, name, checksum, applied_at, is_destructive
@@ -735,7 +712,11 @@ func (mh *HybridMigrationHistory) getAppliedMigrations() ([]*MigrationRecord, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+		}
+	}()
 
 	var records []*MigrationRecord
 	for rows.Next() {

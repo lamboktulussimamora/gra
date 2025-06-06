@@ -406,6 +406,7 @@ func TestNew(t *testing.T) {
 	// Verify the logger was created correctly
 	if logger == nil {
 		t.Fatal("New() returned nil")
+		return
 	}
 
 	if logger.prefix != customPrefix {
@@ -419,9 +420,8 @@ func TestNew(t *testing.T) {
 
 	// Test that the logger works correctly
 	var buf bytes.Buffer
-	logger.logger = log.New(&buf, "", 0) // Replace with a test logger
-
-	logger.Info(testInfoMessage)
+	logger.logger.SetOutput(&buf)
+	logger.Info("This is info")
 	output := buf.String()
 
 	expectedOutput := "[CUSTOM] INFO: This is info"

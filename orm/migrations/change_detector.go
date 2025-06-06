@@ -1,11 +1,13 @@
 package migrations
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
 	"sort"
 	"strings"
 )
+
+const foreignKeyConstraintType = "FOREIGN KEY"
 
 // ChangeDetector detects schema changes between model snapshots and database state
 type ChangeDetector struct {
@@ -68,7 +70,7 @@ type MigrationPlan struct {
 
 // calculatePlanChecksum creates a checksum for the entire migration plan
 func (cd *ChangeDetector) calculatePlanChecksum(changes []MigrationChange) string {
-	hasher := md5.New()
+	hasher := sha256.New()
 
 	// Sort changes for consistent checksum
 	sortedChanges := make([]MigrationChange, len(changes))
@@ -240,7 +242,7 @@ func (cd *ChangeDetector) sortChangesByDependency(changes []MigrationChange) {
 // ValidateMigrationPlan performs validation checks on a migration plan
 func (cd *ChangeDetector) ValidateMigrationPlan(plan *MigrationPlan) error {
 	var errors []string
-	var warnings []string
+	warnings := make([]string, 0, len(plan.Changes))
 
 	// Check for circular dependencies
 	if err := cd.checkCircularDependencies(plan.Changes); err != nil {
@@ -279,7 +281,7 @@ func (cd *ChangeDetector) checkCircularDependencies(changes []MigrationChange) e
 			// Tables with foreign keys depend on their referenced tables
 			if snapshot, ok := change.NewValue.(*ModelSnapshot); ok {
 				for _, constraint := range snapshot.Constraints {
-					if constraint.Type == "FOREIGN KEY" && constraint.ReferencedTable != "" {
+					if constraint.Type == foreignKeyConstraintType && constraint.ReferencedTable != "" {
 						dependencies[snapshot.TableName] = append(dependencies[snapshot.TableName], constraint.ReferencedTable)
 					}
 				}
@@ -328,7 +330,8 @@ func (cd *ChangeDetector) hasCycleDFS(
 
 // findOrphanedForeignKeys finds foreign keys that reference tables being dropped
 func (cd *ChangeDetector) findOrphanedForeignKeys(changes []MigrationChange) []string {
-	var orphaned []string
+	// Preallocate with a reasonable guess (number of changes)
+	orphaned := make([]string, 0, len(changes))
 
 	// Find tables being dropped
 	droppedTables := make(map[string]bool)
@@ -351,7 +354,7 @@ func (cd *ChangeDetector) findOrphanedForeignKeys(changes []MigrationChange) []s
 			}
 
 			for constraintName, constraint := range constraints {
-				if constraint.Type == "FOREIGN KEY" && droppedTables[constraint.ReferencedTable] {
+				if constraint.Type == foreignKeyConstraintType && droppedTables[constraint.ReferencedTable] {
 					orphaned = append(orphaned, constraintName)
 				}
 			}
@@ -363,7 +366,7 @@ func (cd *ChangeDetector) findOrphanedForeignKeys(changes []MigrationChange) []s
 
 // findDataLossChanges identifies changes that might cause data loss
 func (cd *ChangeDetector) findDataLossChanges(changes []MigrationChange) []MigrationChange {
-	var dataLossChanges []MigrationChange
+	dataLossChanges := make([]MigrationChange, 0, len(changes))
 
 	for _, change := range changes {
 		switch change.Type {

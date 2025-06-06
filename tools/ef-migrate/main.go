@@ -21,11 +21,12 @@ import (
 
 // Constants for error messages and formatting
 const (
-	ErrorFailedToGetHistory = "❌ Failed to get migration history:"
-	FormatMigrationLine     = "   %s\n"
-	TimeFormat              = "2006-01-02 15:04:05"
+	ErrorFailedToGetHistoryFmt = "❌ Failed to get migration history: %v"
+	FormatMigrationLine        = "   %s\n"
+	TimeFormat                 = "2006-01-02 15:04:05"
 )
 
+// CLIConfig is the configuration for the CLI migration tool.
 type CLIConfig struct {
 	ConnectionString string
 	MigrationsDir    string
@@ -69,7 +70,7 @@ func main() {
 	// Handle help command before database setup
 	if command == "help" || command == "-h" || command == "--help" {
 		printUsage()
-		return
+		os.Exit(1)
 	}
 
 	// Setup database connection
@@ -81,27 +82,33 @@ func main() {
 				config.ConnectionString = buildPostgreSQLConnectionString(config)
 				fmt.Printf("🔗 Built connection string from parameters for database: %s\n", config.Database)
 			} else {
-				log.Fatal("❌ Database connection required. Use -connection flag, DATABASE_URL env var, or provide -host, -user, -database flags")
+				log.Printf("❌ Database connection required. Use -connection flag, DATABASE_URL env var, or provide -host, -user, -database flags")
+				return
 			}
 		}
 	}
 
 	// Detect database driver
 	var driverName string
-	if strings.HasPrefix(config.ConnectionString, "postgres://") || strings.Contains(config.ConnectionString, "user=") {
+	switch {
+	case strings.HasPrefix(config.ConnectionString, "postgres://"), strings.Contains(config.ConnectionString, "user="):
 		driverName = "postgres"
-	} else if strings.HasSuffix(config.ConnectionString, ".db") || strings.Contains(config.ConnectionString, "sqlite") {
+	case strings.HasSuffix(config.ConnectionString, ".db"), strings.Contains(config.ConnectionString, "sqlite"):
 		driverName = "sqlite3"
-	} else {
-		// Default to postgres for backward compatibility
-		driverName = "postgres"
+	default:
+		driverName = "postgres" // Default to postgres for backward compatibility
 	}
 
 	db, err := sql.Open(driverName, config.ConnectionString)
 	if err != nil {
-		log.Fatal("❌ Failed to connect to database:", err)
+		log.Printf("❌ Failed to connect to database: %v", err)
+		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() {
+		if cerr := db.Close(); cerr != nil {
+			log.Printf("Warning: failed to close db: %v", cerr)
+		}
+	}()
 
 	// Create migration manager
 	migrationConfig := migrations.DefaultEFMigrationConfig()
@@ -115,12 +122,14 @@ func main() {
 
 	// Initialize schema if needed
 	if err := manager.EnsureSchema(); err != nil {
-		log.Fatal("❌ Failed to initialize migration schema:", err)
+		log.Printf("❌ Failed to initialize migration schema: %v", err)
+		return
 	}
 
 	// Load migrations from filesystem before executing commands
 	if err := loadMigrationsFromFilesystem(manager, config.MigrationsDir); err != nil {
-		log.Fatal("❌ Failed to load migrations from filesystem:", err)
+		log.Printf("❌ Failed to load migrations from filesystem: %v", err)
+		return
 	}
 
 	// Execute command
@@ -144,14 +153,15 @@ func main() {
 	default:
 		fmt.Printf("❌ Unknown command: %s\n\n", command)
 		printUsage()
-		os.Exit(1)
+		return
 	}
 }
 
 // addMigration implements Add-Migration command
 func addMigration(manager *migrations.EFMigrationManager, args []string, config CLIConfig) {
 	if len(args) == 0 {
-		log.Fatal("❌ Migration name required. Usage: add-migration <name>")
+		log.Printf("❌ Migration name required. Usage: add-migration <name>")
+		return
 	}
 
 	name := args[0]
@@ -170,7 +180,8 @@ func addMigration(manager *migrations.EFMigrationManager, args []string, config 
 
 	// Save migration to file
 	if err := saveMigrationToFile(migration, config.MigrationsDir); err != nil {
-		log.Fatal("❌ Failed to save migration file:", err)
+		log.Printf("❌ Failed to save migration file: %v", err)
+		return
 	}
 
 	fmt.Printf("✅ Migration created: %s\n", migration.ID)
@@ -179,7 +190,7 @@ func addMigration(manager *migrations.EFMigrationManager, args []string, config 
 }
 
 // updateDatabase implements Update-Database command
-func updateDatabase(manager *migrations.EFMigrationManager, args []string, config CLIConfig) {
+func updateDatabase(manager *migrations.EFMigrationManager, args []string, _ CLIConfig) {
 	fmt.Println("🚀 Updating database...")
 
 	var targetMigration []string
@@ -189,20 +200,22 @@ func updateDatabase(manager *migrations.EFMigrationManager, args []string, confi
 	}
 
 	if err := manager.UpdateDatabase(targetMigration...); err != nil {
-		log.Fatal("❌ Failed to update database:", err)
+		log.Printf("❌ Failed to update database: %v", err)
+		return
 	}
 
 	fmt.Println("✅ Database updated successfully!")
 }
 
 // getMigrations implements Get-Migration command
-func getMigrations(manager *migrations.EFMigrationManager, config CLIConfig) {
+func getMigrations(manager *migrations.EFMigrationManager, _ CLIConfig) {
 	fmt.Println("📋 Migration History:")
 	fmt.Println("====================")
 
 	history, err := manager.GetMigrationHistory()
 	if err != nil {
-		log.Fatal("❌ Failed to get migration history:", err)
+		log.Printf(ErrorFailedToGetHistoryFmt, err)
+		return
 	}
 
 	if len(history.Applied) == 0 && len(history.Pending) == 0 && len(history.Failed) == 0 {
@@ -239,16 +252,18 @@ func getMigrations(manager *migrations.EFMigrationManager, config CLIConfig) {
 }
 
 // rollbackMigration implements rollback functionality
-func rollbackMigration(manager *migrations.EFMigrationManager, args []string, config CLIConfig) {
+func rollbackMigration(manager *migrations.EFMigrationManager, args []string, _ CLIConfig) {
 	if len(args) == 0 {
-		log.Fatal("❌ Target migration required. Usage: rollback <migration-name-or-id>")
+		log.Printf("❌ Target migration required. Usage: rollback <migration-name-or-id>")
+		return
 	}
 
 	target := args[0]
 	fmt.Printf("⏪ Rolling back to migration: %s\n", target)
 
 	if err := manager.RollbackMigration(target); err != nil {
-		log.Fatal("❌ Failed to rollback migration:", err)
+		log.Printf("❌ Failed to rollback migration: %v", err)
+		return
 	}
 
 	fmt.Println("✅ Rollback completed successfully!")
@@ -261,7 +276,8 @@ func showStatus(manager *migrations.EFMigrationManager, config CLIConfig) {
 
 	history, err := manager.GetMigrationHistory()
 	if err != nil {
-		log.Fatal("❌ Failed to get migration status:", err)
+		log.Printf("❌ Failed to get migration status: %v", err)
+		return
 	}
 
 	sanitizedConnectionString := sanitizeConnectionString(config.ConnectionString)
@@ -272,7 +288,7 @@ func showStatus(manager *migrations.EFMigrationManager, config CLIConfig) {
 
 	if len(history.Applied) > 0 {
 		latest := history.Applied[len(history.Applied)-1]
-		fmt.Printf("Latest:   %s (%s)\n", latest.ID, latest.AppliedAt.Format("2006-01-02 15:04:05"))
+		fmt.Printf("Latest:   %s (%s)\n", latest.ID, latest.AppliedAt.Format(TimeFormat))
 	}
 
 	if len(history.Pending) > 0 {
@@ -281,12 +297,13 @@ func showStatus(manager *migrations.EFMigrationManager, config CLIConfig) {
 }
 
 // generateScript generates SQL script for migrations
-func generateScript(manager *migrations.EFMigrationManager, args []string, config CLIConfig) {
+func generateScript(manager *migrations.EFMigrationManager, args []string, _ CLIConfig) {
 	fmt.Println("📜 Generating migration script...")
 
 	history, err := manager.GetMigrationHistory()
 	if err != nil {
-		log.Fatal("❌ Failed to get migration history:", err)
+		log.Printf(ErrorFailedToGetHistoryFmt, err)
+		return
 	}
 
 	if len(history.Pending) == 0 {
@@ -311,7 +328,7 @@ func generateScript(manager *migrations.EFMigrationManager, args []string, confi
 
 	// Generate script
 	fmt.Println("-- Generated Migration Script")
-	fmt.Printf("-- Generated at: %s\n", time.Now().Format("2006-01-02 15:04:05"))
+	fmt.Printf("-- Generated at: %s\n", time.Now().Format(TimeFormat))
 	fmt.Printf("-- Migrations: %d\n", len(migrations))
 	fmt.Println("-- ==========================================")
 
@@ -326,16 +343,18 @@ func generateScript(manager *migrations.EFMigrationManager, args []string, confi
 }
 
 // removeMigration removes the last migration
-func removeMigration(manager *migrations.EFMigrationManager, args []string, config CLIConfig) {
+func removeMigration(manager *migrations.EFMigrationManager, _ []string, config CLIConfig) {
 	fmt.Println("🗑️  Removing last migration...")
 
 	history, err := manager.GetMigrationHistory()
 	if err != nil {
-		log.Fatal("❌ Failed to get migration history:", err)
+		log.Printf(ErrorFailedToGetHistoryFmt, err)
+		return
 	}
 
 	if len(history.Pending) == 0 {
-		log.Fatal("❌ No pending migrations to remove")
+		log.Printf("❌ No pending migrations to remove")
+		return
 	}
 
 	// Remove the last pending migration
@@ -365,7 +384,7 @@ func formatMigrationInfo(m migrations.Migration, status string) string {
 
 	result := fmt.Sprintf("%s %s", statusIcon, m.ID)
 	if !m.AppliedAt.IsZero() {
-		result += fmt.Sprintf(" (%s)", m.AppliedAt.Format("2006-01-02 15:04:05"))
+		result += fmt.Sprintf(" (%s)", m.AppliedAt.Format(TimeFormat))
 	}
 	if m.Description != "" {
 		result += fmt.Sprintf(" - %s", m.Description)
@@ -387,17 +406,23 @@ func extractDBName(connectionString string) string {
 
 func saveMigrationToFile(migration *migrations.Migration, dir string) error {
 	// Create directory if it doesn't exist
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	// #nosec G301 -- Directory must be user-accessible for migration files
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return err
 	}
 
 	// Create migration file
 	filename := fmt.Sprintf("%s/%s.sql", dir, migration.ID)
+	// #nosec G304 -- File creation is controlled by migration logic, not user input
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			log.Printf("Warning: failed to close file: %v", cerr)
+		}
+	}()
 
 	// Write migration content
 	content := fmt.Sprintf(`-- Migration: %s
@@ -413,7 +438,7 @@ func saveMigrationToFile(migration *migrations.Migration, dir string) error {
 `,
 		migration.Name,
 		migration.Description,
-		time.Now().Format("2006-01-02 15:04:05"),
+		time.Now().Format(TimeFormat),
 		migration.Version,
 		migration.UpSQL,
 		migration.DownSQL,
@@ -429,17 +454,17 @@ func buildPostgreSQLConnectionString(config CLIConfig) string {
 	if host == "" {
 		host = "localhost"
 	}
-	
+
 	port := config.Port
 	if port == "" {
 		port = "5432"
 	}
-	
+
 	sslmode := config.SSLMode
 	if sslmode == "" {
 		sslmode = "disable"
 	}
-	
+
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		config.User, config.Password, host, port, config.Database, sslmode)
 }
@@ -549,6 +574,7 @@ func loadMigrationsFromFilesystem(manager *migrations.EFMigrationManager, migrat
 		}
 
 		// Read migration file content
+		// #nosec G304 -- File path is determined by migration manager logic, not user input
 		content, err := os.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("failed to read migration file %s: %w", file, err)

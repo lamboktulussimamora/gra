@@ -38,7 +38,7 @@ type MockJWTAuthenticator struct {
 	Claims        map[string]any
 }
 
-func (m *MockJWTAuthenticator) ValidateToken(tokenString string) (any, error) {
+func (m *MockJWTAuthenticator) ValidateToken(_ string) (any, error) {
 	// This implementation ignores the actual token string value
 	// as we're only testing based on the ShouldSucceed flag
 	if !m.ShouldSucceed {
@@ -240,7 +240,7 @@ func TestRecovery(t *testing.T) {
 		},
 		{
 			name: "With panic",
-			handler: func(c *context.Context) {
+			handler: func(_ *context.Context) {
 				panic("test panic")
 			},
 			expectedStatus: http.StatusInternalServerError,

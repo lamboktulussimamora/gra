@@ -17,7 +17,7 @@ const (
 	testName         = "John Doe"
 	testDifferentKey = "different-key"
 	testInvalidToken = "invalid.token.string"
-	testApiAudience  = "api"
+	testAPIAudience  = "api"
 	testWebAudience  = "web"
 
 	// Error message templates
@@ -28,12 +28,13 @@ const (
 	errMsgExpectedSubject = "Expected subject to be '%s', got %v"
 	errMsgExpectedJTI     = "Expected jti to be '%s', got %v"
 	errMsgExpectedName    = "Expected name to be '%s', got %v"
-	errMsgExpiredToken    = "Expected ErrExpiredToken, got %v"
-	errMsgMissingKey      = "Expected ErrMissingKey, got %v"
-	errMsgMissingSubject  = "Expected ErrMissingSubject, got %v"
-	errServiceNil         = "Expected service to be created, got nil"
-	errTokenEmpty         = "Expected token to be generated, got empty string"
-	errTokenNotDifferent  = "Expected new token to be different from original token"
+	// #nosec G101 -- This is a test error message, not a credential
+	errMsgExpiredToken   = "Expected ErrExpiredToken, got %v"
+	errMsgMissingKey     = "Expected ErrMissingKey, got %v"
+	errMsgMissingSubject = "Expected ErrMissingSubject, got %v"
+	errServiceNil        = "Expected service to be created, got nil"
+	errTokenEmpty        = "Expected token to be generated, got empty string"
+	errTokenNotDifferent = "Expected new token to be different from original token"
 )
 
 func TestNewService(t *testing.T) {
@@ -109,7 +110,7 @@ func TestGenerateToken(t *testing.T) {
 		claims := StandardClaims{
 			ID:       testTokenID,
 			Subject:  testUserID,
-			Audience: []string{testApiAudience, testWebAudience},
+			Audience: []string{testAPIAudience, testWebAudience},
 			Custom: map[string]interface{}{
 				"role": testRoleAdmin,
 			},
@@ -121,7 +122,7 @@ func TestGenerateToken(t *testing.T) {
 		}
 
 		// Parse and validate token
-		parsedToken, _ := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+		parsedToken, _ := jwt.Parse(token, func(_ *jwt.Token) (interface{}, error) {
 			return []byte(testSecretKey), nil
 		})
 
@@ -248,7 +249,7 @@ func TestRefreshToken(t *testing.T) {
 		}
 	})
 
-	t.Run("should allow refresh for expired token", func(t *testing.T) {
+	t.Run("should allow refresh for expired token", func(_ *testing.T) {
 		// We need to manually create an expired token that we can successfully parse
 		// This is a bit tricky to test properly without modifying the code
 		// For a real implementation, you'd want to make the jwt.Parse function mockable

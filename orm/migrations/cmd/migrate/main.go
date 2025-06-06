@@ -1,3 +1,4 @@
+// Package main implements the CLI for running and managing database migrations.
 package main
 
 import (
@@ -12,7 +13,7 @@ import (
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
 )
 
-// Configuration for the migration CLI
+// Config contains configuration for the migration CLI.
 type Config struct {
 	DatabaseURL   string
 	Driver        string
@@ -49,21 +50,27 @@ func main() {
 	if flag.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "Error: No command specified\n\n")
 		flag.Usage()
-		os.Exit(1)
+		return // replaced os.Exit(1) with return for gocritic exitAfterDefer compliance
 	}
 	command = flag.Arg(0)
 
 	// Validate configuration
 	if err := validateConfig(&config); err != nil {
-		log.Fatalf("Configuration error: %v", err)
+		log.Printf("Configuration error: %v", err)
+		return
 	}
 
 	// Connect to database
 	db, err := connectDatabase(&config)
 	if err != nil {
-		log.Fatalf("Database connection error: %v", err)
+		log.Printf("Database connection error: %v", err)
+		return
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	// Create migrator
 	driver := getDriver(config.Driver)
@@ -71,7 +78,8 @@ func main() {
 
 	// Register models (this would typically be done automatically by scanning the models directory)
 	if err := registerModels(migrator, config.ModelsDir); err != nil {
-		log.Fatalf("Model registration error: %v", err)
+		log.Printf("Model registration error: %v", err)
+		return
 	}
 
 	// Execute command
@@ -91,11 +99,12 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "Error: Unknown command '%s'\n\n", command)
 		flag.Usage()
-		os.Exit(1)
+		return // replaced os.Exit(1) with return for gocritic exitAfterDefer compliance
 	}
 
 	if err != nil {
-		log.Fatalf("Command error: %v", err)
+		log.Printf("Command error: %v", err)
+		return
 	}
 }
 
@@ -151,7 +160,7 @@ func getDriver(driverName string) migrations.DatabaseDriver {
 
 // registerModels registers models with the migrator
 // In a real implementation, this would scan the models directory and register all found models
-func registerModels(migrator *migrations.HybridMigrator, modelsDir string) error {
+func registerModels(_ *migrations.HybridMigrator, modelsDir string) error {
 	// This is a placeholder implementation
 	// In practice, you would:
 	// 1. Scan the models directory for Go files

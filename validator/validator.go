@@ -385,31 +385,31 @@ func (v *Validator) validateEmail(field reflect.Value, fieldName, customMessage 
 func (v *Validator) validateMin(field reflect.Value, fieldName, arg, customMessage string) {
 	switch field.Kind() {
 	case reflect.String:
-		min := 0
-		if _, err := fmt.Sscanf(arg, "%d", &min); err != nil {
+		minVal := 0
+		if _, err := fmt.Sscanf(arg, "%d", &minVal); err != nil {
 			v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
 			return
 		}
-		if len(field.String()) < min {
-			v.addError(fieldName, fmt.Sprintf("%s must be at least %d characters", fieldName, min), customMessage)
+		if len(field.String()) < minVal {
+			v.addError(fieldName, fmt.Sprintf("%s must be at least %d characters", fieldName, minVal), customMessage)
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		min := int64(0)
-		if _, err := fmt.Sscanf(arg, "%d", &min); err != nil {
+		minVal := int64(0)
+		if _, err := fmt.Sscanf(arg, "%d", &minVal); err != nil {
 			v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
 			return
 		}
-		if field.Int() < min {
-			v.addError(fieldName, fmt.Sprintf("%s must be at least %d", fieldName, min), customMessage)
+		if field.Int() < minVal {
+			v.addError(fieldName, fmt.Sprintf("%s must be at least %d", fieldName, minVal), customMessage)
 		}
 	case reflect.Float32, reflect.Float64:
-		min := float64(0)
-		if _, err := fmt.Sscanf(arg, "%f", &min); err != nil {
+		minVal := float64(0)
+		if _, err := fmt.Sscanf(arg, "%f", &minVal); err != nil {
 			v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
 			return
 		}
-		if field.Float() < min {
-			v.addError(fieldName, fmt.Sprintf("%s must be at least %f", fieldName, min), customMessage)
+		if field.Float() < minVal {
+			v.addError(fieldName, fmt.Sprintf("%s must be at least %.2f", fieldName, minVal), customMessage)
 		}
 	}
 }
@@ -430,49 +430,49 @@ func (v *Validator) validateMax(field reflect.Value, fieldName, arg, customMessa
 
 // validateMaxString validates maximum string length
 func (v *Validator) validateMaxString(field reflect.Value, fieldName, arg, customMessage string) {
-	max := 0
-	if _, err := fmt.Sscanf(arg, "%d", &max); err != nil {
+	maxVal := 0
+	if _, err := fmt.Sscanf(arg, "%d", &maxVal); err != nil {
 		v.addError(fieldName, fmt.Sprintf(InvalidMaxValueMsg, arg), customMessage)
 		return
 	}
-	if len(field.String()) > max {
-		v.addError(fieldName, fmt.Sprintf("%s must be at most %d characters", fieldName, max), customMessage)
+	if len(field.String()) > maxVal {
+		v.addError(fieldName, fmt.Sprintf("%s must be at most %d characters", fieldName, maxVal), customMessage)
 	}
 }
 
 // validateMaxInt validates maximum integer value
 func (v *Validator) validateMaxInt(field reflect.Value, fieldName, arg, customMessage string) {
-	max := int64(0)
-	if _, err := fmt.Sscanf(arg, "%d", &max); err != nil {
+	maxVal := int64(0)
+	if _, err := fmt.Sscanf(arg, "%d", &maxVal); err != nil {
 		v.addError(fieldName, fmt.Sprintf(InvalidMaxValueMsg, arg), customMessage)
 		return
 	}
-	if field.Int() > max {
-		v.addError(fieldName, fmt.Sprintf("%s must be at most %d", fieldName, max), customMessage)
+	if field.Int() > maxVal {
+		v.addError(fieldName, fmt.Sprintf("%s must be at most %d", fieldName, maxVal), customMessage)
 	}
 }
 
 // validateMaxUint validates maximum unsigned integer value
 func (v *Validator) validateMaxUint(field reflect.Value, fieldName, arg, customMessage string) {
-	max := uint64(0)
-	if _, err := fmt.Sscanf(arg, "%d", &max); err != nil {
+	maxVal := uint64(0)
+	if _, err := fmt.Sscanf(arg, "%d", &maxVal); err != nil {
 		v.addError(fieldName, fmt.Sprintf(InvalidMaxValueMsg, arg), customMessage)
 		return
 	}
-	if field.Uint() > max {
-		v.addError(fieldName, fmt.Sprintf("%s must be at most %d", fieldName, max), customMessage)
+	if field.Uint() > maxVal {
+		v.addError(fieldName, fmt.Sprintf("%s must be at most %d", fieldName, maxVal), customMessage)
 	}
 }
 
 // validateMaxFloat validates maximum float value
 func (v *Validator) validateMaxFloat(field reflect.Value, fieldName, arg, customMessage string) {
-	max := float64(0)
-	if _, err := fmt.Sscanf(arg, "%f", &max); err != nil {
+	maxVal := float64(0)
+	if _, err := fmt.Sscanf(arg, "%f", &maxVal); err != nil {
 		v.addError(fieldName, fmt.Sprintf(InvalidMaxValueMsg, arg), customMessage)
 		return
 	}
-	if field.Float() > max {
-		v.addError(fieldName, fmt.Sprintf("%s must be at most %f", fieldName, max), customMessage)
+	if field.Float() > maxVal {
+		v.addError(fieldName, fmt.Sprintf("%s must be at most %g", fieldName, maxVal), customMessage)
 	}
 }
 
@@ -554,7 +554,6 @@ func (v *Validator) validateRegexp(field reflect.Value, fieldName, pattern, cust
 		pattern = "^[a-zA-Z0-9_]{3,20}$" // Fix for username pattern in tests
 	}
 
-
 	// Fix any truncated or problematic patterns
 	pattern = fixPattern(pattern)
 
@@ -600,8 +599,8 @@ func (v *Validator) validateEnum(field reflect.Value, fieldName, allowedValues, 
 
 // validateIntRange validates that an int field is within the specified range
 func (v *Validator) validateIntRange(field reflect.Value, fieldName, minStr, maxStr, customMessage string) {
-	min, err1 := parseInt(minStr)
-	max, err2 := parseInt(maxStr)
+	minVal, err1 := parseInt(minStr)
+	maxVal, err2 := parseInt(maxStr)
 
 	if err1 != nil || err2 != nil {
 		v.addError(fieldName, fmt.Sprintf(InvalidRangeMsg, fieldName), customMessage)
@@ -609,15 +608,15 @@ func (v *Validator) validateIntRange(field reflect.Value, fieldName, minStr, max
 	}
 
 	value := field.Int()
-	if value < min || value > max {
-		v.addError(fieldName, fmt.Sprintf("%s must be between %d and %d", fieldName, min, max), customMessage)
+	if value < minVal || value > maxVal {
+		v.addError(fieldName, fmt.Sprintf("%s must be between %d and %d", fieldName, minVal, maxVal), customMessage)
 	}
 }
 
 // validateUintRange validates that a uint field is within the specified range
 func (v *Validator) validateUintRange(field reflect.Value, fieldName, minStr, maxStr, customMessage string) {
-	min, err1 := parseUint(minStr)
-	max, err2 := parseUint(maxStr)
+	minVal, err1 := parseUint(minStr)
+	maxVal, err2 := parseUint(maxStr)
 
 	if err1 != nil || err2 != nil {
 		v.addError(fieldName, fmt.Sprintf(InvalidRangeMsg, fieldName), customMessage)
@@ -625,15 +624,15 @@ func (v *Validator) validateUintRange(field reflect.Value, fieldName, minStr, ma
 	}
 
 	value := field.Uint()
-	if value < min || value > max {
-		v.addError(fieldName, fmt.Sprintf("%s must be between %d and %d", fieldName, min, max), customMessage)
+	if value < minVal || value > maxVal {
+		v.addError(fieldName, fmt.Sprintf("%s must be between %d and %d", fieldName, minVal, maxVal), customMessage)
 	}
 }
 
 // validateFloatRange validates that a float field is within the specified range
 func (v *Validator) validateFloatRange(field reflect.Value, fieldName, minStr, maxStr, customMessage string) {
-	min, err1 := parseFloat(minStr)
-	max, err2 := parseFloat(maxStr)
+	minVal, err1 := parseFloat(minStr)
+	maxVal, err2 := parseFloat(maxStr)
 
 	if err1 != nil || err2 != nil {
 		v.addError(fieldName, fmt.Sprintf(InvalidRangeMsg, fieldName), customMessage)
@@ -641,8 +640,8 @@ func (v *Validator) validateFloatRange(field reflect.Value, fieldName, minStr, m
 	}
 
 	value := field.Float()
-	if value < min || value > max {
-		v.addError(fieldName, fmt.Sprintf("%s must be between %f and %f", fieldName, min, max), customMessage)
+	if value < minVal || value > maxVal {
+		v.addError(fieldName, fmt.Sprintf("%s must be between %g and %g", fieldName, minVal, maxVal), customMessage)
 	}
 }
 
@@ -707,7 +706,7 @@ func (v *Validator) ValidateBatch(objects []any) []BatchResult {
 	return results
 }
 
-// HasAnyErrors returns true if any object in the batch has validation errors
+// HasBatchErrors returns true if any object in the batch has validation errors
 func (v *Validator) HasBatchErrors(results []BatchResult) bool {
 	for _, result := range results {
 		if len(result.Errors) > 0 {

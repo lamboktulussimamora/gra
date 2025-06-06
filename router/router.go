@@ -242,7 +242,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				handler = route.Handler
 				params = pathParams
 				break
-			} else {
+			}
+			if route.Method == req.Method {
 				matchedRoutes = append(matchedRoutes, route)
 			}
 		}

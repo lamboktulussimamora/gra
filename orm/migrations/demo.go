@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/lamboktulussimamora/gra/orm/models"
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3" // Import for SQLite driver (required for database/sql)
 )
 
 // IntegrationDemo demonstrates the complete migration workflow
@@ -16,9 +16,9 @@ func IntegrationDemo() {
 	// 1. Setup test database
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
+		log.Printf("Failed to open database: %v", err)
+		return
 	}
-	defer db.Close()
 
 	// 2. Create migrator
 	migrator := NewHybridMigrator(
@@ -26,6 +26,11 @@ func IntegrationDemo() {
 		SQLite,
 		"./test_migrations",
 	)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	// 3. Register existing GRA models
 	fmt.Println("1. Registering GRA models...")
@@ -38,7 +43,8 @@ func IntegrationDemo() {
 	fmt.Println("2. Checking migration status...")
 	status, err := migrator.GetMigrationStatus()
 	if err != nil {
-		log.Fatalf("Failed to get migration status: %v", err)
+		log.Printf("Failed to get migration status: %v", err)
+		return
 	}
 
 	fmt.Printf("   Applied migrations: %d\n", len(status.AppliedMigrations))
@@ -53,7 +59,8 @@ func IntegrationDemo() {
 		ModeGenerateOnly, // Generate files only for review
 	)
 	if err != nil {
-		log.Fatalf("Failed to create migration: %v", err)
+		log.Printf("Failed to create migration: %v", err)
+		return
 	}
 
 	if migrationFile != nil {

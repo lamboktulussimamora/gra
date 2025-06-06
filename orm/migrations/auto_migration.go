@@ -3,12 +3,37 @@ package migrations
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 
 	"github.com/lamboktulussimamora/gra/orm/dbcontext"
 	"github.com/lamboktulussimamora/gra/orm/schema"
+)
+
+// SQL and error message constants for auto migration
+const (
+	dbErrCreateMigrationsTable = "failed to create __migrations table: %w"
+
+	dbErrBeginTx               = "failed to begin transaction: %w"
+	dbErrCreateTable           = "failed to create table %s: %w"
+	dbErrCreateIndexes         = "failed to create indexes for %s: %w"
+	dbErrRecordMigration       = "failed to record migration: %w"
+	dbErrCommitMigration       = "failed to commit migration transaction: %w"
+	dbErrGetCurrentColumns     = "failed to get current table columns: %w"
+	dbErrAddColumn             = "failed to add column %s: %w"
+	dbErrUpdateMigrationRecord = "failed to update migration record: %w"
+	dbErrCommitUpdate          = "failed to commit update transaction: %w"
+	dbWarnRollback             = "Warning: Failed to rollback transaction: %v"
+	dbWarnCloseRows            = "Warning: Failed to close rows: %v"
+
+	nullableYes = "YES"
+	nullableNo  = "NO"
+
+	typeNullableFmt = "type:%s,nullable:%s"
+	defaultFmt      = ",default:%s"
 )
 
 // AutoMigrator provides EF Core-style automatic database migrations
@@ -86,7 +111,7 @@ func (am *AutoMigrator) createMigrationsTable() error {
 
 	_, err := am.db.Exec(query)
 	if err != nil {
-		return fmt.Errorf("failed to create __migrations table: %w", err)
+		return fmt.Errorf(dbErrCreateMigrationsTable, err)
 	}
 
 	am.logger("✓ Migrations tracking table ready")
@@ -111,20 +136,19 @@ func (am *AutoMigrator) migrateModel(model interface{}) error {
 	var existingChecksum string
 	err := am.db.QueryRow("SELECT checksum FROM __migrations WHERE migration_name = $1", migrationName).Scan(&existingChecksum)
 
-	if err == nil {
-		// Migration exists
+	switch {
+	case err == nil:
 		if existingChecksum == checksum {
 			am.logger("✓ Table %s is up to date", tableName)
 			return nil
-		} else {
-			// Schema changed, need to update
-			am.logger("⚠ Table %s schema changed, updating...", tableName)
-			return am.updateTableSchema(tableName, modelType, migrationName, checksum)
 		}
-	} else if err == sql.ErrNoRows {
+		// Schema changed, need to update
+		am.logger("⚠ Table %s schema changed, updating...", tableName)
+		return am.updateTableSchema(tableName, modelType, migrationName, checksum)
+	case errors.Is(err, sql.ErrNoRows):
 		// Migration doesn't exist, create table
 		return am.createTable(tableName, modelType, migrationName, checksum)
-	} else {
+	default:
 		return fmt.Errorf("failed to check migration status: %w", err)
 	}
 }
@@ -136,30 +160,41 @@ func (am *AutoMigrator) createTable(tableName string, modelType reflect.Type, mi
 	// Start transaction
 	tx, err := am.db.Begin()
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		// Ensure migration file permissions are set to 0600 for security
+		migrationFilePath := fmt.Sprintf("/path/to/migrations/%s.sql", migrationName) // Replace with actual logic to determine file path
+		if err := os.Chmod(migrationFilePath, 0600); err != nil {
+			return fmt.Errorf("failed to set migration file permissions: %w", err)
+		}
+		return fmt.Errorf(dbErrBeginTx, err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			if rollbackErr != sql.ErrTxDone {
+				am.logger(dbWarnRollback, rollbackErr)
+			}
+		}
+	}()
 
 	// Create table
 	_, err = tx.Exec(createSQL)
 	if err != nil {
-		return fmt.Errorf("failed to create table %s: %w", tableName, err)
+		return fmt.Errorf(dbErrCreateTable, tableName, err)
 	}
 
 	// Create indexes
 	if err := am.createIndexes(tx, tableName, modelType); err != nil {
-		return fmt.Errorf("failed to create indexes for %s: %w", tableName, err)
+		return fmt.Errorf(dbErrCreateIndexes, tableName, err)
 	}
 
 	// Record migration
 	_, err = tx.Exec("INSERT INTO __migrations (migration_name, checksum) VALUES ($1, $2)", migrationName, checksum)
 	if err != nil {
-		return fmt.Errorf("failed to record migration: %w", err)
+		return fmt.Errorf(dbErrRecordMigration, err)
 	}
 
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit migration transaction: %w", err)
+		return fmt.Errorf(dbErrCommitMigration, err)
 	}
 
 	am.logger("✓ Created table: %s", tableName)
@@ -171,7 +206,7 @@ func (am *AutoMigrator) updateTableSchema(tableName string, modelType reflect.Ty
 	// Get current table structure
 	currentColumns, err := am.getCurrentTableColumns(tableName)
 	if err != nil {
-		return fmt.Errorf("failed to get current table columns: %w", err)
+		return fmt.Errorf(dbErrGetCurrentColumns, err)
 	}
 
 	// Generate new structure
@@ -180,9 +215,15 @@ func (am *AutoMigrator) updateTableSchema(tableName string, modelType reflect.Ty
 	// Start transaction
 	tx, err := am.db.Begin()
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return fmt.Errorf(dbErrBeginTx, err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			if rollbackErr != sql.ErrTxDone {
+				am.logger(dbWarnRollback, rollbackErr)
+			}
+		}
+	}()
 
 	// Add new columns
 	for colName, colDef := range newColumns {
@@ -190,7 +231,7 @@ func (am *AutoMigrator) updateTableSchema(tableName string, modelType reflect.Ty
 			alterSQL := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", tableName, colDef)
 			_, err = tx.Exec(alterSQL)
 			if err != nil {
-				return fmt.Errorf("failed to add column %s: %w", colName, err)
+				return fmt.Errorf(dbErrAddColumn, colName, err)
 			}
 			am.logger("✓ Added column %s to table %s", colName, tableName)
 		}
@@ -199,12 +240,12 @@ func (am *AutoMigrator) updateTableSchema(tableName string, modelType reflect.Ty
 	// Update migration record
 	_, err = tx.Exec("UPDATE __migrations SET checksum = $1, applied_at = CURRENT_TIMESTAMP WHERE migration_name = $2", checksum, migrationName)
 	if err != nil {
-		return fmt.Errorf("failed to update migration record: %w", err)
+		return fmt.Errorf(dbErrUpdateMigrationRecord, err)
 	}
 
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit update transaction: %w", err)
+		return fmt.Errorf(dbErrCommitUpdate, err)
 	}
 
 	am.logger("✓ Updated table: %s", tableName)
@@ -250,17 +291,9 @@ func (am *AutoMigrator) processStructFieldsWithError(modelType reflect.Type, fie
 			continue
 		}
 
-		// Check if this is an embedded struct
-		if field.Anonymous {
-			// This is an embedded struct, process its fields recursively
-			fieldType := field.Type
-			if fieldType.Kind() == reflect.Ptr {
-				fieldType = fieldType.Elem()
-			}
-			if fieldType.Kind() == reflect.Struct {
-				if err := am.processStructFieldsWithError(fieldType, fieldHandler); err != nil {
-					return err
-				}
+		if am.isEmbeddedStruct(field) {
+			if err := am.handleEmbeddedStructWithError(field, fieldHandler); err != nil {
+				return err
 			}
 			continue
 		}
@@ -270,10 +303,33 @@ func (am *AutoMigrator) processStructFieldsWithError(modelType reflect.Type, fie
 			continue
 		}
 
-		// Call the handler for this field
 		if err := fieldHandler(field, dbTag); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// isEmbeddedStruct checks if a struct field is an embedded struct
+func (am *AutoMigrator) isEmbeddedStruct(field reflect.StructField) bool {
+	if !field.Anonymous {
+		return false
+	}
+	fieldType := field.Type
+	if fieldType.Kind() == reflect.Ptr {
+		fieldType = fieldType.Elem()
+	}
+	return fieldType.Kind() == reflect.Struct
+}
+
+// handleEmbeddedStructWithError processes embedded struct fields recursively with error handling
+func (am *AutoMigrator) handleEmbeddedStructWithError(field reflect.StructField, fieldHandler func(field reflect.StructField, dbTag string) error) error {
+	fieldType := field.Type
+	if fieldType.Kind() == reflect.Ptr {
+		fieldType = fieldType.Elem()
+	}
+	if fieldType.Kind() == reflect.Struct {
+		return am.processStructFieldsWithError(fieldType, fieldHandler)
 	}
 	return nil
 }
@@ -292,36 +348,8 @@ func (am *AutoMigrator) generateCreateTableSQL(tableName string, modelType refle
 	return createSQL
 }
 
-// generateCreateTableSQLLegacy generates CREATE TABLE SQL (legacy method for fallback)
-func (am *AutoMigrator) generateCreateTableSQLLegacy(tableName string, modelType reflect.Type) string {
-	var columns []string
-	var constraints []string
-
-	// Process all fields including embedded structs
-	am.processStructFields(modelType, func(field reflect.StructField, dbTag string) {
-		columnDef := am.generateColumnDefinition(field, dbTag)
-		if columnDef != "" {
-			columns = append(columns, columnDef)
-		}
-
-		// Handle foreign key constraints
-		if fkTag := field.Tag.Get("fk"); fkTag != "" {
-			constraint := am.generateForeignKeyConstraint(tableName, dbTag, fkTag)
-			if constraint != "" {
-				constraints = append(constraints, constraint)
-			}
-		}
-	})
-
-	// Combine columns and constraints
-	allDefinitions := append(columns, constraints...)
-
-	return fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n  %s\n)",
-		tableName, strings.Join(allDefinitions, ",\n  "))
-}
-
 // generateColumnDefinition generates SQL column definition using database-aware schema generation
-func (am *AutoMigrator) generateColumnDefinition(field reflect.StructField, dbTag string) string {
+func (am *AutoMigrator) generateColumnDefinition(field reflect.StructField, _ string) string {
 	// Detect database driver
 	driver := schema.DetectDatabaseDriver(am.db)
 
@@ -330,26 +358,11 @@ func (am *AutoMigrator) generateColumnDefinition(field reflect.StructField, dbTa
 	return schema.ParseFieldToColumnForDriver(field, driver)
 }
 
-// generateForeignKeyConstraint generates foreign key constraint
-func (am *AutoMigrator) generateForeignKeyConstraint(tableName, columnName, fkTag string) string {
-	// Parse fk tag: "table.column" or "table"
-	parts := strings.Split(fkTag, ".")
-	refTable := parts[0]
-	refColumn := "id"
-	if len(parts) > 1 {
-		refColumn = parts[1]
-	}
-
-	constraintName := fmt.Sprintf("fk_%s_%s", tableName, columnName)
-	return fmt.Sprintf("CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s(%s)",
-		constraintName, columnName, refTable, refColumn)
-}
-
 // createIndexes creates indexes based on struct tags
 func (am *AutoMigrator) createIndexes(tx *sql.Tx, tableName string, modelType reflect.Type) error {
 	return am.processStructFieldsWithError(modelType, func(field reflect.StructField, dbTag string) error {
 		// Create index if specified
-		if field.Tag.Get("index") == "true" {
+		if field.Tag.Get("index") == indexTrueValue {
 			indexName := fmt.Sprintf("idx_%s_%s", tableName, dbTag)
 			indexSQL := fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (%s)", indexName, tableName, dbTag)
 			_, err := tx.Exec(indexSQL)
@@ -359,7 +372,7 @@ func (am *AutoMigrator) createIndexes(tx *sql.Tx, tableName string, modelType re
 		}
 
 		// Create unique index if specified
-		if field.Tag.Get("uniqueIndex") == "true" {
+		if field.Tag.Get("uniqueIndex") == indexTrueValue {
 			indexName := fmt.Sprintf("uidx_%s_%s", tableName, dbTag)
 			indexSQL := fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (%s)", indexName, tableName, dbTag)
 			_, err := tx.Exec(indexSQL)
@@ -435,85 +448,96 @@ func (am *AutoMigrator) calculateChecksum(schema string) string {
 func (am *AutoMigrator) getCurrentTableColumns(tableName string) (map[string]string, error) {
 	driver := schema.DetectDatabaseDriver(am.db)
 
-	var query string
-	var args []interface{}
-
-	switch driver {
-	case schema.PostgreSQL:
-		query = `
-			SELECT column_name, data_type, is_nullable, column_default
-			FROM information_schema.columns 
-			WHERE table_name = $1
-			ORDER BY ordinal_position`
-		args = []interface{}{tableName}
-
-	case schema.SQLite:
-		query = fmt.Sprintf("PRAGMA table_info(%s)", tableName)
-		args = []interface{}{}
-
-	case schema.MySQL:
-		query = `
-			SELECT column_name, data_type, is_nullable, column_default
-			FROM information_schema.columns 
-			WHERE table_name = ? AND table_schema = DATABASE()
-			ORDER BY ordinal_position`
-		args = []interface{}{tableName}
-
-	default:
-		return nil, fmt.Errorf("unsupported database driver: %v", driver)
+	query, args, err := am.getTableColumnsQuery(driver, tableName)
+	if err != nil {
+		return nil, err
 	}
 
 	rows, err := am.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			am.logger(dbWarnCloseRows, closeErr)
+		}
+	}()
 
 	columns := make(map[string]string)
 
-	if driver == schema.SQLite {
-		// SQLite PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
-		for rows.Next() {
-			var cid int
-			var name, dataType string
-			var notNull int
-			var defaultValue sql.NullString
-			var pk int
-
-			if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
-				return nil, err
-			}
-
-			nullable := "YES"
-			if notNull == 1 {
-				nullable = "NO"
-			}
-
-			colInfo := fmt.Sprintf("type:%s,nullable:%s", dataType, nullable)
-			if defaultValue.Valid {
-				colInfo += fmt.Sprintf(",default:%s", defaultValue.String)
-			}
-			columns[name] = colInfo
-		}
-	} else {
-		// PostgreSQL and MySQL use information_schema
-		for rows.Next() {
-			var colName, dataType, isNullable string
-			var columnDefault sql.NullString
-
-			err := rows.Scan(&colName, &dataType, &isNullable, &columnDefault)
-			if err != nil {
-				return nil, err
-			}
-
-			colInfo := fmt.Sprintf("type:%s,nullable:%s", dataType, isNullable)
-			if columnDefault.Valid {
-				colInfo += fmt.Sprintf(",default:%s", columnDefault.String)
-			}
-			columns[colName] = colInfo
-		}
+	switch driver {
+	case schema.SQLite:
+		return am.scanSQLiteTableInfo(rows, columns)
+	case schema.PostgreSQL, schema.MySQL:
+		return am.scanInformationSchemaColumns(rows, columns)
+	default:
+		return nil, fmt.Errorf("unsupported database driver: %v", driver)
 	}
+}
 
+func (am *AutoMigrator) getTableColumnsQuery(driver schema.DatabaseDriver, tableName string) (string, []interface{}, error) {
+	switch driver {
+	case schema.PostgreSQL:
+		return `
+			SELECT column_name, data_type, is_nullable, column_default
+			FROM information_schema.columns 
+			WHERE table_name = $1
+			ORDER BY ordinal_position`, []interface{}{tableName}, nil
+	case schema.SQLite:
+		return fmt.Sprintf("PRAGMA table_info(%s)", tableName), []interface{}{}, nil
+	case schema.MySQL:
+		return `
+			SELECT column_name, data_type, is_nullable, column_default
+			FROM information_schema.columns 
+			WHERE table_name = ? AND table_schema = DATABASE()
+			ORDER BY ordinal_position`, []interface{}{tableName}, nil
+	default:
+		return "", nil, fmt.Errorf("unsupported database driver: %v", driver)
+	}
+}
+
+func (am *AutoMigrator) scanSQLiteTableInfo(rows *sql.Rows, columns map[string]string) (map[string]string, error) {
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			return nil, err
+		}
+
+		nullable := nullableYes
+		if notNull == 1 {
+			nullable = nullableNo
+		}
+
+		colInfo := fmt.Sprintf(typeNullableFmt, dataType, nullable)
+		if defaultValue.Valid {
+			colInfo += fmt.Sprintf(defaultFmt, defaultValue.String)
+		}
+		columns[name] = colInfo
+	}
+	return columns, rows.Err()
+}
+
+func (am *AutoMigrator) scanInformationSchemaColumns(rows *sql.Rows, columns map[string]string) (map[string]string, error) {
+	for rows.Next() {
+		var colName, dataType, isNullable string
+		var columnDefault sql.NullString
+
+		err := rows.Scan(&colName, &dataType, &isNullable, &columnDefault)
+		if err != nil {
+			return nil, err
+		}
+
+		colInfo := fmt.Sprintf(typeNullableFmt, dataType, isNullable)
+		if columnDefault.Valid {
+			colInfo += fmt.Sprintf(defaultFmt, columnDefault.String)
+		}
+		columns[colName] = colInfo
+	}
 	return columns, rows.Err()
 }
 

@@ -17,8 +17,8 @@ import (
 	"github.com/lamboktulussimamora/gra/router"
 )
 
-// CacheEntry represents a cached response
-type CacheEntry struct {
+// Entry represents a cached response.
+type Entry struct {
 	Body         []byte              // The response body
 	StatusCode   int                 // The HTTP status code
 	Headers      map[string][]string // The HTTP headers
@@ -27,12 +27,12 @@ type CacheEntry struct {
 	ETag         string              // Entity Tag for this response
 }
 
-// CacheStore defines the interface for cache storage backends
-type CacheStore interface {
+// Store defines the interface for cache storage backends.
+type Store interface {
 	// Get retrieves a cached response by key
-	Get(key string) (*CacheEntry, bool)
+	Get(key string) (*Entry, bool)
 	// Set stores a response in the cache with a key
-	Set(key string, entry *CacheEntry, ttl time.Duration)
+	Set(key string, entry *Entry, ttl time.Duration)
 	// Delete removes an entry from the cache
 	Delete(key string)
 	// Clear removes all entries from the cache
@@ -41,19 +41,19 @@ type CacheStore interface {
 
 // MemoryStore is an in-memory implementation of CacheStore
 type MemoryStore struct {
-	items map[string]*CacheEntry
+	items map[string]*Entry
 	mutex sync.RWMutex
 }
 
 // NewMemoryStore creates a new memory cache store
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		items: make(map[string]*CacheEntry),
+		items: make(map[string]*Entry),
 	}
 }
 
 // Get retrieves an entry from the memory cache
-func (s *MemoryStore) Get(key string) (*CacheEntry, bool) {
+func (s *MemoryStore) Get(key string) (*Entry, bool) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
@@ -72,7 +72,7 @@ func (s *MemoryStore) Get(key string) (*CacheEntry, bool) {
 }
 
 // Set stores an entry in the memory cache
-func (s *MemoryStore) Set(key string, entry *CacheEntry, ttl time.Duration) {
+func (s *MemoryStore) Set(key string, entry *Entry, ttl time.Duration) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -101,7 +101,7 @@ func (s *MemoryStore) Clear() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	s.items = make(map[string]*CacheEntry)
+	s.items = make(map[string]*Entry)
 }
 
 // ResponseWriter is a wrapper for http.ResponseWriter that captures the response
@@ -158,14 +158,14 @@ func (w *ResponseWriter) Body() []byte {
 	return w.body.Bytes()
 }
 
-// CacheConfig holds configuration options for the cache middleware
-type CacheConfig struct {
+// Config holds configuration options for the cache middleware.
+type Config struct {
 	// TTL is the default time-to-live for cached items
 	TTL time.Duration
 	// Methods are the HTTP methods to cache (default: only GET)
 	Methods []string
 	// Store is the cache store to use
-	Store CacheStore
+	Store Store
 	// KeyGenerator generates cache keys from the request
 	KeyGenerator func(*context.Context) string
 	// SkipCache determines whether to skip caching for a request
@@ -175,8 +175,8 @@ type CacheConfig struct {
 }
 
 // DefaultCacheConfig returns the default cache configuration
-func DefaultCacheConfig() CacheConfig {
-	return CacheConfig{
+func DefaultCacheConfig() Config {
+	return Config{
 		TTL:     time.Minute * 5,
 		Methods: []string{http.MethodGet},
 		Store:   NewMemoryStore(),
@@ -197,7 +197,7 @@ func New() router.Middleware {
 }
 
 // initializeConfig sets default values for any unspecified options in the config
-func initializeConfig(config *CacheConfig) {
+func initializeConfig(config *Config) {
 	if config.TTL == 0 {
 		config.TTL = DefaultCacheConfig().TTL
 	}
@@ -229,7 +229,7 @@ func isMethodAllowed(method string, allowedMethods []string) bool {
 }
 
 // serveFromCache serves a cached response to the client
-func serveFromCache(c *context.Context, entry *CacheEntry) {
+func serveFromCache(c *context.Context, entry *Entry) {
 	// Serve headers from cache
 	for name, values := range entry.Headers {
 		for _, value := range values {
@@ -250,7 +250,7 @@ func serveFromCache(c *context.Context, entry *CacheEntry) {
 }
 
 // handleConditionalGET checks for conditional GET headers and returns true if 304 Not Modified was sent
-func handleConditionalGET(c *context.Context, entry *CacheEntry) bool {
+func handleConditionalGET(c *context.Context, entry *Entry) bool {
 	// Check for conditional GET requests
 	ifNoneMatch := c.GetHeader("If-None-Match")
 	ifModifiedSince := c.GetHeader("If-Modified-Since")
@@ -280,7 +280,7 @@ func handleConditionalGET(c *context.Context, entry *CacheEntry) bool {
 }
 
 // createCacheEntry creates a new cache entry from the response
-func createCacheEntry(responseWriter *ResponseWriter, now time.Time) (*CacheEntry, string) {
+func createCacheEntry(responseWriter *ResponseWriter, now time.Time) (*Entry, string) {
 	headers := make(map[string][]string)
 
 	// Copy headers that should be cached
@@ -297,7 +297,7 @@ func createCacheEntry(responseWriter *ResponseWriter, now time.Time) (*CacheEntr
 	hash := sha256.Sum256(body)
 	etag := hex.EncodeToString(hash[:])
 
-	entry := &CacheEntry{
+	entry := &Entry{
 		Body:         body,
 		StatusCode:   responseWriter.Status(),
 		Headers:      headers,
@@ -309,7 +309,7 @@ func createCacheEntry(responseWriter *ResponseWriter, now time.Time) (*CacheEntr
 }
 
 // WithConfig creates a new cache middleware with custom configuration
-func WithConfig(config CacheConfig) router.Middleware {
+func WithConfig(config Config) router.Middleware {
 	// Initialize configuration with defaults
 	initializeConfig(&config)
 
@@ -378,11 +378,11 @@ func isHopByHopHeader(header string) bool {
 }
 
 // ClearCache clears the entire cache
-func ClearCache(store CacheStore) {
+func ClearCache(store Store) {
 	store.Clear()
 }
 
 // InvalidateCache invalidates a specific cache entry
-func InvalidateCache(store CacheStore, key string) {
+func InvalidateCache(store Store, key string) {
 	store.Delete(key)
 }

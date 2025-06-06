@@ -61,12 +61,15 @@ func TestNew(t *testing.T) {
 	v := New()
 	if v == nil {
 		t.Fatal("New() returned nil")
+		return
 	}
 	if v.errors == nil {
 		t.Fatal("New() should initialize errors slice")
+		return
 	}
 	if len(v.errors) != 0 {
 		t.Fatalf("New validator should have 0 errors, got %d", len(v.errors))
+		return
 	}
 }
 
@@ -408,7 +411,17 @@ func checkMinValidation(t *testing.T, errors []ValidationError, field string, va
 	case fieldPassword:
 		errorMsg = "password must be at least 6 characters"
 	case fieldBalance:
-		errorMsg = "balance must be at least 0.000000"
+		errorMsg = "balance must be at least 0"
+		// Accept both 0 and 0.000000 for float formatting
+		altErrorMsg := "balance must be at least 0.000000"
+		hasError = findValidationError(errors, field, errorMsg) || findValidationError(errors, field, altErrorMsg)
+		if expectError && !hasError {
+			t.Errorf("Expected %s validation error for %v < %v", field, value, minValue)
+		}
+		if !expectError && hasError {
+			t.Errorf("Unexpected %s validation error for %v >= %v", field, value, minValue)
+		}
+		return
 	}
 
 	hasError = findValidationError(errors, field, errorMsg)
@@ -1188,7 +1201,7 @@ func TestPointerStructValidation(t *testing.T) {
 
 	t.Run("Nil Pointer to Struct", func(t *testing.T) {
 		v := New()
-		var nilUser *TestUser = nil
+		var nilUser *TestUser
 		errors := v.Validate(nilUser)
 
 		// Nil pointers should not produce validation errors

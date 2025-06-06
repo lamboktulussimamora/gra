@@ -22,7 +22,7 @@ func (m *mockErrorWriter) Header() http.Header {
 	return m.headers
 }
 
-func (m *mockErrorWriter) Write(b []byte) (int, error) {
+func (m *mockErrorWriter) Write(_ []byte) (int, error) {
 	// Always return an error
 	return 0, io.ErrUnexpectedEOF
 }
@@ -36,6 +36,6 @@ type errorReader struct {
 	err error
 }
 
-func (r *errorReader) Read(p []byte) (n int, err error) {
+func (r *errorReader) Read(_ []byte) (n int, err error) {
 	return 0, r.err
 }

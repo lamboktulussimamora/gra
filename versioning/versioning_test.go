@@ -113,8 +113,8 @@ func checkVersionResult(t *testing.T, version string, err error, expectedVer str
 	}
 }
 
-// setupVersioningOptions creates versioning options with the provided settings
-func setupVersioningOptions(supportedVersions []string, defaultVersion string, strictVersioning bool) *VersioningOptions {
+// setupVersioningOptions creates an Options instance with the provided settings
+func setupVersioningOptions(supportedVersions []string, defaultVersion string, strictVersioning bool) *Options {
 	return New().
 		WithStrategy(&PathVersionStrategy{Prefix: "v"}).
 		WithSupportedVersions(supportedVersions...).

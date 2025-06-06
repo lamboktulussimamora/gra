@@ -114,12 +114,26 @@ type UserRole struct {
 	Role *Role `json:"role,omitempty" sql:"-"`
 }
 
-// TableName methods to specify exact table names for each entity
-func (User) TableName() string      { return "users" }
-func (Product) TableName() string   { return "products" }
-func (Category) TableName() string  { return "categories" }
-func (Order) TableName() string     { return "orders" }
+// TableName returns the table name for the User entity.
+func (User) TableName() string { return "users" }
+
+// TableName returns the table name for the Product entity.
+func (Product) TableName() string { return "products" }
+
+// TableName returns the table name for the Category entity.
+func (Category) TableName() string { return "categories" }
+
+// TableName returns the table name for the Order entity.
+func (Order) TableName() string { return "orders" }
+
+// TableName returns the table name for the OrderItem entity.
 func (OrderItem) TableName() string { return "order_items" }
-func (Review) TableName() string    { return "reviews" }
-func (Role) TableName() string      { return "roles" }
-func (UserRole) TableName() string  { return "user_roles" }
+
+// TableName returns the table name for the Review entity.
+func (Review) TableName() string { return "reviews" }
+
+// TableName returns the table name for the Role entity.
+func (Role) TableName() string { return "roles" }
+
+// TableName returns the table name for the UserRole entity.
+func (UserRole) TableName() string { return "user_roles" }

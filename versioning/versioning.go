@@ -49,8 +49,8 @@ type VersionInfo struct {
 	IsSupported bool
 }
 
-// VersioningOptions contains configuration for API versioning
-type VersioningOptions struct {
+// Options contains configuration for API versioning.
+type Options struct {
 	Strategy          VersionStrategy    // The versioning strategy to use
 	DefaultVersion    string             // The default version to use if none is specified
 	SupportedVersions []string           // List of supported versions
@@ -59,8 +59,8 @@ type VersioningOptions struct {
 }
 
 // New creates a new versioning middleware with default options
-func New() *VersioningOptions {
-	return &VersioningOptions{
+func New() *Options {
+	return &Options{
 		Strategy:          &PathVersionStrategy{Prefix: "v"},
 		DefaultVersion:    "1",
 		SupportedVersions: []string{"1"},
@@ -70,37 +70,37 @@ func New() *VersioningOptions {
 }
 
 // WithStrategy sets the versioning strategy
-func (vo *VersioningOptions) WithStrategy(strategy VersionStrategy) *VersioningOptions {
+func (vo *Options) WithStrategy(strategy VersionStrategy) *Options {
 	vo.Strategy = strategy
 	return vo
 }
 
 // WithDefaultVersion sets the default API version
-func (vo *VersioningOptions) WithDefaultVersion(version string) *VersioningOptions {
+func (vo *Options) WithDefaultVersion(version string) *Options {
 	vo.DefaultVersion = version
 	return vo
 }
 
 // WithSupportedVersions sets the supported API versions
-func (vo *VersioningOptions) WithSupportedVersions(versions ...string) *VersioningOptions {
+func (vo *Options) WithSupportedVersions(versions ...string) *Options {
 	vo.SupportedVersions = versions
 	return vo
 }
 
 // WithStrictVersioning sets the strict versioning flag
-func (vo *VersioningOptions) WithStrictVersioning(strict bool) *VersioningOptions {
+func (vo *Options) WithStrictVersioning(strict bool) *Options {
 	vo.StrictVersioning = strict
 	return vo
 }
 
 // WithErrorHandler sets a custom error handler for version errors
-func (vo *VersioningOptions) WithErrorHandler(handler router.HandlerFunc) *VersioningOptions {
+func (vo *Options) WithErrorHandler(handler router.HandlerFunc) *Options {
 	vo.ErrorHandler = handler
 	return vo
 }
 
 // handleVersionError handles versioning errors with custom or default error responses
-func (vo *VersioningOptions) handleVersionError(c *context.Context, message string) {
+func (vo *Options) handleVersionError(c *context.Context, message string) {
 	if vo.ErrorHandler != nil {
 		vo.ErrorHandler(c)
 	} else {
@@ -109,7 +109,7 @@ func (vo *VersioningOptions) handleVersionError(c *context.Context, message stri
 }
 
 // isVersionSupported checks if the given version is in the list of supported versions
-func (vo *VersioningOptions) isVersionSupported(version string) bool {
+func (vo *Options) isVersionSupported(version string) bool {
 	for _, v := range vo.SupportedVersions {
 		if v == version {
 			return true
@@ -119,7 +119,7 @@ func (vo *VersioningOptions) isVersionSupported(version string) bool {
 }
 
 // applyVersionToContext adds version information to the request context
-func (vo *VersioningOptions) applyVersionToContext(c *context.Context, version string) {
+func (vo *Options) applyVersionToContext(c *context.Context, version string) {
 	// Apply version to the request
 	vo.Strategy.Apply(c, version)
 
@@ -132,7 +132,7 @@ func (vo *VersioningOptions) applyVersionToContext(c *context.Context, version s
 }
 
 // Middleware returns a middleware that applies API versioning
-func (vo *VersioningOptions) Middleware() router.Middleware {
+func (vo *Options) Middleware() router.Middleware {
 	return func(next router.HandlerFunc) router.HandlerFunc {
 		return func(c *context.Context) {
 			// Extract version
@@ -193,7 +193,7 @@ func (s *PathVersionStrategy) ExtractVersion(c *context.Context) (string, error)
 }
 
 // Apply doesn't need to do anything for path versioning
-func (s *PathVersionStrategy) Apply(c *context.Context, version string) {
+func (s *PathVersionStrategy) Apply(_ *context.Context, _ string) {
 	// Path versioning is handled by the router, so we don't need to do anything here
 }
 
@@ -226,7 +226,7 @@ func (s *QueryVersionStrategy) ExtractVersion(c *context.Context) (string, error
 }
 
 // Apply doesn't need to do anything for query versioning
-func (s *QueryVersionStrategy) Apply(c *context.Context, version string) {
+func (s *QueryVersionStrategy) Apply(_ *context.Context, _ string) {
 	// Query versioning is extracted from the request, so we don't need to do anything here
 }
 

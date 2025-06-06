@@ -16,9 +16,14 @@ func main() {
 	// Database connection
 	db, err := sql.Open("sqlite3", "./test_migrations/example.db")
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		log.Printf("Failed to connect to database: %v", err)
+		return
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close database connection: %v", closeErr)
+		}
+	}()
 
 	// Create EF Migration Manager
 	config := migrations.DefaultEFMigrationConfig()
@@ -27,7 +32,8 @@ func main() {
 
 	// Initialize migration schema (like EF Core's initial setup)
 	if err := manager.EnsureSchema(); err != nil {
-		log.Fatal("Failed to initialize migration schema:", err)
+		log.Printf("Failed to initialize migration schema: %v", err)
+		return
 	}
 
 	// ========================================
@@ -90,7 +96,8 @@ func main() {
 	fmt.Println("\n3️⃣  CHECKING MIGRATION STATUS (Get-Migration)")
 	history, err := manager.GetMigrationHistory()
 	if err != nil {
-		log.Fatal("Failed to get migration history:", err)
+		log.Printf("Failed to get migration history: %v", err)
+		return
 	}
 
 	printMigrationStatus(history)
@@ -98,14 +105,16 @@ func main() {
 	// 4. UPDATE-DATABASE: Apply all pending migrations
 	fmt.Println("\n4️⃣  APPLYING MIGRATIONS (Update-Database)")
 	if err := manager.UpdateDatabase(); err != nil {
-		log.Fatal("Failed to update database:", err)
+		log.Printf("Failed to update database: %v", err)
+		return
 	}
 
 	// 5. GET-MIGRATION: View status after applying
 	fmt.Println("\n5️⃣  CHECKING STATUS AFTER UPDATE (Get-Migration)")
 	history, err = manager.GetMigrationHistory()
 	if err != nil {
-		log.Fatal("Failed to get migration history:", err)
+		log.Printf("Failed to get migration history: %v", err)
+		return
 	}
 
 	printMigrationStatus(history)
@@ -139,20 +148,23 @@ func main() {
 	// 7. UPDATE-DATABASE: Apply specific migration
 	fmt.Println("\n7️⃣  APPLYING SPECIFIC MIGRATION (Update-Database AddUserSettings)")
 	if err := manager.UpdateDatabase(migration3.ID); err != nil {
-		log.Fatal("Failed to update database to specific migration:", err)
+		log.Printf("Failed to update database to specific migration: %v", err)
+		return
 	}
 
 	// 8. ROLLBACK: Demonstrate rollback functionality
 	fmt.Println("\n8️⃣  ROLLING BACK MIGRATION (Update-Database CreateUsersTable)")
 	if err := manager.RollbackMigration(migration1.ID); err != nil {
-		log.Fatal("Failed to rollback migration:", err)
+		log.Printf("Failed to rollback migration: %v", err)
+		return
 	}
 
 	// 9. FINAL STATUS: Check final state
 	fmt.Println("\n9️⃣  FINAL MIGRATION STATUS")
 	history, err = manager.GetMigrationHistory()
 	if err != nil {
-		log.Fatal("Failed to get final migration history:", err)
+		log.Printf("Failed to get final migration history: %v", err)
+		return
 	}
 
 	printMigrationStatus(history)

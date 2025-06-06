@@ -9,7 +9,41 @@ import (
 	"time"
 
 	"github.com/lamboktulussimamora/gra/orm/models"
-	_ "github.com/lib/pq"
+	_ "github.com/lib/pq" // Import for PostgreSQL driver (required for database/sql)
+)
+
+// SQL and error message constants for migration runner
+const (
+	migrationsTableCreateSQL = `
+	CREATE TABLE IF NOT EXISTS migrations (
+		id SERIAL PRIMARY KEY,
+		name VARCHAR(255) NOT NULL UNIQUE,
+		executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`
+
+	sqlSelectMigrationCount = "SELECT COUNT(*) FROM migrations WHERE name = $1"
+	sqlInsertMigration      = "INSERT INTO migrations (name) VALUES ($1)"
+	sqlSelectMigrations     = "SELECT name, executed_at FROM migrations ORDER BY executed_at"
+
+	errCreateMigrationsTable = "failed to create migrations table: %w"
+	errCheckMigrationStatus  = "failed to check migration status: %w"
+	errCreateTable           = "failed to create table %s: %w"
+	errRecordMigration       = "failed to record migration: %w"
+	errQueryMigrations       = "failed to query migrations: %w"
+	errScanMigrationRow      = "failed to scan migration row: %w"
+
+	msgMigrationsTableReady   = "✓ Migrations table ready"
+	msgTableAlreadyExists     = "✓ Table %s already exists, skipping"
+	msgCreatedTable           = "✓ Created table: %s"
+	msgMigrationStatus        = "Migration Status:"
+	msgMigrationStatusDivider = "================"
+
+	// SQL type and struct type constants for migration runner
+	sqlTypeInteger   = "INTEGER"
+	sqlTypeText      = "TEXT"
+	sqlTypeBoolean   = "BOOLEAN"
+	sqlTypeTimeStamp = "TIMESTAMP"
+	goTypeTime       = "time.Time"
 )
 
 // MigrationRunner handles automatic database migrations
@@ -66,19 +100,12 @@ func (mr *MigrationRunner) AutoMigrate() error {
 
 // createMigrationsTable creates the migrations tracking table
 func (mr *MigrationRunner) createMigrationsTable() error {
-	query := `
-	CREATE TABLE IF NOT EXISTS migrations (
-		id SERIAL PRIMARY KEY,
-		name VARCHAR(255) NOT NULL UNIQUE,
-		executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	)`
-
-	_, err := mr.db.Exec(query)
+	_, err := mr.db.Exec(migrationsTableCreateSQL)
 	if err != nil {
-		return fmt.Errorf("failed to create migrations table: %w", err)
+		return fmt.Errorf(errCreateMigrationsTable, err)
 	}
 
-	mr.logger.Println("✓ Migrations table ready")
+	mr.logger.Println(msgMigrationsTableReady)
 	return nil
 }
 
@@ -94,13 +121,13 @@ func (mr *MigrationRunner) migrateEntity(entity interface{}) error {
 
 	// Check if migration already executed
 	var count int
-	err := mr.db.QueryRow("SELECT COUNT(*) FROM migrations WHERE name = $1", migrationName).Scan(&count)
+	err := mr.db.QueryRow(sqlSelectMigrationCount, migrationName).Scan(&count)
 	if err != nil {
-		return fmt.Errorf("failed to check migration status: %w", err)
+		return fmt.Errorf(errCheckMigrationStatus, err)
 	}
 
 	if count > 0 {
-		mr.logger.Printf("✓ Table %s already exists, skipping", tableName)
+		mr.logger.Printf(msgTableAlreadyExists, tableName)
 		return nil
 	}
 
@@ -110,16 +137,16 @@ func (mr *MigrationRunner) migrateEntity(entity interface{}) error {
 	// Execute the migration
 	_, err = mr.db.Exec(createSQL)
 	if err != nil {
-		return fmt.Errorf("failed to create table %s: %w", tableName, err)
+		return fmt.Errorf(errCreateTable, tableName, err)
 	}
 
 	// Record the migration
-	_, err = mr.db.Exec("INSERT INTO migrations (name) VALUES ($1)", migrationName)
+	_, err = mr.db.Exec(sqlInsertMigration, migrationName)
 	if err != nil {
-		return fmt.Errorf("failed to record migration: %w", err)
+		return fmt.Errorf(errRecordMigration, err)
 	}
 
-	mr.logger.Printf("✓ Created table: %s", tableName)
+	mr.logger.Printf(msgCreatedTable, tableName)
 	return nil
 }
 
@@ -150,58 +177,66 @@ func (mr *MigrationRunner) generateCreateTableSQL(tableName string, entityType r
 		tableName, strings.Join(columns, ",\n  "))
 }
 
-// generateColumnDefinition generates SQL column definition for a struct field
-func (mr *MigrationRunner) generateColumnDefinition(field reflect.StructField, dbTag string) string {
-	fieldType := field.Type
-
-	// Handle pointer types
+// Helper for SQL type mapping
+func sqlTypeForField(fieldType reflect.Type, dbTag string, field reflect.StructField) (string, bool) {
 	isNullable := false
 	if fieldType.Kind() == reflect.Ptr {
 		isNullable = true
 		fieldType = fieldType.Elem()
 	}
 
-	var sqlType string
-
 	switch fieldType.Kind() {
 	case reflect.Int, reflect.Int32, reflect.Int64:
 		if dbTag == "id" {
-			sqlType = "SERIAL PRIMARY KEY"
-		} else {
-			sqlType = "INTEGER"
+			return "SERIAL PRIMARY KEY", isNullable
 		}
+		return sqlTypeInteger, isNullable
 	case reflect.String:
 		maxLength := field.Tag.Get("maxlength")
 		if maxLength != "" {
-			sqlType = fmt.Sprintf("VARCHAR(%s)", maxLength)
-		} else {
-			sqlType = "TEXT"
+			return fmt.Sprintf("VARCHAR(%s)", maxLength), isNullable
 		}
+		return sqlTypeText, isNullable
 	case reflect.Float32, reflect.Float64:
-		sqlType = "DECIMAL(10,2)"
+		return "DECIMAL(10,2)", isNullable
 	case reflect.Bool:
-		sqlType = "BOOLEAN"
+		return sqlTypeBoolean, isNullable
 	case reflect.Struct:
-		if fieldType.String() == "time.Time" {
-			sqlType = "TIMESTAMP"
-		} else {
-			return "" // Skip unknown struct types
+		if fieldType.String() == goTypeTime {
+			return sqlTypeTimeStamp, isNullable
 		}
+		return "", isNullable // Skip unknown struct types
 	default:
-		return "" // Skip unsupported types
+		return "", isNullable // Skip unsupported types
 	}
+}
 
-	// Add NOT NULL constraint if field is not nullable and not primary key
+// Helper for NOT NULL constraint
+func addNotNullConstraint(sqlType, dbTag string, isNullable bool) string {
 	if !isNullable && dbTag != "id" {
-		sqlType += " NOT NULL"
+		return sqlType + " NOT NULL"
+	}
+	return sqlType
+}
+
+// Helper for default timestamp
+func addDefaultTimestamp(sqlType, fieldTypeStr, dbTag string) string {
+	if fieldTypeStr == goTypeTime && (dbTag == "created_at" || dbTag == "updated_at") {
+		return sqlType + " DEFAULT CURRENT_TIMESTAMP"
+	}
+	return sqlType
+}
+
+func (mr *MigrationRunner) generateColumnDefinition(field reflect.StructField, dbTag string) string {
+	fieldType := field.Type
+
+	sqlType, isNullable := sqlTypeForField(fieldType, dbTag, field)
+	if sqlType == "" {
+		return ""
 	}
 
-	// Add default values for timestamps
-	if fieldType.String() == "time.Time" {
-		if dbTag == "created_at" || dbTag == "updated_at" {
-			sqlType += " DEFAULT CURRENT_TIMESTAMP"
-		}
-	}
+	sqlType = addNotNullConstraint(sqlType, dbTag, isNullable)
+	sqlType = addDefaultTimestamp(sqlType, fieldType.String(), dbTag)
 
 	return fmt.Sprintf("%s %s", dbTag, sqlType)
 }
@@ -223,21 +258,25 @@ func (mr *MigrationRunner) getTableName(structName string) string {
 
 // GetMigrationStatus returns the status of all migrations
 func (mr *MigrationRunner) GetMigrationStatus() error {
-	rows, err := mr.db.Query("SELECT name, executed_at FROM migrations ORDER BY executed_at")
+	rows, err := mr.db.Query(sqlSelectMigrations)
 	if err != nil {
-		return fmt.Errorf("failed to query migrations: %w", err)
+		return fmt.Errorf(errQueryMigrations, err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			mr.logger.Printf("Warning: Failed to close rows: %v", closeErr)
+		}
+	}()
 
-	mr.logger.Println("Migration Status:")
-	mr.logger.Println("================")
+	mr.logger.Println(msgMigrationStatus)
+	mr.logger.Println(msgMigrationStatusDivider)
 
 	for rows.Next() {
 		var name string
 		var executedAt time.Time
 
 		if err := rows.Scan(&name, &executedAt); err != nil {
-			return fmt.Errorf("failed to scan migration row: %w", err)
+			return fmt.Errorf(errScanMigrationRow, err)
 		}
 		mr.logger.Printf("✓ %s (executed: %s)", name, executedAt.Format("2006-01-02 15:04:05"))
 	}

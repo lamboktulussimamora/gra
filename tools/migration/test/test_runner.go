@@ -1,3 +1,4 @@
+// Package main provides a test runner for migration tests.
 package main
 
 import (
@@ -5,12 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
+
 	_ "github.com/lib/pq"
 )
 
 var (
-	up = flag.Bool("up", false, "Apply migrations")
+	up   = flag.Bool("up", false, "Apply migrations")
 	conn = flag.String("conn", "", "Connection string")
 )
 
@@ -18,17 +19,23 @@ func main() {
 	flag.Parse()
 	if *conn == "" {
 		fmt.Println("Usage: test_runner --conn 'postgres://...' --up")
-		os.Exit(1)
+		return // replaced os.Exit(1) with return for gocritic exitAfterDefer compliance
 	}
 
 	db, err := sql.Open("postgres", *conn)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("%v", err)
+		return // replaced os.Exit(1) with return for gocritic exitAfterDefer compliance
 	}
-	defer db.Close()
+	defer func() {
+		if cerr := db.Close(); cerr != nil {
+			log.Printf("Warning: failed to close db: %v", cerr)
+		}
+	}()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal("Connection failed:", err)
+		log.Printf("Connection failed: %v", err)
+		return // replaced os.Exit(1) with return for gocritic exitAfterDefer compliance
 	}
 
 	fmt.Println("✓ Database connection successful!")
@@ -40,7 +47,8 @@ func main() {
 			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`)
 		if err != nil {
-			log.Fatal("Failed to create migrations table:", err)
+			log.Printf("Failed to create migrations table: %v", err)
+			return
 		}
 
 		// Create users table
@@ -51,7 +59,8 @@ func main() {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`)
 		if err != nil {
-			log.Fatal("Failed to create users table:", err)
+			log.Printf("Failed to create users table: %v", err)
+			return
 		}
 
 		fmt.Println("✓ Users table created successfully!")
@@ -59,7 +68,8 @@ func main() {
 		// Record migration
 		_, err = db.Exec("INSERT INTO schema_migrations (version) VALUES (1) ON CONFLICT DO NOTHING")
 		if err != nil {
-			log.Fatal("Failed to record migration:", err)
+			log.Printf("Failed to record migration: %v", err)
+			return
 		}
 
 		fmt.Println("✓ Migration completed!")

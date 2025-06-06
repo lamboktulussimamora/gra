@@ -67,7 +67,7 @@ func (sm *SimpleMigrator) GenerateCreateTableSQL(snapshot *ModelSnapshot) string
 
 	sql.WriteString(fmt.Sprintf("CREATE TABLE %s (\n", snapshot.TableName))
 
-	var columns []string
+	columns := make([]string, 0, len(snapshot.Columns))
 	var primaryKeys []string
 
 	for _, col := range snapshot.Columns {
@@ -109,7 +109,8 @@ func (sm *SimpleMigrator) CreateInitialMigration(name string) (*MigrationFile, e
 	}
 
 	// Create migrations directory
-	if err := os.MkdirAll(sm.migrationsDir, 0755); err != nil {
+	// #nosec G301 -- Directory must be user-accessible for migration files
+	if err := os.MkdirAll(sm.migrationsDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create migrations directory: %w", err)
 	}
 
@@ -162,7 +163,9 @@ func (sm *SimpleMigrator) CreateInitialMigration(name string) (*MigrationFile, e
 	}
 
 	// Write SQL file
-	err := os.WriteFile(filepath, []byte(upSQL.String()), 0644)
+	// #nosec G306 -- Using 0600 permissions to restrict access to the migration file.
+	// Ensure this aligns with your deployment requirements for security and accessibility.
+	err := os.WriteFile(filepath, []byte(upSQL.String()), 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write migration file: %w", err)
 	}

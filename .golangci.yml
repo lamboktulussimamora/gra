@@ -1,0 +1,71 @@
+version: 2
+# golangci-lint configuration for GRA project
+# Compatible with golangci-lint v2.1+
+
+run:
+  timeout: 10m
+  issues-exit-code: 1
+  tests: true
+  skip-dirs:
+    - vendor
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: true
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  dupl:
+    threshold: 100
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  misspell:
+    locale: US
+
+linters:
+  disable-all: true
+  enable:
+    # Error detection
+    - errcheck          # Check for unchecked errors
+    - gosec            # Security issues
+    - govet            # Go vet tool
+    - staticcheck      # Static analysis
+    
+    # Code quality
+    - gocyclo          # Cyclomatic complexity
+    - ineffassign      # Ineffective assignments
+    - unconvert        # Unnecessary type conversions
+    - unused           # Unused code
+    
+    # Style and formatting
+    - misspell         # Spelling mistakes
+    - whitespace       # Whitespace issues
+    
+    # Performance
+    - bodyclose        # HTTP response body close
+    - prealloc         # Slice preallocation
+    
+    # Additional useful linters
+    - dupl             # Duplicated code
+    - goconst          # Repeated strings that could be constants
+    - gocritic         # Various checks
+    - revive           # Replacement for golint
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+    - path: examples/
+      linters:
+        - unused
+    - path: debug/
+      linters:
+        - unused
+  max-issues-per-linter: 0
+  max-same-issues: 0

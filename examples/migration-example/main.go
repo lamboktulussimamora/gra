@@ -1,3 +1,7 @@
+// Package main demonstrates a migration example for the GRA framework.
+// This example shows how to use the MigrationRunner to handle automatic database migrations.
+// It includes creating the necessary tables for the ecommerce application
+// and displaying the migration status.
 package main
 
 import (
@@ -139,7 +143,11 @@ func (mr *MigrationRunner) ShowStatus() error {
 	if err != nil {
 		return fmt.Errorf("failed to query migrations: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			mr.logger.Printf("Warning: Failed to close rows: %v", closeErr)
+		}
+	}()
 
 	mr.logger.Println("Migration Status:")
 	mr.logger.Println("================")
@@ -163,13 +171,19 @@ func main() {
 
 	runner, err := NewMigrationRunner(connectionString)
 	if err != nil {
-		log.Fatalf("Failed to create migration runner: %v", err)
+		log.Printf("Failed to create migration runner: %v", err)
+		return
 	}
-	defer runner.Close()
+	defer func() {
+		if closeErr := runner.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close migration runner: %v", closeErr)
+		}
+	}()
 
 	log.Println("Starting automatic migration...")
 	if err := runner.AutoMigrate(); err != nil {
-		log.Fatalf("Migration failed: %v", err)
+		log.Printf("Migration failed: %v", err)
+		return
 	}
 
 	log.Println("Migration completed successfully!")
