@@ -13,28 +13,29 @@ import (
 )
 
 const (
-	sqlite3Driver        = "sqlite3"
-	memoryDB             = ":memory:"
-	testMigrationsDir    = "test_migrations"
-	invalidDriver        = "invalid_driver"
-	expectedErr          = "Expected error (no real database): %v"
-	warningDBClose       = "Warning: Failed to close test database: %v"
-	warningTempDir       = "Warning: failed to remove temp directory: %v"
-	failedCreateDB       = "Failed to create test database: %v"
-	failedCreateTempDir  = "Failed to create temp directory: %v"
-	expectedIDOne        = "Expected ID to be 1, got %d"
-	foreignKeyUsers      = "foreign_key:users.id"
-	errIDFormat          = "Expected ID to be %d, got %d"
-	errUserIDFormat      = "Expected UserID to be %d, got %d"
-	errTitleFormat       = "Expected Title to be '%s', got %s"
-	errContentFormat     = "Expected Content to be '%s', got %s"
-	errIsActiveFormat    = "Expected IsActive to be %v"
-	errIsPublishedFmt    = "Expected IsPublished to be %v"
-	zeroIDCase           = "zero id"
-	postTitleTestPost    = "Test Post"
-	postContentTestPost  = "This is a test post content"
-	postTitlePublished   = "Published Post"
-	postContentPublished = "Published content"
+	sqlite3Driver          = "sqlite3"
+	memoryDB               = ":memory:"
+	testMigrationsDir      = "test_migrations"
+	invalidDriver          = "invalid_driver"
+	expectedErr            = "Expected error (no real database): %v"
+	warningDBClose         = "Warning: Failed to close test database: %v"
+	warningTempDir         = "Warning: failed to remove temp directory: %v"
+	failedCreateDB         = "Failed to create test database: %v"
+	failedCreateTempDir    = "Failed to create temp directory: %v"
+	expectedIDOne          = "Expected ID to be 1, got %d"
+	foreignKeyUsers        = "foreign_key:users.id"
+	errIDFormat            = "Expected ID to be %d, got %d"
+	errUserIDFormat        = "Expected UserID to be %d, got %d"
+	errTitleFormat         = "Expected Title to be '%s', got %s"
+	errContentFormat       = "Expected Content to be '%s', got %s"
+	errIsActiveFormat      = "Expected IsActive to be %v"
+	errIsPublishedFmt      = "Expected IsPublished to be %v"
+	zeroIDCase             = "zero id"
+	postTitleTestPost      = "Test Post"
+	postContentTestPost    = "This is a test post content"
+	postTitlePublished     = "Published Post"
+	postContentPublished   = "Published content"
+	errExpectedNilMigrator = "Expected error when migrator is nil"
 )
 
 func TestUserStruct(t *testing.T) {
@@ -695,7 +696,37 @@ func TestCreateAndApplyMigrationErrorCases(t *testing.T) {
 func TestShowFinalStatusErrorCase(t *testing.T) {
 	err := showFinalStatus(nil)
 	if err == nil {
-		t.Error("Expected error when migrator is nil")
+		t.Error(errExpectedNilMigrator)
+	}
+}
+
+func TestShowFinalStatusAllBranches(t *testing.T) {
+	// Case: migrator is nil
+	err := showFinalStatus(nil)
+	if err == nil {
+		t.Error(errExpectedNilMigrator)
+	}
+
+	// Case: migrator returns error from GetMigrationStatus (simulate by passing nil HybridMigrator)
+	err = showFinalStatus((*migrations.HybridMigrator)(nil))
+	if err == nil {
+		t.Error("Expected error from GetMigrationStatus branch")
+	}
+
+	// Case: migrator returns valid status (use a real migrator with a unique temp dir)
+	db, _ := sql.Open(sqlite3Driver, memoryDB)
+	tempDir, err := os.MkdirTemp("", testMigrationsDir)
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+	migrator := migrations.NewHybridMigrator(db, migrations.SQLite, tempDir)
+	migrator.DbSet(&User{})
+	_ = migrator.GetMigrationStatus // ensure method exists
+	err = showFinalStatus(migrator)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
 	}
 }
 
@@ -870,13 +901,11 @@ func TestCommentStructTableDriven(t *testing.T) {
 }
 
 func TestMigrationStatusEdgeCases(t *testing.T) {
-	// Nil MigrationStatus pointer
-	var statusNil *migrations.MigrationStatus
-	displayMigrationStatus(statusNil) // Should not panic
+	// Nil MigrationStatus pointer (should not panic)
+	displayMigrationStatus(nil)
 
 	// Empty MigrationStatus struct
-	statusEmpty := &migrations.MigrationStatus{}
-	displayMigrationStatus(statusEmpty)
+	displayMigrationStatus(&migrations.MigrationStatus{})
 
 	// MigrationStatus with only applied migrations
 	applied := &migrations.MigrationFile{Name: "applied", Timestamp: time.Now()}
@@ -890,36 +919,186 @@ func TestMigrationStatusEdgeCases(t *testing.T) {
 	statusPending := &migrations.MigrationStatus{
 		PendingMigrations: []*migrations.MigrationFile{pending},
 		HasPendingChanges: true,
-		Summary:           "Pending migration exists",
 	}
 	displayMigrationStatus(statusPending)
+
+	// MigrationStatus with nil slices
+	statusNilSlices := &migrations.MigrationStatus{
+		AppliedMigrations: nil,
+		PendingMigrations: nil,
+	}
+	displayMigrationStatus(statusNilSlices)
 }
 
 func TestMigrationFileEdgeCases(t *testing.T) {
-	// Nil MigrationFile pointer
-	var fileNil *migrations.MigrationFile
-	displayMigrationFileInfo(fileNil) // Should not panic
+	// Nil MigrationFile pointer (should not panic)
+	displayMigrationFileInfo(nil)
 
 	// Empty MigrationFile struct
-	fileEmpty := &migrations.MigrationFile{}
-	displayMigrationFileInfo(fileEmpty)
+	displayMigrationFileInfo(&migrations.MigrationFile{})
 
 	// MigrationFile with only filename
-	fileNameOnly := &migrations.MigrationFile{Filename: "only_filename.sql"}
-	displayMigrationFileInfo(fileNameOnly)
+	fileWithName := &migrations.MigrationFile{Filename: "only_name.sql"}
+	displayMigrationFileInfo(fileWithName)
 
-	// MigrationFile with warnings and destructive changes
-	fileWarn := &migrations.MigrationFile{
-		Filename: "warn.sql",
-		Changes: []migrations.MigrationChange{
-			{Type: "DROP_TABLE", TableName: "users", IsDestructive: true, Description: "Drop users table"},
-		},
+	// MigrationFile with nil Changes
+	fileNilChanges := &migrations.MigrationFile{Filename: "nil_changes.sql", Changes: nil}
+	displayMigrationFileInfo(fileNilChanges)
+
+	// MigrationFile with unusual values
+	fileUnusual := &migrations.MigrationFile{
+		Filename: "unusual.sql",
+		Changes:  []migrations.MigrationChange{{Type: "", TableName: "", ColumnName: "", IsDestructive: false, RequiresData: false, Description: ""}},
 	}
-	displayMigrationFileInfo(fileWarn)
-
-	// Test all public methods for panics and correct return types
-	_ = fileEmpty.HasDestructiveChanges()
-	_ = fileEmpty.RequiresReview()
-	_ = fileEmpty.GetWarnings()
-	_ = fileEmpty.Errors()
+	displayMigrationFileInfo(fileUnusual)
 }
+
+func BenchmarkDisplayMigrationStatus(b *testing.B) {
+	status := &migrations.MigrationStatus{
+		AppliedMigrations: []*migrations.MigrationFile{{Name: "applied", Timestamp: time.Now()}},
+		PendingMigrations: []*migrations.MigrationFile{{Name: "pending", Timestamp: time.Now()}},
+		HasPendingChanges: true,
+		Summary:           "Benchmark summary",
+	}
+	for i := 0; i < b.N; i++ {
+		displayMigrationStatus(status)
+	}
+}
+
+func BenchmarkDisplayMigrationFileInfo(b *testing.B) {
+	file := &migrations.MigrationFile{
+		Filename: "bench.sql",
+		Changes:  []migrations.MigrationChange{{Type: "ADD_TABLE", TableName: "bench", Description: "desc"}},
+	}
+	for i := 0; i < b.N; i++ {
+		displayMigrationFileInfo(file)
+	}
+}
+
+// Test that all public methods for MigrationStatus and MigrationFile do not panic and have correct return types
+func TestPublicMethodsDoNotPanic(t *testing.T) {
+	// MigrationStatus
+	status := &migrations.MigrationStatus{}
+	_ = status.HasPendingChanges
+	_ = status.Summary
+
+	// MigrationFile
+	file := &migrations.MigrationFile{}
+	_ = file.HasDestructiveChanges()
+	_ = file.RequiresReview()
+	_ = file.GetWarnings()
+	_ = file.Errors()
+}
+
+func TestDisplayMigrationStatusNilAndPartialCases(t *testing.T) {
+	// Nil pointer
+	displayMigrationStatus(nil)
+
+	// Empty struct
+	status := &migrations.MigrationStatus{}
+	displayMigrationStatus(status)
+
+	// Only AppliedMigrations
+	status = &migrations.MigrationStatus{
+		AppliedMigrations: []*migrations.MigrationFile{{Name: "applied", Timestamp: time.Now()}},
+	}
+	displayMigrationStatus(status)
+
+	// Only PendingMigrations
+	status = &migrations.MigrationStatus{
+		PendingMigrations: []*migrations.MigrationFile{{Name: "pending", Timestamp: time.Now()}},
+	}
+	displayMigrationStatus(status)
+
+	// No migrations, HasPendingChanges true
+	status = &migrations.MigrationStatus{HasPendingChanges: true}
+	displayMigrationStatus(status)
+}
+
+func TestDisplayMigrationFileInfoNilAndPartialCases(t *testing.T) {
+	// Nil pointer
+	displayMigrationFileInfo(nil)
+
+	// Empty struct
+	file := &migrations.MigrationFile{}
+	displayMigrationFileInfo(file)
+
+	// Only Filename
+	file = &migrations.MigrationFile{Filename: "only_filename.sql"}
+	displayMigrationFileInfo(file)
+
+	// Only Changes
+	file = &migrations.MigrationFile{Changes: []migrations.MigrationChange{{Type: "ADD_TABLE", TableName: "t"}}}
+	displayMigrationFileInfo(file)
+
+	// Change with all fields empty
+	file = &migrations.MigrationFile{Changes: []migrations.MigrationChange{{}}}
+	displayMigrationFileInfo(file)
+}
+
+func TestMigrationStatusPartialFields(t *testing.T) {
+	// AppliedMigrations nil, PendingMigrations non-nil
+	status := &migrations.MigrationStatus{
+		PendingMigrations: []*migrations.MigrationFile{{Name: "pending"}},
+	}
+	displayMigrationStatus(status)
+
+	// AppliedMigrations non-nil, PendingMigrations nil
+	status = &migrations.MigrationStatus{
+		AppliedMigrations: []*migrations.MigrationFile{{Name: "applied"}},
+	}
+	displayMigrationStatus(status)
+}
+
+func TestMigrationFilePartialFields(t *testing.T) {
+	// MigrationFile with nil Changes
+	file := &migrations.MigrationFile{Filename: "partial.sql"}
+	displayMigrationFileInfo(file)
+
+	// MigrationFile with one Change, partial fields
+	file = &migrations.MigrationFile{
+		Filename: "partial2.sql",
+		Changes:  []migrations.MigrationChange{{Type: "DROP_TABLE"}},
+	}
+	displayMigrationFileInfo(file)
+}
+
+func TestCreateAndApplyMigrationNilStatusAndMigrator(t *testing.T) {
+	// Both nil
+	if err := createAndApplyMigration(nil, nil); err == nil {
+		t.Error("Expected error for nil migrator and status")
+	}
+	// Nil status
+	db, _ := sql.Open(sqlite3Driver, memoryDB)
+	defer db.Close()
+	migrator := migrations.NewHybridMigrator(db, migrations.SQLite, testMigrationsDir)
+	if err := createAndApplyMigration(migrator, nil); err == nil {
+		t.Error("Expected error for nil status")
+	}
+	// Nil migrator
+	status := &migrations.MigrationStatus{}
+	if err := createAndApplyMigration(nil, status); err == nil {
+		t.Error("Expected error for nil migrator")
+	}
+}
+
+func TestShowFinalStatusNilAndErrorCases(t *testing.T) {
+	if err := showFinalStatus(nil); err == nil {
+		t.Error("Expected error for nil migrator")
+	}
+	// Simulate error from GetMigrationStatus (nil HybridMigrator)
+	if err := showFinalStatus((*migrations.HybridMigrator)(nil)); err == nil {
+		t.Error("Expected error from GetMigrationStatus branch")
+	}
+}
+
+// TestMainCoversMainLogic(t *testing.T) {
+// 	// This test simulates main() logic for coverage, but does not require a real DB.
+// 	// It should not panic or log fatal errors.
+// 	defer func() {
+// 		if r := recover(); r != nil {
+// 			t.Errorf("main panicked: %v", r)
+// 		}
+// 	}()
+// 	main()
+// }

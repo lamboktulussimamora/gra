@@ -24,11 +24,11 @@ const (
 	testMemoryDB        = ":memory:"
 
 	// Error message constants
-	errExpectedError      = "Expected error but got none"
-	errExpectedNoError    = "Expected no error but got: %v"
-	errExpectedMode       = "Expected mode %s, got %s"
-	errEmptyMigrationName = "empty migration name"
-	errExpectedForceMode  = "expected force destructive mode, got %s"
+	errExpectedError           = "Expected error but got none"
+	errExpectedNoError         = "Expected no error but got: %v"
+	errExpectedMode            = "Expected mode %s, got %s"
+	errEmptyMigrationName      = "empty migration name"
+	errExpectedForceMode       = "expected force destructive mode, got %s"
 	errExpectedInteractiveMode = "expected interactive mode, got %s"
 )
 
@@ -60,7 +60,7 @@ func testCmdApplyMigrations(m MigratorInterface, args []string) error {
 	}
 	// For mock, simulate the behavior of parsing args for mode
 	mode := migrations.ModeInteractive // Default mode
-	
+
 	// Check for force flag
 	for _, arg := range args {
 		if arg == "--force" {
@@ -72,7 +72,7 @@ func testCmdApplyMigrations(m MigratorInterface, args []string) error {
 			break
 		}
 	}
-	
+
 	return m.ApplyMigrations(mode)
 }
 
@@ -690,7 +690,7 @@ func TestWithRealisticData(t *testing.T) {
 func TestDisplayAppliedMigrations(t *testing.T) {
 	// Define reusable filename to avoid duplication
 	createUsersFilename := "001_CreateUsersTable.sql"
-	
+
 	tests := []struct {
 		name       string
 		migrations []*migrations.MigrationFile
@@ -1163,10 +1163,10 @@ func TestCmdForceMigrationReal(t *testing.T) {
 					Timestamp:   time.Now(),
 					Changes: []migrations.MigrationChange{
 						{
-							Type:         "DROP_TABLE",
-							TableName:    "old_table",
+							Type:          "DROP_TABLE",
+							TableName:     "old_table",
 							IsDestructive: true,
-							Description:  "This migration contains destructive changes",
+							Description:   "This migration contains destructive changes",
 						},
 					},
 				}
@@ -1216,12 +1216,12 @@ func TestMigrationFileWarnings(t *testing.T) {
 		Timestamp:   time.Now(),
 		Changes: []migrations.MigrationChange{
 			{
-				Type:         "DROP_COLUMN",
-				TableName:    "users",
-				ColumnName:   "old_field",
+				Type:          "DROP_COLUMN",
+				TableName:     "users",
+				ColumnName:    "old_field",
 				IsDestructive: true,
-				RequiresData: false,
-				Description:  "Remove old field",
+				RequiresData:  false,
+				Description:   "Remove old field",
 			},
 			{
 				Type:         "ADD_COLUMN",
@@ -1293,7 +1293,7 @@ func TestCompleteWorkflow(t *testing.T) {
 
 	// Test complete workflow
 	steps := []struct {
-		name    string
+		name     string
 		testFunc func() error
 	}{
 		{
