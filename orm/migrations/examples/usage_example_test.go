@@ -868,3 +868,58 @@ func TestCommentStructTableDriven(t *testing.T) {
 		})
 	}
 }
+
+func TestMigrationStatusEdgeCases(t *testing.T) {
+	// Nil MigrationStatus pointer
+	var statusNil *migrations.MigrationStatus
+	displayMigrationStatus(statusNil) // Should not panic
+
+	// Empty MigrationStatus struct
+	statusEmpty := &migrations.MigrationStatus{}
+	displayMigrationStatus(statusEmpty)
+
+	// MigrationStatus with only applied migrations
+	applied := &migrations.MigrationFile{Name: "applied", Timestamp: time.Now()}
+	statusApplied := &migrations.MigrationStatus{
+		AppliedMigrations: []*migrations.MigrationFile{applied},
+	}
+	displayMigrationStatus(statusApplied)
+
+	// MigrationStatus with only pending migrations
+	pending := &migrations.MigrationFile{Name: "pending", Timestamp: time.Now()}
+	statusPending := &migrations.MigrationStatus{
+		PendingMigrations: []*migrations.MigrationFile{pending},
+		HasPendingChanges: true,
+		Summary:           "Pending migration exists",
+	}
+	displayMigrationStatus(statusPending)
+}
+
+func TestMigrationFileEdgeCases(t *testing.T) {
+	// Nil MigrationFile pointer
+	var fileNil *migrations.MigrationFile
+	displayMigrationFileInfo(fileNil) // Should not panic
+
+	// Empty MigrationFile struct
+	fileEmpty := &migrations.MigrationFile{}
+	displayMigrationFileInfo(fileEmpty)
+
+	// MigrationFile with only filename
+	fileNameOnly := &migrations.MigrationFile{Filename: "only_filename.sql"}
+	displayMigrationFileInfo(fileNameOnly)
+
+	// MigrationFile with warnings and destructive changes
+	fileWarn := &migrations.MigrationFile{
+		Filename: "warn.sql",
+		Changes: []migrations.MigrationChange{
+			{Type: "DROP_TABLE", TableName: "users", IsDestructive: true, Description: "Drop users table"},
+		},
+	}
+	displayMigrationFileInfo(fileWarn)
+
+	// Test all public methods for panics and correct return types
+	_ = fileEmpty.HasDestructiveChanges()
+	_ = fileEmpty.RequiresReview()
+	_ = fileEmpty.GetWarnings()
+	_ = fileEmpty.Errors()
+}
