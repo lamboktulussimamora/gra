@@ -190,6 +190,9 @@ type MigrationFile struct {
 
 // HasDestructiveChanges returns true if any change is destructive
 func (mf *MigrationFile) HasDestructiveChanges() bool {
+	if mf == nil {
+		return false
+	}
 	// If we have Changes populated, use them for calculation
 	if len(mf.Changes) > 0 {
 		for _, change := range mf.Changes {
@@ -199,29 +202,42 @@ func (mf *MigrationFile) HasDestructiveChanges() bool {
 		}
 		return false
 	}
-
 	// If Changes are not available (e.g., when loaded from disk),
 	// use the parsed flag from file metadata
 	if mf.ParsedHasDestructive != nil {
 		return *mf.ParsedHasDestructive
 	}
-
 	// Default to false if neither Changes nor parsed flag is available
 	return false
 }
 
 // HasDestructive is an alias for HasDestructiveChanges
 func (mf *MigrationFile) HasDestructive() bool {
+	if mf == nil {
+		return false
+	}
 	return mf.HasDestructiveChanges()
 }
 
-// RequiresReview returns true if the migration requires manual review
+// RequiresReview returns true if the migration requires manual review.
+// A migration requires review if it has destructive changes or other review flags in the future.
 func (mf *MigrationFile) RequiresReview() bool {
-	return mf.HasDestructiveChanges()
+	if mf == nil {
+		return false
+	}
+	// In the future, more review conditions can be added here.
+	if mf.HasDestructiveChanges() {
+		return true
+	}
+	// Placeholder for additional review logic (e.g., data migrations, manual steps)
+	return false
 }
 
 // GetWarnings returns warnings about the migration
 func (mf *MigrationFile) GetWarnings() []string {
+	if mf == nil {
+		return nil
+	}
 	var warnings []string
 	for _, change := range mf.Changes {
 		if change.IsDestructive {
@@ -238,11 +254,17 @@ func (mf *MigrationFile) GetWarnings() []string {
 
 // Warnings is an alias for GetWarnings
 func (mf *MigrationFile) Warnings() []string {
+	if mf == nil {
+		return nil
+	}
 	return mf.GetWarnings()
 }
 
 // Errors returns any errors found during migration planning
 func (mf *MigrationFile) Errors() []string {
+	if mf == nil {
+		return nil
+	}
 	var errors []string
 	// For now, errors are determined by validation logic
 	// This could be expanded to include specific error conditions

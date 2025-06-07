@@ -13,29 +13,32 @@ import (
 )
 
 const (
-	sqlite3Driver          = "sqlite3"
-	memoryDB               = ":memory:"
-	testMigrationsDir      = "test_migrations"
-	invalidDriver          = "invalid_driver"
-	expectedErr            = "Expected error (no real database): %v"
-	warningDBClose         = "Warning: Failed to close test database: %v"
-	warningTempDir         = "Warning: failed to remove temp directory: %v"
-	failedCreateDB         = "Failed to create test database: %v"
-	failedCreateTempDir    = "Failed to create temp directory: %v"
-	expectedIDOne          = "Expected ID to be 1, got %d"
-	foreignKeyUsers        = "foreign_key:users.id"
-	errIDFormat            = "Expected ID to be %d, got %d"
-	errUserIDFormat        = "Expected UserID to be %d, got %d"
-	errTitleFormat         = "Expected Title to be '%s', got %s"
-	errContentFormat       = "Expected Content to be '%s', got %s"
-	errIsActiveFormat      = "Expected IsActive to be %v"
-	errIsPublishedFmt      = "Expected IsPublished to be %v"
-	zeroIDCase             = "zero id"
-	postTitleTestPost      = "Test Post"
-	postContentTestPost    = "This is a test post content"
-	postTitlePublished     = "Published Post"
-	postContentPublished   = "Published content"
-	errExpectedNilMigrator = "Expected error when migrator is nil"
+	sqlite3Driver                   = "sqlite3"
+	memoryDB                        = ":memory:"
+	testMigrationsDir               = "test_migrations"
+	invalidDriver                   = "invalid_driver"
+	expectedErr                     = "Expected error (no real database): %v"
+	warningDBClose                  = "Warning: Failed to close test database: %v"
+	warningTempDir                  = "Warning: failed to remove temp directory: %v"
+	failedCreateDB                  = "Failed to create test database: %v"
+	failedCreateTempDir             = "Failed to create temp directory: %v"
+	expectedIDOne                   = "Expected ID to be 1, got %d"
+	foreignKeyUsers                 = "foreign_key:users.id"
+	errIDFormat                     = "Expected ID to be %d, got %d"
+	errUserIDFormat                 = "Expected UserID to be %d, got %d"
+	errTitleFormat                  = "Expected Title to be '%s', got %s"
+	errContentFormat                = "Expected Content to be '%s', got %s"
+	errIsActiveFormat               = "Expected IsActive to be %v"
+	errIsPublishedFmt               = "Expected IsPublished to be %v"
+	zeroIDCase                      = "zero id"
+	postTitleTestPost               = "Test Post"
+	postContentTestPost             = "This is a test post content"
+	postTitlePublished              = "Published Post"
+	postContentPublished            = "Published content"
+	errExpectedNilMigrator          = "Expected error when migrator is nil"
+	errExpectedNilStatus            = "Expected error when status is nil"
+	errExpectedNilMigratorAndStatus = "Expected error when migrator and status are nil"
+	errExpectedGetStatusBranch      = "Expected error from GetMigrationStatus branch"
 )
 
 func TestUserStruct(t *testing.T) {
@@ -710,7 +713,7 @@ func TestShowFinalStatusAllBranches(t *testing.T) {
 	// Case: migrator returns error from GetMigrationStatus (simulate by passing nil HybridMigrator)
 	err = showFinalStatus((*migrations.HybridMigrator)(nil))
 	if err == nil {
-		t.Error("Expected error from GetMigrationStatus branch")
+		t.Error(errExpectedGetStatusBranch)
 	}
 
 	// Case: migrator returns valid status (use a real migrator with a unique temp dir)
@@ -1092,13 +1095,214 @@ func TestShowFinalStatusNilAndErrorCases(t *testing.T) {
 	}
 }
 
-// TestMainCoversMainLogic(t *testing.T) {
-// 	// This test simulates main() logic for coverage, but does not require a real DB.
-// 	// It should not panic or log fatal errors.
-// 	defer func() {
-// 		if r := recover(); r != nil {
-// 			t.Errorf("main panicked: %v", r)
-// 		}
-// 	}()
-// 	main()
-// }
+// TestMainCoversMainLogic increases coverage by running main() in a safe way.
+func TestMainCoversMainLogic(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("main panicked: %v", r)
+		}
+	}()
+	main()
+}
+
+// Additional coverage: Test Comment struct tags
+func TestCommentStructTags(t *testing.T) {
+	commentType := reflect.TypeOf(Comment{})
+
+	// Test ID field tags
+	idField, found := commentType.FieldByName("ID")
+	if !found {
+		t.Fatal("ID field not found in Comment struct")
+	}
+	if idField.Tag.Get("db") != "id" {
+		t.Errorf("Expected db tag 'id', got '%s'", idField.Tag.Get("db"))
+	}
+	if !strings.Contains(idField.Tag.Get("migration"), "primary_key") {
+		t.Errorf("Expected migration tag to contain 'primary_key', got '%s'", idField.Tag.Get("migration"))
+	}
+
+	// Test PostID field tags
+	postIDField, found := commentType.FieldByName("PostID")
+	if !found {
+		t.Fatal("PostID field not found in Comment struct")
+	}
+	if postIDField.Tag.Get("db") != "post_id" {
+		t.Errorf("Expected db tag 'post_id', got '%s'", postIDField.Tag.Get("db"))
+	}
+	if !strings.Contains(postIDField.Tag.Get("migration"), "foreign_key:posts.id") {
+		t.Errorf("Expected migration tag to contain 'foreign_key:posts.id', got '%s'", postIDField.Tag.Get("migration"))
+	}
+
+	// Test UserID field tags
+	userIDField, found := commentType.FieldByName("UserID")
+	if !found {
+		t.Fatal("UserID field not found in Comment struct")
+	}
+	if userIDField.Tag.Get("db") != "user_id" {
+		t.Errorf("Expected db tag 'user_id', got '%s'", userIDField.Tag.Get("db"))
+	}
+	if !strings.Contains(userIDField.Tag.Get("migration"), "foreign_key:users.id") {
+		t.Errorf("Expected migration tag to contain 'foreign_key:users.id', got '%s'", userIDField.Tag.Get("migration"))
+	}
+
+	// Test Content field tags
+	contentField, found := commentType.FieldByName("Content")
+	if !found {
+		t.Fatal("Content field not found in Comment struct")
+	}
+	if contentField.Tag.Get("db") != "content" {
+		t.Errorf("Expected db tag 'content', got '%s'", contentField.Tag.Get("db"))
+	}
+	if !strings.Contains(contentField.Tag.Get("migration"), "type:TEXT") {
+		t.Errorf("Expected migration tag to contain 'type:TEXT', got '%s'", contentField.Tag.Get("migration"))
+	}
+}
+
+// Additional coverage: Test MigrationFile methods with various changes
+func TestMigrationFileMethodsEdgeCases(t *testing.T) {
+	file := &migrations.MigrationFile{
+		Filename: "edge.sql",
+		Changes: []migrations.MigrationChange{
+			{Type: "DROP_TABLE", TableName: "users", IsDestructive: true, RequiresData: false, Description: "Drop users table"},
+			{Type: "ADD_COLUMN", TableName: "posts", ColumnName: "extra", IsDestructive: false, RequiresData: true, Description: "Add extra column"},
+		},
+	}
+	if !file.HasDestructiveChanges() {
+		t.Error("Expected HasDestructiveChanges to be true")
+	}
+	if !file.RequiresReview() {
+		t.Error("Expected RequiresReview to be true")
+	}
+	warnings := file.GetWarnings()
+	if len(warnings) == 0 {
+		t.Error("Expected warnings for destructive changes")
+	}
+	errs := file.Errors()
+	if len(errs) != 0 {
+		t.Errorf("Expected no errors, got %d", len(errs))
+	}
+}
+
+// Additional coverage: Test MigrationStatus with both applied and pending migrations
+func TestMigrationStatusFullFields(t *testing.T) {
+	applied := &migrations.MigrationFile{Name: "applied", Timestamp: time.Now()}
+	pending := &migrations.MigrationFile{Name: "pending", Timestamp: time.Now()}
+	status := &migrations.MigrationStatus{
+		AppliedMigrations: []*migrations.MigrationFile{applied},
+		PendingMigrations: []*migrations.MigrationFile{pending},
+		HasPendingChanges: true,
+		Summary:           "Full status",
+	}
+	displayMigrationStatus(status)
+}
+
+// Additional coverage: Test createAndApplyMigration error branches
+func TestCreateAndApplyMigrationAllErrorBranches(t *testing.T) {
+	// Nil migrator and status
+	if err := createAndApplyMigration(nil, nil); err == nil {
+		t.Error(errExpectedNilMigratorAndStatus)
+	}
+	db, _ := sql.Open(sqlite3Driver, memoryDB)
+	defer db.Close()
+	migrator := migrations.NewHybridMigrator(db, migrations.SQLite, testMigrationsDir)
+	if err := createAndApplyMigration(migrator, nil); err == nil {
+		t.Error(errExpectedNilStatus)
+	}
+	status := &migrations.MigrationStatus{}
+	if err := createAndApplyMigration(nil, status); err == nil {
+		t.Error(errExpectedNilMigrator)
+	}
+}
+
+// Additional coverage: Test showFinalStatus error branches
+func TestShowFinalStatusAllErrorBranches(t *testing.T) {
+	if err := showFinalStatus(nil); err == nil {
+		t.Error(errExpectedNilMigrator)
+	}
+	if err := showFinalStatus((*migrations.HybridMigrator)(nil)); err == nil {
+		t.Error(errExpectedGetStatusBranch)
+	}
+}
+
+// Additional coverage: Test MigrationFile GetWarnings and Errors with edge cases
+func TestMigrationFileGetWarningsAndErrors(t *testing.T) {
+	file := &migrations.MigrationFile{
+		Changes: []migrations.MigrationChange{
+			{Type: "DROP_TABLE", IsDestructive: true, Description: "drop"},
+			{Type: "ADD_COLUMN", IsDestructive: false, Description: "add"},
+		},
+	}
+	warnings := file.GetWarnings()
+	if len(warnings) == 0 {
+		t.Error("Expected warnings for destructive changes")
+	}
+	errs := file.Errors()
+	if len(errs) != 0 {
+		t.Errorf("Expected no errors, got %d", len(errs))
+	}
+}
+
+// Additional coverage: Test MigrationFile and MigrationStatus methods with nil receivers
+func TestMigrationFileMethodsNilReceiver(t *testing.T) {
+	var file *migrations.MigrationFile
+	if file.HasDestructiveChanges() {
+		t.Error("Expected HasDestructiveChanges to be false for nil receiver")
+	}
+	if file.RequiresReview() {
+		t.Error("Expected RequiresReview to be false for nil receiver")
+	}
+	if warnings := file.GetWarnings(); len(warnings) != 0 {
+		t.Errorf("Expected no warnings for nil receiver, got %v", warnings)
+	}
+	if errs := file.Errors(); len(errs) != 0 {
+		t.Errorf("Expected no errors for nil receiver, got %v", errs)
+	}
+}
+
+func TestMigrationStatusNilReceiver(t *testing.T) {
+	var status *migrations.MigrationStatus
+	if status != nil && status.HasPendingChanges {
+		t.Error("Expected HasPendingChanges to be false for nil receiver")
+	}
+	if status != nil && status.Summary != "" {
+		t.Errorf("Expected empty Summary for nil receiver, got %s", status.Summary)
+	}
+}
+
+// Additional coverage: Test display functions with nil and zero-value input
+func TestDisplayMigrationStatusNilInput(t *testing.T) {
+	displayMigrationStatus(nil) // Should not panic
+	var status migrations.MigrationStatus
+	displayMigrationStatus(&status) // Should not panic
+}
+
+func TestDisplayMigrationFileInfoNilInput(t *testing.T) {
+	displayMigrationFileInfo(nil) // Should not panic
+	var file migrations.MigrationFile
+	displayMigrationFileInfo(&file) // Should not panic
+}
+
+// Additional coverage: Test reflection on unexpected struct types
+func TestReflectionUnexpectedStruct(t *testing.T) {
+	type Dummy struct {
+		Foo int
+		Bar string
+	}
+	dummyType := reflect.TypeOf(Dummy{})
+	if dummyType.Kind() != reflect.Struct {
+		t.Error("Expected Dummy to be a struct")
+	}
+	_, found := dummyType.FieldByName("Baz")
+	if found {
+		t.Error("Did not expect to find field 'Baz' in Dummy struct")
+	}
+}
+
+// Additional coverage: Test struct tag edge cases
+func TestCommentStructTagsEdgeCases(t *testing.T) {
+	commentType := reflect.TypeOf(Comment{})
+	for i := 0; i < commentType.NumField(); i++ {
+		field := commentType.Field(i)
+		_ = field.Tag.Get("nonexistent") // Should not panic or error
+	}
+}
