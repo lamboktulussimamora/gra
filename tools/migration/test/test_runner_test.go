@@ -26,14 +26,14 @@ const (
 
 // Test constants
 const (
-	testValidConnection    = "postgres://test:test@localhost:5432/testdb?sslmode=disable"
-	testInvalidConnection  = ""
-	testUsersTable         = "users"
-	testMigrationsTable    = "schema_migrations"
-	testConnectionString   = "test-connection"
-	migrationVersion       = 1
-	insertMigrationSQL     = "INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)"
-	testInvalidConn        = "postgres://testuser:testpass@nonexistent:9999/nonexistent?connect_timeout=1"
+	testValidConnection   = "postgres://test:test@localhost:5432/testdb?sslmode=disable"
+	testInvalidConnection = ""
+	testUsersTable        = "users"
+	testMigrationsTable   = "schema_migrations"
+	testConnectionString  = "test-connection"
+	migrationVersion      = 1
+	insertMigrationSQL    = "INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)"
+	testInvalidConn       = "postgres://testuser:testpass@nonexistent:9999/nonexistent?connect_timeout=1"
 )
 
 func TestCommandLineFlags(t *testing.T) {
@@ -219,18 +219,18 @@ func TestMainFunctionWithFlags(t *testing.T) {
 		// Reset flags
 		*conn = ""
 		*up = false
-		
+
 		// Capture output by redirecting to test
 		// Since main() just returns when conn is empty, this should not panic
 		main()
 		// If we reach here, main() executed successfully without crashing
 	})
-	
+
 	t.Run("with connection string but no up flag", func(t *testing.T) {
 		// Set connection string but don't set up flag
 		*conn = testValidConnection
 		*up = false
-		
+
 		// This should attempt to connect but not run migrations
 		// We can't easily test this without a real database, but we can ensure it doesn't crash
 		// Note: This will fail with connection error, but shouldn't panic
@@ -243,11 +243,11 @@ func TestMainFunctionComponents(t *testing.T) {
 		// Test that flags are properly declared and can be set
 		originalConn := *conn
 		originalUp := *up
-		
+
 		// Set test values
 		*conn = testConnectionString
 		*up = true
-		
+
 		// Verify values were set
 		if *conn != testConnectionString {
 			t.Errorf("Expected conn to be set to '%s', got '%s'", testConnectionString, *conn)
@@ -255,7 +255,7 @@ func TestMainFunctionComponents(t *testing.T) {
 		if !*up {
 			t.Error("Expected up flag to be true")
 		}
-		
+
 		// Restore original values
 		*conn = originalConn
 		*up = originalUp
@@ -316,13 +316,13 @@ func testMigrationTableSQL(t *testing.T) {
 			version INTEGER PRIMARY KEY,
 			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`
-		
+
 		db, err := sql.Open("sqlite3", testDBPath)
 		if err != nil {
 			t.Fatalf(errFailedToOpenDB, err)
 		}
 		defer func() { _ = db.Close() }()
-		
+
 		_, err = db.Exec(migrationSQL)
 		if err != nil {
 			t.Errorf("Migration table creation SQL failed: %v", err)
@@ -338,13 +338,13 @@ func testUsersTableSQL(t *testing.T) {
 			email TEXT UNIQUE NOT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`
-		
+
 		db, err := sql.Open("sqlite3", testDBPath)
 		if err != nil {
 			t.Fatalf(errFailedToOpenDB, err)
 		}
 		defer func() { _ = db.Close() }()
-		
+
 		_, err = db.Exec(usersSQL)
 		if err != nil {
 			t.Errorf("Users table creation SQL failed: %v", err)
@@ -359,7 +359,7 @@ func testMigrationRecordInsertion(t *testing.T) {
 			t.Fatalf(errFailedToOpenDB, err)
 		}
 		defer func() { _ = db.Close() }()
-		
+
 		// Create migrations table first
 		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 			version INTEGER PRIMARY KEY,
@@ -368,13 +368,13 @@ func testMigrationRecordInsertion(t *testing.T) {
 		if err != nil {
 			t.Fatalf(errFailedToCreateMig, err)
 		}
-		
+
 		// Test insertion (SQLite version)
 		_, err = db.Exec(insertMigrationSQL, migrationVersion)
 		if err != nil {
 			t.Errorf(errFailedToInsertMig, err)
 		}
-		
+
 		// Verify insertion
 		var count int
 		err = db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version = ?", migrationVersion).Scan(&count)
@@ -425,7 +425,7 @@ func testFullMigrationWorkflow(t *testing.T) {
 	t.Run("full migration workflow", func(t *testing.T) {
 		db := setupTestDatabase(t)
 		defer func() { _ = db.Close() }()
-		
+
 		validateDatabaseConnection(t, db)
 		createMigrationsTable(t, db)
 		createUsersTable(t, db)
@@ -480,17 +480,17 @@ func recordMigration(t *testing.T, db *sql.DB) {
 
 func verifyMigrationWorkflow(t *testing.T, db *sql.DB) {
 	var migrationCount, userTableCount int
-	
+
 	err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&migrationCount)
 	if err != nil {
 		t.Errorf(errFailedToCountMig, err)
 	}
-	
+
 	err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='users'").Scan(&userTableCount)
 	if err != nil {
 		t.Errorf(errFailedToVerifyUsers, err)
 	}
-	
+
 	if migrationCount == 0 {
 		t.Error("Expected at least one migration record")
 	}
@@ -505,14 +505,14 @@ func TestMainFunctionWithUpFlag(t *testing.T) {
 		// This tests the migration execution path
 		originalConn := *conn
 		originalUp := *up
-		
+
 		// Set flags for up migration
 		*conn = "postgres://test:test@localhost:5432/nonexistent?sslmode=disable"
 		*up = true
-		
+
 		// This will fail to connect, but tests the path through main()
 		main()
-		
+
 		// Restore original values
 		*conn = originalConn
 		*up = originalUp
@@ -524,13 +524,13 @@ func TestDatabaseErrorHandling(t *testing.T) {
 		// Test error handling when database connection fails
 		originalConn := *conn
 		originalUp := *up
-		
+
 		*conn = testInvalidConn
 		*up = false
-		
+
 		// This should handle the connection error gracefully
 		main()
-		
+
 		// Restore original values
 		*conn = originalConn
 		*up = originalUp
@@ -546,11 +546,11 @@ func TestFlagVariableInitialization(t *testing.T) {
 		if conn == nil {
 			t.Error("conn flag should not be nil")
 		}
-		
+
 		// Test that we can read their values
 		upValue := *up
 		connValue := *conn
-		
+
 		// Values should be readable (testing dereferencing)
 		if upValue || !upValue {
 			// This tests that the boolean value is accessible
@@ -569,18 +569,18 @@ func TestSQLStatements(t *testing.T) {
 			t.Fatalf(errFailedToOpenDB, err)
 		}
 		defer func() { _ = db.Close() }()
-		
+
 		// Test migrations table SQL
 		migrationSQL := `CREATE TABLE IF NOT EXISTS schema_migrations (
 			version INTEGER PRIMARY KEY,
 			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`
-		
+
 		_, err = db.Exec(migrationSQL)
 		if err != nil {
 			t.Errorf("Migrations table SQL is invalid: %v", err)
 		}
-		
+
 		// Test users table SQL (adapted for SQLite)
 		usersSQL := `CREATE TABLE IF NOT EXISTS users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -588,12 +588,12 @@ func TestSQLStatements(t *testing.T) {
 			email TEXT UNIQUE NOT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`
-		
+
 		_, err = db.Exec(usersSQL)
 		if err != nil {
 			t.Errorf("Users table SQL is invalid: %v", err)
 		}
-		
+
 		// Test migration insertion SQL
 		_, err = db.Exec(insertMigrationSQL, migrationVersion)
 		if err != nil {
@@ -606,12 +606,12 @@ func TestMainUsageMessage(t *testing.T) {
 	t.Run("main function usage message", func(t *testing.T) {
 		// Test that main() prints usage when no connection string is provided
 		originalConn := *conn
-		
+
 		*conn = ""
-		
+
 		// This should print the usage message and return
 		main()
-		
+
 		// Restore original value
 		*conn = originalConn
 	})
@@ -622,13 +622,13 @@ func TestMainWithValidConnectionNoUp(t *testing.T) {
 		// Test main() with a connection string but up=false
 		originalConn := *conn
 		originalUp := *up
-		
+
 		*conn = "postgres://test:test@localhost:5432/testdb?sslmode=disable"
 		*up = false
-		
+
 		// This should connect (or fail to connect) but not run migrations
 		main()
-		
+
 		// Restore original values
 		*conn = originalConn
 		*up = originalUp

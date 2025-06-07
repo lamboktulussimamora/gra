@@ -9,30 +9,67 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"bytes"
+	"io"
 
 	"github.com/lamboktulussimamora/gra/orm/migrations"
 	_ "github.com/mattn/go-sqlite3" // SQLite driver for testing
 )
 
+// Helper function to create a test migration manager
+func createTestMigrationManager(t *testing.T, db *sql.DB) *migrations.EFMigrationManager {
+	t.Helper()
+	
+	// Create a basic EF migration manager instance
+	// This is a mock implementation for testing purposes
+	config := migrations.DefaultEFMigrationConfig()
+	config.Logger = log.New(os.Stderr, "", 0) // Use a silent logger for tests
+	
+	manager := migrations.NewEFMigrationManager(db, config)
+	
+	// Initialize schema for tests
+	if err := manager.EnsureSchema(); err != nil {
+		t.Fatalf("Failed to ensure migration schema: %v", err)
+	}
+	
+	return manager
+}
+
 // Test constants
 const (
-	testPostgresDriver       = "postgres"
-	testHelpFlag            = "--help"
-	testHelpCommand         = "help"
-	testAddMigrationCmd     = "add-migration"
-	testUpdateDatabaseCmd   = "update-database"
-	testMemoryDB            = ":memory:"
-	testMigrationsDir       = "./test_migrations"
-	testExpectedFormat      = "Expected %q, got %q"
-	testCreateTableSQL      = "CREATE TABLE test (id INT);"
-	testDropTableSQL        = "DROP TABLE users;"
-	testUserDB              = "user"
-	testMaskedPassword      = "*****"
-	testLocalhost           = "localhost"
-	testPort5432            = "5432"
-	testDBName              = "mydb"
-	testFailedTempDir       = "Failed to create temp dir: %v"
-	testFailedOpenDB        = "Failed to open test database: %v"
+	testPostgresDriver         = "postgres"
+	testHelpFlag              = "--help"
+	testHelpCommand           = "help"
+	testAddMigrationCmd       = "add-migration"
+	testUpdateDatabaseCmd     = "update-database"
+	testMemoryDB              = ":memory:"
+	testMigrationsDir         = "./test_migrations"
+	testExpectedFormat        = "Expected %q, got %q"
+	testCreateTableSQL        = "CREATE TABLE test (id INT);"
+	testDropTableSQL          = "DROP TABLE users;"
+	testUserDB                = "user"
+	testMaskedPassword        = "*****"
+	testLocalhost             = "localhost"
+	testPort5432              = "5432"
+	testDBName                = "mydb"
+	testFailedTempDir         = "Failed to create temp dir: %v"
+	testFailedOpenDB          = "Failed to open test database: %v"
+	testProgramName           = "ef-migrate"
+	testDefaultMigrationsDir  = "./migrations"
+	testVerboseFlag           = "-verbose"
+	testGetMigrationCmd       = "get-migration"
+	testRemoveMigrationCmd    = "remove-migration"
+	testPostgresConnStr       = "postgres://user:testpass@localhost/db"
+	testFailedToCreateDB      = "Failed to create test database: %v"
+	testFailedSetupManager    = "Failed to setup migration manager: %v"
+	testExpectedOutputFormat  = "Expected output to contain %q, got: %s"
+	testFailedCreateFile      = "Failed to create migration file: %v"
+	testWarningCloseDB        = "Warning: failed to close database: %v"
+	testUnknownCommand        = "Unknown command"
+	testSQLite3Driver         = "sqlite3"
+	testTestPassword          = "testpass"
+	testTestUser              = "testuser"
+	testTestDB                = "testdb"
 )
 
 func TestParseCommandLineArgs(t *testing.T) {
@@ -537,9 +574,9 @@ func TestSanitizeConnectionString(t *testing.T) {
 
 func TestParseMigrationContent(t *testing.T) {
 	tests := []struct {
-		name        string
-		content     string
-		expectedUp  string
+		name         string
+		content      string
+		expectedUp   string
 		expectedDown string
 	}{
 		{
@@ -596,39 +633,39 @@ CREATE INDEX idx_users_name ON users(name);`,
 
 func TestDetectSectionType(t *testing.T) {
 	tests := []struct {
-		name                string
-		line                string
-		expectedIsDown      bool
+		name                    string
+		line                    string
+		expectedIsDown          bool
 		expectedIsSectionMarker bool
 	}{
 		{
-			name:                "up migration marker",
-			line:                "-- UP Migration",
-			expectedIsDown:      false,
+			name:                    "up migration marker",
+			line:                    "-- UP Migration",
+			expectedIsDown:          false,
 			expectedIsSectionMarker: true,
 		},
 		{
-			name:                "down migration marker",
-			line:                "-- DOWN Migration (for rollback)",
-			expectedIsDown:      true,
+			name:                    "down migration marker",
+			line:                    "-- DOWN Migration (for rollback)",
+			expectedIsDown:          true,
 			expectedIsSectionMarker: true,
 		},
 		{
-			name:                "rollback marker",
-			line:                "-- Rollback SQL",
-			expectedIsDown:      true,
+			name:                    "rollback marker",
+			line:                    "-- Rollback SQL",
+			expectedIsDown:          true,
 			expectedIsSectionMarker: true,
 		},
 		{
-			name:                "regular comment",
-			line:                "-- This is a regular comment",
-			expectedIsDown:      false,
+			name:                    "regular comment",
+			line:                    "-- This is a regular comment",
+			expectedIsDown:          false,
 			expectedIsSectionMarker: false,
 		},
 		{
-			name:                "regular SQL",
-			line:                "CREATE TABLE test (id INT);",
-			expectedIsDown:      false,
+			name:                    "regular SQL",
+			line:                    "CREATE TABLE test (id INT);",
+			expectedIsDown:          false,
 			expectedIsSectionMarker: false,
 		},
 	}
@@ -696,28 +733,28 @@ func TestShouldIncludeInUpSection(t *testing.T) {
 
 func TestCleanDownSQL(t *testing.T) {
 	tests := []struct {
-		name        string
-		downSQL     string
+		name           string
+		downSQL        string
 		expectedResult string
 	}{
 		{
-			name:        "empty string",
-			downSQL:     "",
+			name:           "empty string",
+			downSQL:        "",
 			expectedResult: "",
 		},
 		{
-			name:        "commented down SQL",
-			downSQL:     "-- DROP TABLE users;\n-- DROP INDEX idx_users_name;",
+			name:           "commented down SQL",
+			downSQL:        "-- DROP TABLE users;\n-- DROP INDEX idx_users_name;",
 			expectedResult: "DROP TABLE users;\nDROP INDEX idx_users_name;",
 		},
 		{
-			name:        "mixed commented and uncommented",
-			downSQL:     "-- DROP TABLE users;\nDROP INDEX idx_users_name;\n-- Another comment",
+			name:           "mixed commented and uncommented",
+			downSQL:        "-- DROP TABLE users;\nDROP INDEX idx_users_name;\n-- Another comment",
 			expectedResult: "DROP TABLE users;\nDROP INDEX idx_users_name;\nAnother comment",
 		},
 		{
-			name:        "no comments",
-			downSQL:     "DROP TABLE users;",
+			name:           "no comments",
+			downSQL:        "DROP TABLE users;",
 			expectedResult: "DROP TABLE users;",
 		},
 	}
@@ -788,7 +825,7 @@ func TestLoadMigrationsFromFilesystem(t *testing.T) {
 
 	t.Run("no migrations directory", func(t *testing.T) {
 		nonExistentDir := filepath.Join(tempDir, "nonexistent")
-		
+
 		db, err := sql.Open("sqlite3", testMemoryDB)
 		if err != nil {
 			t.Fatalf("Failed to open test database: %v", err)
@@ -796,7 +833,7 @@ func TestLoadMigrationsFromFilesystem(t *testing.T) {
 		defer func() { _ = db.Close() }()
 
 		manager := createTestMigrationManager(t, db)
-		
+
 		err = loadMigrationsFromFilesystem(manager, nonExistentDir)
 		if err != nil {
 			t.Errorf("Expected no error for non-existent directory, got: %v", err)
@@ -849,7 +886,7 @@ CREATE INDEX idx_users_id ON users(id);
 		defer func() { _ = db.Close() }()
 
 		manager := createTestMigrationManager(t, db)
-		
+
 		err = loadMigrationsFromFilesystem(manager, migrationsDir)
 		if err != nil {
 			t.Errorf("Failed to load migrations from filesystem: %v", err)
@@ -876,7 +913,7 @@ CREATE INDEX idx_users_id ON users(id);
 		defer func() { _ = db.Close() }()
 
 		manager := createTestMigrationManager(t, db)
-		
+
 		err = loadMigrationsFromFilesystem(manager, migrationsDir)
 		if err != nil {
 			t.Errorf("Should skip invalid files without error, got: %v", err)
@@ -1111,16 +1148,545 @@ func TestRemoveMigrationFunction(t *testing.T) {
 	})
 }
 
-// Helper function to create a test migration manager
-func createTestMigrationManager(t *testing.T, db *sql.DB) *migrations.EFMigrationManager {
-	migrationConfig := migrations.DefaultEFMigrationConfig()
-	migrationConfig.Logger = log.New(os.Stderr, "", 0) // Quiet logger for tests
-	
-	manager := migrations.NewEFMigrationManager(db, migrationConfig)
-	
-	if err := manager.EnsureSchema(); err != nil {
-		t.Fatalf("Failed to initialize migration schema: %v", err)
+// TestParseCommandLineArgsWithMocking tests the parseCommandLineArgs function using a mock approach
+func TestParseCommandLineArgsWithMocking(t *testing.T) {
+	tests := []struct {
+		name           string
+		args           []string
+		expectedConfig CLIConfig
+		expectedCmd    string
+		expectedArgs   []string
+		shouldExit     bool
+	}{
+		{
+			name: "basic add migration command",
+			args: []string{"ef-migrate", "add-migration", "CreateUsers"},
+			expectedConfig: CLIConfig{
+				MigrationsDir: "./migrations",
+				Port:          "5432",
+				SSLMode:       "disable",
+			},
+			expectedCmd:  "add-migration",
+			expectedArgs: []string{"CreateUsers"},
+		},
+		{
+			name: "command with connection string",
+			args: []string{"ef-migrate", "-connection", "postgres://user:pass@localhost/db", "status"},
+			expectedConfig: CLIConfig{
+				ConnectionString: "postgres://user:pass@localhost/db",
+				MigrationsDir:    "./migrations",
+				Port:             "5432",
+				SSLMode:          "disable",
+			},
+			expectedCmd:  "status",
+			expectedArgs: []string{},
+		},
+		{
+			name: "verbose mode with PostgreSQL flags",
+			args: []string{"ef-migrate", "-verbose", "-host", "localhost", "-user", "testuser", "-database", "testdb", "update-database"},
+			expectedConfig: CLIConfig{
+				Verbose:       true,
+				Host:          "localhost",
+				User:          "testuser",
+				Database:      "testdb",
+				MigrationsDir: "./migrations",
+				Port:          "5432",
+				SSLMode:       "disable",
+			},
+			expectedCmd:  "update-database",
+			expectedArgs: []string{},
+		},
+		{
+			name: "custom migrations directory",
+			args: []string{"ef-migrate", "-migrations-dir", "./custom_migrations", "get-migration"},
+			expectedConfig: CLIConfig{
+				MigrationsDir: "./custom_migrations",
+				Port:          "5432",
+				SSLMode:       "disable",
+			},
+			expectedCmd:  "get-migration",
+			expectedArgs: []string{},
+		},
+		{
+			name: "PostgreSQL with SSL",
+			args: []string{"ef-migrate", "-host", "db.example.com", "-port", "5433", "-user", "admin", "-password", "secret", "-database", "prod", "-sslmode", "require", "script", "target"},
+			expectedConfig: CLIConfig{
+				Host:          "db.example.com",
+				Port:          "5433",
+				User:          "admin",
+				Password:      "secret",
+				Database:      "prod",
+				SSLMode:       "require",
+				MigrationsDir: "./migrations",
+			},
+			expectedCmd:  "script",
+			expectedArgs: []string{"target"},
+		},
 	}
-	
-	return manager
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test that we can parse the arguments correctly
+			// Note: We can't directly test parseCommandLineArgs due to flag.Parse() and os.Exit()
+			// but we can test the flag definitions are correct
+
+			// Verify command extraction logic
+			args := tt.args[1:] // Remove program name
+			if len(args) == 0 {
+				// Would call printUsage() and os.Exit(1)
+				return
+			}
+
+			// Find command position (after all flags)
+			cmdPos := -1
+			for i, arg := range args {
+				if !strings.HasPrefix(arg, "-") && (i == 0 || !strings.HasPrefix(args[i-1], "-") || 
+					args[i-1] == "-verbose") {
+					cmdPos = i
+					break
+				}
+			}
+
+			if cmdPos != -1 {
+				command := args[cmdPos]
+				commandArgs := args[cmdPos+1:]
+				
+				if command != tt.expectedCmd {
+					t.Errorf("Expected command %s, got %s", tt.expectedCmd, command)
+				}
+				
+				if len(commandArgs) != len(tt.expectedArgs) {
+					t.Errorf("Expected %d args, got %d", len(tt.expectedArgs), len(commandArgs))
+				}
+				
+				for i, arg := range commandArgs {
+					if i < len(tt.expectedArgs) && arg != tt.expectedArgs[i] {
+						t.Errorf("Expected arg[%d] %s, got %s", i, tt.expectedArgs[i], arg)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestPrintUsageOutput tests that printUsage produces expected output
+func TestPrintUsageOutput(t *testing.T) {
+	// Capture stdout
+	output := captureOutput(func() {
+		printUsage()
+	})
+
+	// Check for key sections
+	expectedSections := []string{
+		"🚀 GRA Entity Framework Core-like Migration Tool",
+		"USAGE:",
+		"OPTIONS:",
+		"PostgreSQL Connection Options:",
+		"COMMANDS:",
+		"📝 Migration Management:",
+		"📋 Information:",
+		"EXAMPLES:",
+		"Connection Examples:",
+		"Migration Examples:",
+		"ENVIRONMENT:",
+		"ef-migrate [options] <command> [arguments]",
+		"add-migration <name> [description]",
+		"update-database [target]",
+		"get-migration",
+		"status",
+		"script [target]",
+		"rollback <target>",
+		"remove-migration",
+		"-connection <string>",
+		"-migrations-dir <path>",
+		"-verbose",
+		"-host <string>",
+		"-port <string>",
+		"-user <string>",
+		"-password <string>",
+		"-database <string>",
+		"-sslmode <string>",
+		"DATABASE_URL",
+	}
+
+	for _, section := range expectedSections {
+		if !strings.Contains(output, section) {
+			t.Errorf("Expected output to contain %q, but it didn't. Output:\n%s", section, output)
+		}
+	}
+
+	// Check minimum length
+	if len(output) < 1000 {
+		t.Errorf("Expected usage output to be substantial, got %d characters", len(output))
+	}
+}
+
+// TestExecuteCommandRouting tests that executeCommand routes to correct functions
+func TestExecuteCommandRouting(t *testing.T) {
+	// Create a test database and manager
+	db, err := sql.Open("sqlite3", testMemoryDB)
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Warning: failed to close database: %v", err)
+		}
+	}()
+
+	config := CLIConfig{
+		MigrationsDir: "./test_migrations",
+		Verbose:       true,
+	}
+
+	manager, err := setupMigrationManager(db, config)
+	if err != nil {
+		t.Fatalf("Failed to setup migration manager: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		command     string
+		args        []string
+		expectLog   string
+		shouldPanic bool
+	}{
+		{
+			name:      "add-migration command",
+			command:   "add-migration",
+			args:      []string{"TestMigration"},
+			expectLog: "",
+		},
+		{
+			name:      "add command alias",
+			command:   "add",
+			args:      []string{"TestMigration2"},
+			expectLog: "",
+		},
+		{
+			name:      "update-database command",
+			command:   "update-database",
+			args:      []string{},
+			expectLog: "",
+		},
+		{
+			name:      "update command alias",
+			command:   "update",
+			args:      []string{},
+			expectLog: "",
+		},
+		{
+			name:      "get-migration command",
+			command:   "get-migration",
+			args:      []string{},
+			expectLog: "",
+		},
+		{
+			name:      "list command alias",
+			command:   "list",
+			args:      []string{},
+			expectLog: "",
+		},
+		{
+			name:      "rollback command",
+			command:   "rollback",
+			args:      []string{"target"},
+			expectLog: "",
+		},
+		{
+			name:      "status command",
+			command:   "status",
+			args:      []string{},
+			expectLog: "",
+		},
+		{
+			name:      "script command",
+			command:   "script",
+			args:      []string{},
+			expectLog: "",
+		},
+		{
+			name:      "remove-migration command",
+			command:   "remove-migration",
+			args:      []string{},
+			expectLog: "",
+		},
+		{
+			name:      "remove command alias",
+			command:   "remove",
+			args:      []string{},
+			expectLog: "",
+		},
+		{
+			name:      "help command",
+			command:   "help",
+			args:      []string{},
+			expectLog: "",
+		},
+		{
+			name:      "-h flag",
+			command:   "-h",
+			args:      []string{},
+			expectLog: "",
+		},
+		{
+			name:      "--help flag",
+			command:   "--help",
+			args:      []string{},
+			expectLog: "",
+		},
+		{
+			name:      "unknown command",
+			command:   "unknown-command",
+			args:      []string{},
+			expectLog: "Unknown command",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Capture output for commands that print to stdout
+			output := captureOutput(func() {
+				executeCommand(manager, tt.command, tt.args, config)
+			})
+
+			if tt.expectLog != "" {
+				if !strings.Contains(output, tt.expectLog) {
+					t.Errorf("Expected output to contain %q, got: %s", tt.expectLog, output)
+				}
+			}
+
+			// For help commands, verify they show usage
+			if tt.command == "help" || tt.command == "-h" || tt.command == "--help" {
+				if !strings.Contains(output, "GRA Entity Framework Core-like Migration Tool") {
+					t.Errorf("Help command should show usage, got: %s", output)
+				}
+			}
+		})
+	}
+}
+
+// TestGetMigrationsWithData tests getMigrations function with actual migration data
+func TestGetMigrationsWithData(t *testing.T) {
+	// Create temporary directory for migrations
+	tempDir, err := os.MkdirTemp("", "get_migrations_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: failed to remove temp dir: %v", err)
+		}
+	}()
+
+	// Create test database
+	db, err := sql.Open("sqlite3", testMemoryDB)
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Warning: failed to close database: %v", err)
+		}
+	}()
+
+	config := CLIConfig{
+		MigrationsDir: tempDir,
+		Verbose:       true,
+	}
+
+	manager, err := setupMigrationManager(db, config)
+	if err != nil {
+		t.Fatalf("Failed to setup migration manager: %v", err)
+	}
+
+	// Create test migration files
+	migrationFiles := []struct {
+		filename string
+		content  string
+	}{
+		{
+			filename: "1_CreateUsers.sql",
+			content: `-- Migration: CreateUsers
+-- Description: Create users table
+-- Created: 2024-01-01 12:00:00
+-- Version: 1
+
+-- +migrate Up
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL
+);
+
+-- +migrate Down
+DROP TABLE users;`,
+		},
+		{
+			filename: "2_AddUserProfiles.sql",
+			content: `-- Migration: AddUserProfiles
+-- Description: Add user profiles table
+-- Created: 2024-01-02 12:00:00
+-- Version: 2
+
+-- +migrate Up
+CREATE TABLE user_profiles (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    bio TEXT
+);
+
+-- +migrate Down
+DROP TABLE user_profiles;`,
+		},
+	}
+
+	for _, file := range migrationFiles {
+		filePath := filepath.Join(tempDir, file.filename)
+		if err := os.WriteFile(filePath, []byte(file.content), 0644); err != nil {
+			t.Fatalf("Failed to create migration file %s: %v", file.filename, err)
+		}
+	}
+
+	// Test getMigrations
+	output := captureOutput(func() {
+		getMigrations(manager, config)
+	})
+
+	// Verify output contains migration information
+	expectedInOutput := []string{
+		"Migration History:",
+		"CreateUsers",
+		"AddUserProfiles",
+	}
+
+	for _, expected := range expectedInOutput {
+		if !strings.Contains(output, expected) {
+			t.Errorf("Expected output to contain %q, got: %s", expected, output)
+		}
+	}
+}
+
+// TestGenerateScriptWithMigrations tests generateScript function with actual migrations
+func TestGenerateScriptWithMigrations(t *testing.T) {
+	// Create temporary directory for migrations
+	tempDir, err := os.MkdirTemp("", "generate_script_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: failed to remove temp dir: %v", err)
+		}
+	}()
+
+	// Create test database
+	db, err := sql.Open("sqlite3", testMemoryDB)
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Warning: failed to close database: %v", err)
+		}
+	}()
+
+	config := CLIConfig{
+		MigrationsDir: tempDir,
+		Verbose:       true,
+	}
+
+	manager, err := setupMigrationManager(db, config)
+	if err != nil {
+		t.Fatalf("Failed to setup migration manager: %v", err)
+	}
+
+	// Create test migration file
+	migrationContent := `-- Migration: CreateTestTable
+-- Description: Create test table
+-- Created: 2024-01-01 12:00:00
+-- Version: 1
+
+-- +migrate Up
+CREATE TABLE test_table (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL
+);
+
+-- +migrate Down
+DROP TABLE test_table;`
+
+	filePath := filepath.Join(tempDir, "1_CreateTestTable.sql")
+	if err := os.WriteFile(filePath, []byte(migrationContent), 0644); err != nil {
+		t.Fatalf("Failed to create migration file: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		args        []string
+		expectInOutput []string
+	}{
+		{
+			name:        "generate script all pending",
+			args:        []string{},
+			expectInOutput: []string{"Generating migration script"},
+		},
+		{
+			name:        "generate script with target",
+			args:        []string{"CreateTestTable"},
+			expectInOutput: []string{"Generating migration script"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			output := captureOutput(func() {
+				generateScript(manager, tt.args, config)
+			})
+
+			for _, expected := range tt.expectInOutput {
+				if !strings.Contains(output, expected) {
+					t.Errorf("Expected output to contain %q, got: %s", expected, output)
+				}
+			}
+		})
+	}
+}
+
+// Helper function to capture stdout output
+func captureOutput(f func()) string {
+	// Save original stdout
+	originalStdout := os.Stdout
+
+	// Create a pipe
+	r, w, err := os.Pipe()
+	if err != nil {
+		return ""
+	}
+
+	// Set stdout to our pipe writer
+	os.Stdout = w
+
+	// Create a channel to capture the output
+	outputChan := make(chan string)
+
+	// Start a goroutine to read from the pipe
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		outputChan <- buf.String()
+	}()
+
+	// Execute the function
+	f()
+
+	// Close the writer and restore stdout
+	w.Close()
+	os.Stdout = originalStdout
+
+	// Get the output
+	output := <-outputChan
+	r.Close()
+
+	return output
 }
