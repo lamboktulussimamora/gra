@@ -17,6 +17,7 @@ import (
 // Error message constants
 const (
 	errMigrationNameRequired = "migration name is required"
+	defaultPostgresDriver    = "postgres"
 )
 
 // Config contains configuration for the migration CLI.
@@ -121,7 +122,7 @@ func validateConfig(config *Config) error {
 	}
 
 	if config.Driver == "" {
-		config.Driver = "postgres"
+		config.Driver = defaultPostgresDriver
 	}
 
 	if config.MigrationsDir == "" {

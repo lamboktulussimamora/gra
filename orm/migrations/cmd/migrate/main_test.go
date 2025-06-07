@@ -17,6 +17,8 @@ const (
 	testModelsDir      = "./models"
 	testSQLiteDriver   = "sqlite"
 	testSQLiteURL      = "sqlite://test.db"
+	testMySQLDriver    = "mysql"
+	testSQLite3Driver  = "sqlite3"
 )
 
 func TestConfig(t *testing.T) {
@@ -150,8 +152,10 @@ func TestConnectDatabase(t *testing.T) {
 			} else {
 				if err != nil {
 					t.Errorf("Expected no error, but got: %v", err)
-				} else if db != nil {
-					db.Close()
+				} else				if db != nil {
+					if err := db.Close(); err != nil {
+						t.Logf("Warning: failed to close database: %v", err)
+					}
 				}
 			}
 		})
@@ -256,13 +260,13 @@ func TestCmdAddMigration(t *testing.T) {
 
 func TestCmdApplyMigrations(t *testing.T) {
 	// Test apply migrations command logic
-	t.Run("apply_all", func(t *testing.T) {
+	t.Run("apply_all", func(_ *testing.T) {
 		// Test applying all migrations (no specific migration specified)
 		// This would typically call migrator.ApplyPending()
 		args := []string{}
-		if len(args) != 0 {
-			// No specific migration to apply, should apply all pending
-		}
+		// In a real implementation, if len(args) == 0, 
+		// we would apply all pending migrations
+		_ = len(args) // Acknowledge the variable is used
 	})
 
 	t.Run("apply_specific", func(t *testing.T) {
@@ -291,14 +295,14 @@ func TestDriverMapping(t *testing.T) {
 			// Simulate driver mapping logic
 			var mapped string
 			switch input {
-			case "postgres":
-				mapped = "postgres"
-			case "mysql":
-				mapped = "mysql"
-			case "sqlite", "sqlite3":
-				mapped = "sqlite"
+			case testPostgresDriver:
+				mapped = testPostgresDriver
+			case testMySQLDriver:
+				mapped = testMySQLDriver
+			case testSQLiteDriver, testSQLite3Driver:
+				mapped = testSQLiteDriver
 			default:
-				mapped = "sqlite" // Default
+				mapped = testSQLiteDriver // Default
 			}
 
 			if mapped != expected {

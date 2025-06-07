@@ -1,3 +1,5 @@
+// Package main provides utilities for debugging database schema generation.
+// This package contains test entities and debugging functions for the ORM schema layer.
 package main
 
 import (
@@ -8,7 +10,8 @@ import (
 	"github.com/lamboktulussimamora/gra/orm/schema"
 )
 
-// Test entity
+// TestUser represents a test entity for debugging schema generation.
+// It demonstrates various migration tags and field types supported by the ORM.
 type TestUser struct {
 	ID        int64     `db:"id" migration:"primary_key,auto_increment"`
 	Name      string    `db:"name" migration:"not_null,max_length:100"`

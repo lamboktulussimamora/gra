@@ -54,7 +54,7 @@ func TestDatabaseConnection(t *testing.T) {
 		if err != nil {
 			t.Fatalf(errFailedToOpenDB, err)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		// Test connection
 		err = db.Ping()
@@ -70,7 +70,7 @@ func TestMigrationTableCreation(t *testing.T) {
 		if err != nil {
 			t.Fatalf(errFailedToOpenDB, err)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		// Create migrations table
 		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -99,7 +99,7 @@ func TestUsersTableCreation(t *testing.T) {
 		if err != nil {
 			t.Fatalf(errFailedToOpenDB, err)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		// Create users table
 		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS users (
@@ -150,7 +150,7 @@ func TestDatabaseOperations(t *testing.T) {
 		if err != nil {
 			t.Fatalf(errFailedToOpenDB, err)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		// Test ping
 		err = db.Ping()

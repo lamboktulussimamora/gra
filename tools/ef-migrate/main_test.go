@@ -9,6 +9,13 @@ import (
 	_ "github.com/mattn/go-sqlite3" // SQLite driver for testing
 )
 
+// Test constants
+const (
+	testPostgresDriver = "postgres"
+	testHelpFlag       = "--help"
+	testHelpCommand    = "help"
+)
+
 func TestParseCommandLineArgs(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -38,7 +45,7 @@ func TestParseCommandLineArgs(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name, func(_ *testing.T) {
 			// Save original args
 			originalArgs := os.Args
 			defer func() { os.Args = originalArgs }()
@@ -107,7 +114,9 @@ func TestSetupDatabaseConnection(t *testing.T) {
 				}
 			}
 			if db != nil {
-				db.Close()
+				if err := db.Close(); err != nil {
+					t.Logf("Warning: failed to close database: %v", err)
+				}
 			}
 		})
 	}
@@ -214,13 +223,13 @@ func TestDriverDetection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// This tests the driver detection logic from setupDatabaseConnection
 			var driverName string
-			switch {
-			case tt.connectionString == "postgres://user:pass@localhost/db" || tt.connectionString == "host=localhost user=test dbname=test":
-				driverName = "postgres"
-			case tt.connectionString == "./test.db" || tt.connectionString == "file:test.sqlite":
+			switch tt.connectionString {
+			case "postgres://user:pass@localhost/db", "host=localhost user=test dbname=test":
+				driverName = testPostgresDriver
+			case "./test.db", "file:test.sqlite":
 				driverName = "sqlite3"
 			default:
-				driverName = "postgres" // Default
+				driverName = testPostgresDriver // Default
 			}
 
 			if driverName != tt.expectedDriver {
@@ -236,7 +245,11 @@ func TestSetupMigrationManager(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Warning: failed to close database: %v", err)
+		}
+	}()
 
 	config := CLIConfig{
 		MigrationsDir: "./test_migrations",
@@ -271,12 +284,12 @@ func TestExecuteCommand(t *testing.T) {
 		"remove",
 		"help",
 		"-h",
-		"--help",
+		testHelpFlag,
 		"unknown",
 	}
 
 	for _, cmd := range commands {
-		t.Run("command_"+cmd, func(t *testing.T) {
+		t.Run("command_"+cmd, func(_ *testing.T) {
 			// We can't test executeCommand directly due to dependencies
 			// but we can verify the command strings are handled
 			switch cmd {
@@ -294,7 +307,7 @@ func TestExecuteCommand(t *testing.T) {
 				// Valid command
 			case "remove-migration", "remove":
 				// Valid command
-			case "help", "-h", "--help":
+			case testHelpCommand, "-h", testHelpFlag:
 				// Valid command
 			default:
 				// Unknown command

@@ -146,13 +146,14 @@ func TestEnhancedDbSet_Where(t *testing.T) {
 
 	// Test Where method
 	filteredSet := userSet.Where("is_active = ?", true)
+	// Check that the set was created successfully
+	if filteredSet != nil && filteredSet.whereClause != "is_active = ?" {
+		t.Errorf("Expected where clause 'is_active = ?', got '%s'", filteredSet.whereClause)
+	}
 	if filteredSet == nil {
 		t.Fatal("Filtered set should not be nil")
 	}
-	if filteredSet.whereClause != "is_active = ?" {
-		t.Errorf("Expected where clause 'is_active = ?', got '%s'", filteredSet.whereClause)
-	}
-	if len(filteredSet.whereArgs) != 1 {
+	if filteredSet != nil && len(filteredSet.whereArgs) != 1 {
 		t.Errorf("Expected 1 where arg, got %d", len(filteredSet.whereArgs))
 	}
 }
@@ -170,11 +171,12 @@ func TestEnhancedDbSet_OrderBy(t *testing.T) {
 
 	// Test OrderBy method
 	orderedSet := userSet.OrderBy("name")
+	// Check that the set was created successfully  
+	if orderedSet != nil && orderedSet.orderClause != "name" {
+		t.Errorf("Expected order by 'name', got '%s'", orderedSet.orderClause)
+	}
 	if orderedSet == nil {
 		t.Fatal("Ordered set should not be nil")
-	}
-	if orderedSet.orderClause != "name" {
-		t.Errorf("Expected order by 'name', got '%s'", orderedSet.orderClause)
 	}
 }
 
@@ -191,11 +193,12 @@ func TestEnhancedDbSet_Take(t *testing.T) {
 
 	// Test Take method
 	limitedSet := userSet.Take(10)
+	// Check that the set was created successfully
+	if limitedSet != nil && limitedSet.limitValue != 10 {
+		t.Errorf("Expected take 10, got %d", limitedSet.limitValue)
+	}
 	if limitedSet == nil {
 		t.Fatal("Limited set should not be nil")
-	}
-	if limitedSet.limitValue != 10 {
-		t.Errorf("Expected take 10, got %d", limitedSet.limitValue)
 	}
 }
 
@@ -212,11 +215,12 @@ func TestEnhancedDbSet_Skip(t *testing.T) {
 
 	// Test Skip method
 	skippedSet := userSet.Skip(5)
+	// Check that the set was created successfully
+	if skippedSet != nil && skippedSet.offsetValue != 5 {
+		t.Errorf("Expected skip 5, got %d", skippedSet.offsetValue)
+	}
 	if skippedSet == nil {
 		t.Fatal("Skipped set should not be nil")
-	}
-	if skippedSet.offsetValue != 5 {
-		t.Errorf("Expected skip 5, got %d", skippedSet.offsetValue)
 	}
 }
 
@@ -233,11 +237,12 @@ func TestEnhancedDbSet_AsNoTracking(t *testing.T) {
 
 	// Test AsNoTracking method
 	noTrackingSet := userSet.AsNoTracking()
+	// Check that the set was created successfully
+	if noTrackingSet != nil && !noTrackingSet.noTracking {
+		t.Error("No tracking flag should be true")
+	}
 	if noTrackingSet == nil {
 		t.Fatal("No tracking set should not be nil")
-	}
-	if !noTrackingSet.noTracking {
-		t.Error("No tracking flag should be true")
 	}
 }
 

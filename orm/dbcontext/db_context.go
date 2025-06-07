@@ -519,6 +519,7 @@ func (set *EnhancedDbSet[T]) FirstOrDefault() (*T, error) {
 
 // Count returns the number of entities matching the query
 func (set *EnhancedDbSet[T]) Count() (int, error) {
+	// #nosec G201 - tableName is controlled internally by the ORM, not user input
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", set.tableName)
 
 	// Add WHERE conditions if any exist

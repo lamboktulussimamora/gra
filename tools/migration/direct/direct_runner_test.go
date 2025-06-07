@@ -49,7 +49,11 @@ func TestEnsureMigrationTable(t *testing.T) {
 		if err != nil {
 			t.Fatalf(errFailedToOpen, err)
 		}
-		defer db.Close()
+		defer func() {
+			if err := db.Close(); err != nil {
+				t.Logf("Warning: failed to close database: %v", err)
+			}
+		}()
 
 		err = ensureMigrationTable(db)
 		if err != nil {
@@ -84,7 +88,7 @@ func TestShowStatus(t *testing.T) {
 		if err != nil {
 			t.Fatalf(errFailedToOpen, err)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		err = ensureMigrationTable(db)
 		if err != nil {
@@ -114,7 +118,7 @@ func TestMigrateUp(t *testing.T) {
 		if err != nil {
 			t.Fatalf(errFailedToOpen, err)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		err = ensureMigrationTable(db)
 		if err != nil {
@@ -149,7 +153,7 @@ func TestCloseDBWithWarn(t *testing.T) {
 		closeDBWithWarn(db)
 	})
 
-	t.Run("close nil database", func(t *testing.T) {
+	t.Run("close nil database", func(_ *testing.T) {
 		// Should not panic
 		closeDBWithWarn(nil)
 	})

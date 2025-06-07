@@ -29,26 +29,26 @@ const (
 
 // DetectDatabaseDriver attempts to detect the database driver type from a *sql.DB instance
 func DetectDatabaseDriver(db *sql.DB) DatabaseDriver {
-	// Try to get the driver name through reflection
-	if db != nil {
-		// Use a test query approach to detect database type
-		// PostgreSQL specific query
-		if _, err := db.Query("SELECT version()"); err == nil {
-			// Try PostgreSQL-specific syntax
-			if _, err := db.Query("SELECT 1::integer"); err == nil {
-				return PostgreSQL
-			}
-		}
+	if db == nil {
+		return PostgreSQL
+	}
 
-		// SQLite specific query
-		if _, err := db.Query("SELECT sqlite_version()"); err == nil {
-			return SQLite
-		}
+	// Use QueryRow and Scan to properly handle connections and avoid resource leaks
+	var result string
+	
+	// Try PostgreSQL-specific syntax first
+	if err := db.QueryRow("SELECT 1::integer").Scan(&result); err == nil {
+		return PostgreSQL
+	}
 
-		// MySQL specific query
-		if _, err := db.Query("SELECT VERSION()"); err == nil {
-			return MySQL
-		}
+	// Try SQLite specific query
+	if err := db.QueryRow("SELECT sqlite_version()").Scan(&result); err == nil {
+		return SQLite
+	}
+
+	// Try MySQL specific query
+	if err := db.QueryRow("SELECT VERSION()").Scan(&result); err == nil {
+		return MySQL
 	}
 
 	// Default to PostgreSQL if detection fails
