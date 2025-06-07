@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # EF Migration Tool
+  ef-migrate:
+    build:
+      context: ../../
+      dockerfile: tools/ef-migrate/Dockerfile
+      args:
+        VERSION: dev
+        BUILD_TIME: ${BUILD_TIME:-$(date -u +%Y-%m-%d_%H:%M:%S)}
+        GIT_COMMIT: ${GIT_COMMIT:-dev}
+    container_name: gra-ef-migrate
+    volumes:
+      - ./migrations:/app/migrations
+      - ./examples:/app/examples:ro
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/gra_dev?sslmode=disable
+      - MIGRATIONS_DIR=/app/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gra-network
+    command: ["status"]
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: gra-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gra_dev
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./examples/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gra-network
+
+  # pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: gra-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@gra.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - gra-network
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: gra-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gra-network
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  gra-network:
+    driver: bridge
+    name: gra-network
