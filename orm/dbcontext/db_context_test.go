@@ -8,6 +8,42 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// Test constants to avoid goconst violations
+const (
+	testDBCloseError      = "Failed to close database: %v"
+	testChangeTrackerNil  = "ChangeTracker should not be nil"
+	testUserName          = "Test User"
+	testInsertQuery       = "INSERT INTO testusers (name, email, is_active) VALUES (?, ?, ?)"
+	testInsertDataError   = "Failed to insert test data: %v"
+	testNameCondition     = "name = ?"
+	testJohnDoe           = "John Doe"
+	testJohnEmail         = "john@example.com"
+	testJohnUpdated       = "John Updated"
+	testAliceName         = "Alice"
+	testAliceEmail        = "alice@example.com"
+	testBobName           = "Bob"
+	testBobEmail          = "bob@example.com"
+	testNonExistent       = "NonExistent"
+	testCountQuery        = "SELECT COUNT(*) FROM testusers WHERE name = ?"
+	testCountDeletedQuery = "SELECT COUNT(*) FROM testusers WHERE id = ?"
+	testSQLite3Driver     = "sqlite3"
+	testMemoryDB          = ":memory:"
+	testIsActiveCondition = "is_active = ?"
+	testIDCondition       = "id = ?"
+	testEmailCondition    = "email = ?"
+	testPostgresDriver    = "postgres"
+	testMySQLDriver       = "mysql"
+	testSQLite3URL        = "sqlite3://test.db"
+	testPostgresURL       = "postgres://user:pass@localhost/db"
+	testUnknownURL        = "unknown://test"
+	testSelectQuery       = "SELECT * FROM users WHERE id = ? AND name = ?"
+	testSelectSingleQuery = "SELECT * FROM users WHERE id = ?"
+	testPostgresQuery     = "SELECT * FROM users WHERE id = $1 AND name = $2"
+	testExpectedGotFormat = "Expected %s, got %s"
+	testNameLikePattern   = "A%"
+	testAliceLikeName     = "name"
+)
+
 // Test entity for testing
 type TestUser struct {
 	ID        int64     `db:"id"`
@@ -23,7 +59,7 @@ func (TestUser) TableName() string {
 }
 
 func setupTestDB(t *testing.T) *sql.DB {
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open(testSQLite3Driver, testMemoryDB)
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
@@ -46,13 +82,13 @@ func setupTestDB(t *testing.T) *sql.DB {
 }
 
 func TestNewEnhancedDbContext(t *testing.T) {
-	ctx, err := NewEnhancedDbContext(":memory:")
+	ctx, err := NewEnhancedDbContext(testMemoryDB)
 	if err != nil {
 		t.Fatalf("Failed to create enhanced db context: %v", err)
 	}
 	defer func() {
 		if closeErr := ctx.db.Close(); closeErr != nil {
-			t.Logf("Failed to close database: %v", closeErr)
+			t.Logf(testDBCloseError, closeErr)
 		}
 	}()
 
@@ -60,7 +96,7 @@ func TestNewEnhancedDbContext(t *testing.T) {
 		t.Error("Database connection should not be nil")
 	}
 	if ctx.ChangeTracker == nil {
-		t.Error("ChangeTracker should not be nil")
+		t.Error(testChangeTrackerNil)
 	}
 	if ctx.Database == nil {
 		t.Error("Database should not be nil")
@@ -71,7 +107,7 @@ func TestNewEnhancedDbContextWithDB(t *testing.T) {
 	db := setupTestDB(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Failed to close database: %v", closeErr)
+			t.Logf(testDBCloseError, closeErr)
 		}
 	}()
 
@@ -80,17 +116,44 @@ func TestNewEnhancedDbContextWithDB(t *testing.T) {
 		t.Error("Database should be the same as passed")
 	}
 	if ctx.ChangeTracker == nil {
-		t.Error("ChangeTracker should not be nil")
+		t.Error(testChangeTrackerNil)
+	}
+}
+
+func TestNewEnhancedDbContextWithTx(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Failed to begin transaction: %v", err)
+	}
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			t.Logf("Failed to rollback transaction: %v", rollbackErr)
+		}
+	}()
+
+	ctx := NewEnhancedDbContextWithTx(tx)
+	if ctx.tx != tx {
+		t.Error("Transaction should be the same as passed")
+	}
+	if ctx.ChangeTracker == nil {
+		t.Error(testChangeTrackerNil)
 	}
 }
 
 func TestChangeTracker(t *testing.T) {
 	tracker := NewChangeTracker()
 	if tracker == nil {
-		t.Fatal("ChangeTracker should not be nil")
+		t.Fatal(testChangeTrackerNil)
 	}
 
-	user := &TestUser{Name: "Test User", Email: "test@example.com"}
+	user := &TestUser{Name: testUserName, Email: "test@example.com"}
 
 	// Test tracking entity
 	tracker.TrackEntity(user, EntityStateAdded)
@@ -109,11 +172,11 @@ func TestChangeTracker(t *testing.T) {
 	}
 }
 
-func TestDatabase_Begin(t *testing.T) {
+func TestDatabaseBegin(t *testing.T) {
 	db := setupTestDB(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Failed to close database: %v", closeErr)
+			t.Logf(testDBCloseError, closeErr)
 		}
 	}()
 
@@ -133,223 +196,467 @@ func TestDatabase_Begin(t *testing.T) {
 	}
 }
 
-func TestEnhancedDbSet_Where(t *testing.T) {
+func TestAddUpdateDeleteSaveChanges(t *testing.T) {
 	db := setupTestDB(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Failed to close database: %v", closeErr)
+			t.Logf(testDBCloseError, closeErr)
 		}
 	}()
 
 	ctx := NewEnhancedDbContextWithDB(db)
-	userSet := NewEnhancedDbSet[TestUser](ctx)
 
-	// Test Where method
-	filteredSet := userSet.Where("is_active = ?", true)
-	// Check that the set was created successfully
-	if filteredSet != nil && filteredSet.whereClause != "is_active = ?" {
-		t.Errorf("Expected where clause 'is_active = ?', got '%s'", filteredSet.whereClause)
+	// Test Add and SaveChanges
+	user := &TestUser{
+		Name:     testJohnDoe,
+		Email:    testJohnEmail,
+		IsActive: true,
 	}
-	if filteredSet == nil {
-		t.Fatal("Filtered set should not be nil")
-	}
-	if filteredSet != nil && len(filteredSet.whereArgs) != 1 {
-		t.Errorf("Expected 1 where arg, got %d", len(filteredSet.whereArgs))
-	}
-}
 
-func TestEnhancedDbSet_OrderBy(t *testing.T) {
-	db := setupTestDB(t)
-	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Failed to close database: %v", closeErr)
-		}
-	}()
-
-	ctx := NewEnhancedDbContextWithDB(db)
-	userSet := NewEnhancedDbSet[TestUser](ctx)
-
-	// Test OrderBy method
-	orderedSet := userSet.OrderBy("name")
-	// Check that the set was created successfully  
-	if orderedSet != nil && orderedSet.orderClause != "name" {
-		t.Errorf("Expected order by 'name', got '%s'", orderedSet.orderClause)
-	}
-	if orderedSet == nil {
-		t.Fatal("Ordered set should not be nil")
-	}
-}
-
-func TestEnhancedDbSet_Take(t *testing.T) {
-	db := setupTestDB(t)
-	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Failed to close database: %v", closeErr)
-		}
-	}()
-
-	ctx := NewEnhancedDbContextWithDB(db)
-	userSet := NewEnhancedDbSet[TestUser](ctx)
-
-	// Test Take method
-	limitedSet := userSet.Take(10)
-	// Check that the set was created successfully
-	if limitedSet != nil && limitedSet.limitValue != 10 {
-		t.Errorf("Expected take 10, got %d", limitedSet.limitValue)
-	}
-	if limitedSet == nil {
-		t.Fatal("Limited set should not be nil")
-	}
-}
-
-func TestEnhancedDbSet_Skip(t *testing.T) {
-	db := setupTestDB(t)
-	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Failed to close database: %v", closeErr)
-		}
-	}()
-
-	ctx := NewEnhancedDbContextWithDB(db)
-	userSet := NewEnhancedDbSet[TestUser](ctx)
-
-	// Test Skip method
-	skippedSet := userSet.Skip(5)
-	// Check that the set was created successfully
-	if skippedSet != nil && skippedSet.offsetValue != 5 {
-		t.Errorf("Expected skip 5, got %d", skippedSet.offsetValue)
-	}
-	if skippedSet == nil {
-		t.Fatal("Skipped set should not be nil")
-	}
-}
-
-func TestEnhancedDbSet_AsNoTracking(t *testing.T) {
-	db := setupTestDB(t)
-	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Failed to close database: %v", closeErr)
-		}
-	}()
-
-	ctx := NewEnhancedDbContextWithDB(db)
-	userSet := NewEnhancedDbSet[TestUser](ctx)
-
-	// Test AsNoTracking method
-	noTrackingSet := userSet.AsNoTracking()
-	// Check that the set was created successfully
-	if noTrackingSet != nil && !noTrackingSet.noTracking {
-		t.Error("No tracking flag should be true")
-	}
-	if noTrackingSet == nil {
-		t.Fatal("No tracking set should not be nil")
-	}
-}
-
-func TestEnhancedDbSet_Count(t *testing.T) {
-	db := setupTestDB(t)
-	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Failed to close database: %v", closeErr)
-		}
-	}()
-
-	ctx := NewEnhancedDbContextWithDB(db)
-	userSet := NewEnhancedDbSet[TestUser](ctx)
-
-	// Test Count method with empty table
-	count, err := userSet.Count()
+	ctx.Add(user)
+	_, err := ctx.SaveChanges()
 	if err != nil {
-		t.Fatalf("Count should not return error: %v", err)
+		t.Fatalf("Failed to save changes: %v", err)
+	}
+
+	if user.ID == 0 {
+		t.Error("User ID should be set after insert")
+	}
+
+	// Test Update
+	user.Name = testJohnUpdated
+	ctx.Update(user)
+	_, err = ctx.SaveChanges()
+	if err != nil {
+		t.Fatalf("Failed to update user: %v", err)
+	}
+
+	// Verify update
+	var count int
+	err = db.QueryRow(testCountQuery, testJohnUpdated).Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query updated user: %v", err)
+	}
+	if count != 1 {
+		t.Error("Updated user should exist in database")
+	}
+
+	// Test Delete
+	ctx.Delete(user)
+	_, err = ctx.SaveChanges()
+	if err != nil {
+		t.Fatalf("Failed to delete user: %v", err)
+	}
+
+	// Verify delete
+	err = db.QueryRow(testCountDeletedQuery, user.ID).Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query deleted user: %v", err)
 	}
 	if count != 0 {
-		t.Errorf("Expected count 0, got %d", count)
+		t.Error("Deleted user should not exist in database")
 	}
 }
 
-func TestEnhancedDbSet_Any(t *testing.T) {
+func TestSetEntityState(t *testing.T) {
+	tracker := NewChangeTracker()
+	user := &TestUser{Name: testUserName}
+
+	tracker.SetEntityState(user, EntityStateModified)
+	state := tracker.GetEntityState(user)
+	if state != EntityStateModified {
+		t.Errorf("Expected EntityStateModified, got %v", state)
+	}
+}
+
+func TestEnhancedDbSetWhere(t *testing.T) {
 	db := setupTestDB(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Failed to close database: %v", closeErr)
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Insert test data
+	_, err := db.Exec(testInsertQuery, testAliceName, testAliceEmail, true)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+	_, err = db.Exec(testInsertQuery, testBobName, testBobEmail, false)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+
+	ctx := NewEnhancedDbContextWithDB(db)
+	set := NewEnhancedDbSet[TestUser](ctx)
+
+	// Test Where
+	results, err := set.Where(testIsActiveCondition, true).ToList()
+	if err != nil {
+		t.Fatalf("Failed to execute Where query: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result, got %d", len(results))
+	}
+	if results[0].Name != testAliceName {
+		t.Errorf(testExpectedGotFormat, testAliceName, results[0].Name)
+	}
+}
+
+func TestEnhancedDbSetWhereLike(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Insert test data
+	_, err := db.Exec(testInsertQuery, testAliceName, testAliceEmail, true)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+
+	ctx := NewEnhancedDbContextWithDB(db)
+	set := NewEnhancedDbSet[TestUser](ctx)
+
+	// Test WhereLike
+	results, err := set.WhereLike(testAliceLikeName, testNameLikePattern).ToList()
+	if err != nil {
+		t.Fatalf("Failed to execute WhereLike query: %v", err)
+	}
+	if len(results) != 1 || results[0].Name != testAliceName {
+		t.Error("WhereLike should find Alice")
+	}
+}
+
+func TestEnhancedDbSetWhereInAndOr(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Insert test data
+	_, err := db.Exec(testInsertQuery, testAliceName, testAliceEmail, true)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+	_, err = db.Exec(testInsertQuery, testBobName, testBobEmail, false)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+
+	ctx := NewEnhancedDbContextWithDB(db)
+	set := NewEnhancedDbSet[TestUser](ctx)
+
+	// Test WhereIn
+	results, err := set.WhereIn(testAliceLikeName, []interface{}{testAliceName, "Charlie"}).ToList()
+	if err != nil {
+		t.Fatalf("Failed to execute WhereIn query: %v", err)
+	}
+	if len(results) != 1 || results[0].Name != testAliceName {
+		t.Error("WhereIn should find Alice")
+	}
+
+	// Test WhereOr
+	results, err = set.WhereOr(testNameCondition+" OR "+testNameCondition, testAliceName, testBobName).ToList()
+	if err != nil {
+		t.Fatalf("Failed to execute WhereOr query: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("WhereOr should find 2 results, got %d", len(results))
+	}
+}
+
+func TestEnhancedDbSetOrderBy(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Insert test data
+	_, err := db.Exec(testInsertQuery, testAliceName, testAliceEmail, true)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+	_, err = db.Exec(testInsertQuery, testBobName, testBobEmail, false)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+
+	ctx := NewEnhancedDbContextWithDB(db)
+	set := NewEnhancedDbSet[TestUser](ctx)
+
+	// Test OrderBy
+	results, err := set.OrderBy(testAliceLikeName).ToList()
+	if err != nil {
+		t.Fatalf("Failed to execute OrderBy query: %v", err)
+	}
+	if len(results) != 2 || results[0].Name != testAliceName {
+		t.Error("OrderBy should return Alice first")
+	}
+
+	// Test OrderByDescending
+	results, err = set.OrderByDescending(testAliceLikeName).ToList()
+	if err != nil {
+		t.Fatalf("Failed to execute OrderByDescending query: %v", err)
+	}
+	if len(results) != 2 || results[0].Name != testBobName {
+		t.Error("OrderByDescending should return Bob first")
+	}
+}
+
+func TestEnhancedDbSetTakeSkip(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Insert test data
+	_, err := db.Exec(testInsertQuery, testAliceName, testAliceEmail, true)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+	_, err = db.Exec(testInsertQuery, testBobName, testBobEmail, false)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+
+	ctx := NewEnhancedDbContextWithDB(db)
+	set := NewEnhancedDbSet[TestUser](ctx)
+
+	// Test Take
+	results, err := set.Take(1).ToList()
+	if err != nil {
+		t.Fatalf("Failed to execute Take query: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("Take(1) should return 1 result, got %d", len(results))
+	}
+
+	// Test Skip
+	results, err = set.Skip(1).ToList()
+	if err != nil {
+		t.Fatalf("Failed to execute Skip query: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("Skip(1) should return 1 result, got %d", len(results))
+	}
+}
+
+func TestEnhancedDbSetCountAny(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Insert test data
+	_, err := db.Exec(testInsertQuery, testAliceName, testAliceEmail, true)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+	_, err = db.Exec(testInsertQuery, testBobName, testBobEmail, false)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+
+	ctx := NewEnhancedDbContextWithDB(db)
+	set := NewEnhancedDbSet[TestUser](ctx)
+
+	// Test Count
+	count, err := set.Count()
+	if err != nil {
+		t.Fatalf("Failed to execute Count: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("Count should return 2, got %d", count)
+	}
+
+	// Test Any
+	exists, err := set.Any()
+	if err != nil {
+		t.Fatalf("Failed to execute Any: %v", err)
+	}
+	if !exists {
+		t.Error("Any should return true")
+	}
+
+	// Test Any with condition
+	exists, err = set.Where(testNameCondition, testNonExistent).Any()
+	if err != nil {
+		t.Fatalf("Failed to execute Any with condition: %v", err)
+	}
+	if exists {
+		t.Error("Any with non-existent condition should return false")
+	}
+}
+
+func TestEnhancedDbSetFirstOrDefault(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Insert test data
+	_, err := db.Exec(testInsertQuery, testAliceName, testAliceEmail, true)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+
+	ctx := NewEnhancedDbContextWithDB(db)
+	set := NewEnhancedDbSet[TestUser](ctx)
+
+	// Test FirstOrDefault
+	user, err := set.Where(testNameCondition, testAliceName).FirstOrDefault()
+	if err != nil {
+		t.Fatalf("Failed to execute FirstOrDefault: %v", err)
+	}
+	if user == nil || user.Name != testAliceName {
+		t.Error("FirstOrDefault should return Alice")
+	}
+
+	// Test FirstOrDefault with no results
+	user, err = set.Where(testNameCondition, testNonExistent).FirstOrDefault()
+	if err != nil {
+		t.Fatalf("Failed to execute FirstOrDefault with no results: %v", err)
+	}
+	if user != nil {
+		t.Error("FirstOrDefault should return nil for non-existent record")
+	}
+}
+
+func TestEnhancedDbSetFirstSingle(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Insert test data
+	_, err := db.Exec(testInsertQuery, testAliceName, testAliceEmail, true)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+
+	ctx := NewEnhancedDbContextWithDB(db)
+	set := NewEnhancedDbSet[TestUser](ctx)
+
+	// Test First
+	user, err := set.Where(testNameCondition, testAliceName).First()
+	if err != nil {
+		t.Fatalf("Failed to execute First: %v", err)
+	}
+	if user.Name != testAliceName {
+		t.Error("First should return Alice")
+	}
+
+	// Test Single
+	user, err = set.Where(testNameCondition, testAliceName).Single()
+	if err != nil {
+		t.Fatalf("Failed to execute Single: %v", err)
+	}
+	if user.Name != testAliceName {
+		t.Error("Single should return Alice")
+	}
+}
+
+func TestEnhancedDbSetFind(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Insert test data
+	_, err := db.Exec(testInsertQuery, testAliceName, testAliceEmail, true)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+
+	ctx := NewEnhancedDbContextWithDB(db)
+	set := NewEnhancedDbSet[TestUser](ctx)
+
+	// Test Find
+	var userID int64
+	err = db.QueryRow("SELECT id FROM testusers WHERE "+testNameCondition, testAliceName).Scan(&userID)
+	if err != nil {
+		t.Fatalf("Failed to get user ID: %v", err)
+	}
+
+	user, err := set.Find(userID)
+	if err != nil {
+		t.Fatalf("Failed to execute Find: %v", err)
+	}
+	if user == nil || user.Name != testAliceName {
+		t.Error("Find should return Alice")
+	}
+}
+
+func TestAsNoTracking(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
 		}
 	}()
 
 	ctx := NewEnhancedDbContextWithDB(db)
-	userSet := NewEnhancedDbSet[TestUser](ctx)
+	set := NewEnhancedDbSet[TestUser](ctx)
 
-	// Test Any method with empty table
-	exists, err := userSet.Any()
-	if err != nil {
-		t.Fatalf("Any should not return error: %v", err)
-	}
-	if exists {
-		t.Errorf("Expected Any to return false for empty table")
+	// Test AsNoTracking
+	noTrackingSet := set.AsNoTracking()
+	if !noTrackingSet.noTracking {
+		t.Error("AsNoTracking should set noTracking to true")
 	}
 }
 
-func TestGetTableName(t *testing.T) {
-	user := &TestUser{}
-	tableName := getTableName(user)
-	expected := "testusers"
-	if tableName != expected {
-		t.Errorf("Expected table name '%s', got '%s'", expected, tableName)
-	}
-}
-
-func TestDetectDatabaseDriver(t *testing.T) {
+func TestUtilityFunctions(t *testing.T) {
+	// Test detectDatabaseDriver with actual database connections
 	db := setupTestDB(t)
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Failed to close database: %v", closeErr)
+			t.Logf(testDBCloseError, closeErr)
 		}
 	}()
 
 	driver := detectDatabaseDriver(db)
-	if driver == "" {
-		t.Error("Driver should not be empty")
+	if driver != testSQLite3Driver {
+		t.Errorf(testExpectedGotFormat, testSQLite3Driver, driver)
+	}
+
+	// Test convertQueryPlaceholders
+	query := convertQueryPlaceholders(testSelectQuery, testPostgresDriver)
+	if query != testPostgresQuery {
+		t.Errorf(testExpectedGotFormat, testPostgresQuery, query)
+	}
+
+	query = convertQueryPlaceholders(testSelectSingleQuery, testSQLite3Driver)
+	if query != testSelectSingleQuery {
+		t.Errorf(testExpectedGotFormat, testSelectSingleQuery, query)
 	}
 }
 
-func TestConvertQueryPlaceholders(t *testing.T) {
-	// Test PostgreSQL placeholders
-	pgQuery := convertQueryPlaceholders("SELECT * FROM users WHERE id = ? AND name = ?", "postgres")
-	expected := "SELECT * FROM users WHERE id = $1 AND name = $2"
-	if pgQuery != expected {
-		t.Errorf("Expected '%s', got '%s'", expected, pgQuery)
-	}
+func TestStringMethod(t *testing.T) {
+	tracker := NewChangeTracker()
+	user := &TestUser{Name: testUserName}
 
-	// Test SQLite placeholders (should remain unchanged)
-	sqliteQuery := convertQueryPlaceholders("SELECT * FROM users WHERE id = ? AND name = ?", "sqlite3")
-	expected = "SELECT * FROM users WHERE id = ? AND name = ?"
-	if sqliteQuery != expected {
-		t.Errorf("Expected '%s', got '%s'", expected, sqliteQuery)
-	}
-}
+	tracker.TrackEntity(user, EntityStateAdded)
 
-func TestShouldSkipField(t *testing.T) {
-	tests := []struct {
-		name      string
-		fieldName string
-		tags      string
-		excludeID bool
-		expected  bool
-	}{
-		{"ID field excluded", "ID", "", true, true},
-		{"ID field not excluded", "ID", "", false, false},
-		{"db tag with dash", "Field", `db:"-"`, false, true},
-		{"sql tag with dash", "Field", `sql:"-"`, false, true},
-		{"normal field", "Name", `db:"name"`, false, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock struct field for testing
-			// Since we can't easily create reflect.StructField, we'll test the logic indirectly
-			// This test verifies the logic conceptually
-			if tt.fieldName == "ID" && tt.excludeID && !tt.expected {
-				t.Error("ID field should be skipped when excludeID is true")
-			}
-		})
+	// Test String method
+	str := tracker.String()
+	if str == "" {
+		t.Error("String method should return non-empty string")
 	}
 }

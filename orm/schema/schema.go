@@ -35,7 +35,7 @@ func DetectDatabaseDriver(db *sql.DB) DatabaseDriver {
 
 	// Use QueryRow and Scan to properly handle connections and avoid resource leaks
 	var result string
-	
+
 	// Try PostgreSQL-specific syntax first
 	if err := db.QueryRow("SELECT 1::integer").Scan(&result); err == nil {
 		return PostgreSQL
@@ -230,7 +230,7 @@ func extractColumnInfo(field reflect.StructField, driver DatabaseDriver) columnI
 // buildColumnDefinition builds the complete column definition string
 func buildColumnDefinition(info columnInfo) string {
 	var parts []string
-	
+
 	// Handle PostgreSQL SERIAL types first, before other attributes
 	if info.isAutoIncr && info.driver == PostgreSQL {
 		var sqlType string
@@ -240,17 +240,17 @@ func buildColumnDefinition(info columnInfo) string {
 			sqlType = "SERIAL"
 		}
 		parts = []string{fmt.Sprintf("%s %s", info.name, sqlType)}
-		
+
 		if info.isPrimaryKey {
 			parts = append(parts, "PRIMARY KEY")
 		}
 	} else {
 		parts = []string{fmt.Sprintf("%s %s", info.name, info.sqlType)}
-		
+
 		if info.isPrimaryKey {
 			parts = append(parts, "PRIMARY KEY")
 		}
-		
+
 		if info.isAutoIncr {
 			parts = handleAutoIncrementForColumn(parts, info)
 		}
@@ -455,7 +455,7 @@ func isNavigationProperty(field reflect.StructField) bool {
 func extractSQLValue(sqlTag, key string) string {
 	// Handle both semicolon and comma separated tags
 	separators := []string{";", ","}
-	
+
 	for _, sep := range separators {
 		parts := strings.Split(sqlTag, sep)
 		for _, part := range parts {

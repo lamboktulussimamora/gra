@@ -123,6 +123,19 @@ func (ct *ChangeTracker) TrackEntity(entity interface{}, state EntityState) {
 	ct.entities[entity] = state
 }
 
+// String returns a string representation of the ChangeTracker
+func (ct *ChangeTracker) String() string {
+	if len(ct.entities) == 0 {
+		return "ChangeTracker: No tracked entities"
+	}
+
+	result := fmt.Sprintf("ChangeTracker: %d tracked entities", len(ct.entities))
+	for _, state := range ct.entities {
+		result += fmt.Sprintf("\n  - %s", state.String())
+	}
+	return result
+}
+
 // Database provides transaction support
 type Database struct {
 	db *sql.DB
@@ -600,6 +613,10 @@ func (set *EnhancedDbSet[T]) buildQuery() string {
 	}
 
 	if set.offsetValue > 0 {
+		// SQLite requires LIMIT when using OFFSET
+		if set.limitValue <= 0 {
+			query += " LIMIT -1" // -1 means no limit in SQLite
+		}
 		query += fmt.Sprintf(" OFFSET %d", set.offsetValue)
 	}
 

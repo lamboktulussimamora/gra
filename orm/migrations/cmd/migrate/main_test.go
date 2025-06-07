@@ -152,7 +152,7 @@ func TestConnectDatabase(t *testing.T) {
 			} else {
 				if err != nil {
 					t.Errorf("Expected no error, but got: %v", err)
-				} else				if db != nil {
+				} else if db != nil {
 					if err := db.Close(); err != nil {
 						t.Logf("Warning: failed to close database: %v", err)
 					}
@@ -264,7 +264,7 @@ func TestCmdApplyMigrations(t *testing.T) {
 		// Test applying all migrations (no specific migration specified)
 		// This would typically call migrator.ApplyPending()
 		args := []string{}
-		// In a real implementation, if len(args) == 0, 
+		// In a real implementation, if len(args) == 0,
 		// we would apply all pending migrations
 		_ = len(args) // Acknowledge the variable is used
 	})
