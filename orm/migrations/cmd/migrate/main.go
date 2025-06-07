@@ -137,7 +137,16 @@ func validateConfig(config *Config) error {
 
 // connectDatabase establishes a database connection
 func connectDatabase(config *Config) (*sql.DB, error) {
-	db, err := sql.Open(config.Driver, config.DatabaseURL)
+	// Map logical driver names to actual Go driver names
+	actualDriver := config.Driver
+	switch config.Driver {
+	case "sqlite":
+		actualDriver = "sqlite3"
+	case "postgresql":
+		actualDriver = "postgres"
+	}
+
+	db, err := sql.Open(actualDriver, config.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}

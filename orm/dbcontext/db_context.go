@@ -15,16 +15,24 @@ const driverPostgres = "postgres"
 
 // detectDatabaseDriver detects the database driver type
 func detectDatabaseDriver(db *sql.DB) string {
-	// Test queries to detect database type
-	if _, err := db.Query("SELECT 1::integer"); err == nil {
+	// Test queries to detect database type using QueryRow to avoid connection pool issues
+	var dummy interface{}
+
+	// Try PostgreSQL-specific syntax
+	if err := db.QueryRow("SELECT 1::integer").Scan(&dummy); err == nil {
 		return driverPostgres
 	}
-	if _, err := db.Query("SELECT sqlite_version()"); err == nil {
+
+	// Try SQLite-specific function
+	if err := db.QueryRow("SELECT sqlite_version()").Scan(&dummy); err == nil {
 		return "sqlite3"
 	}
-	if _, err := db.Query("SELECT VERSION()"); err == nil {
+
+	// Try MySQL-specific function
+	if err := db.QueryRow("SELECT VERSION()").Scan(&dummy); err == nil {
 		return "mysql"
 	}
+
 	// Default to sqlite3 if detection fails
 	return "sqlite3"
 }
@@ -159,6 +167,7 @@ func NewEnhancedDbContext(connectionString string) (*EnhancedDbContext, error) {
 // NewEnhancedDbContextWithDB creates a new enhanced database context with existing DB
 func NewEnhancedDbContextWithDB(db *sql.DB) *EnhancedDbContext {
 	driver := detectDatabaseDriver(db)
+
 	return &EnhancedDbContext{
 		db:            db,
 		ChangeTracker: NewChangeTracker(),
@@ -330,7 +339,13 @@ type EnhancedDbSet[T any] struct {
 // NewEnhancedDbSet creates a new enhanced database set
 func NewEnhancedDbSet[T any](ctx *EnhancedDbContext) *EnhancedDbSet[T] {
 	var entity T
-	tableName := getTableName(&entity)
+	entityType := reflect.TypeOf(entity)
+	if entityType.Kind() == reflect.Ptr {
+		entityType = entityType.Elem()
+	}
+
+	tableName := getTableNameFromType(entityType)
+
 	return &EnhancedDbSet[T]{
 		ctx:       ctx,
 		tableName: tableName,
@@ -504,12 +519,15 @@ func (set *EnhancedDbSet[T]) FirstOrDefault() (*T, error) {
 
 // Count returns the number of entities matching the query
 func (set *EnhancedDbSet[T]) Count() (int, error) {
-	// Safe: table name is trusted, user data is parameterized (see whereArgs...)
-	//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", set.tableName)
+
+	// Add WHERE conditions if any exist
 	if set.whereClause != "" {
 		query += " WHERE " + set.whereClause
 	}
+
+	// Convert placeholders for database driver
+	query = convertQueryPlaceholders(query, set.ctx.driver)
 
 	var count int
 	var err error
