@@ -205,6 +205,11 @@ func extractColumnInfo(field reflect.StructField, driver DatabaseDriver) columnI
 	if migrationTag != "" {
 		if typeMatch := extractSQLValue(migrationTag, "type"); typeMatch != "" {
 			sqlType = typeMatch
+		} else if field.Type.Kind() == reflect.String {
+			// Check for max_length in migration tag for string fields
+			if maxLength := extractSQLValue(migrationTag, "max_length"); maxLength != "" {
+				sqlType = fmt.Sprintf("VARCHAR(%s)", maxLength)
+			}
 		}
 	}
 
@@ -224,14 +229,31 @@ func extractColumnInfo(field reflect.StructField, driver DatabaseDriver) columnI
 
 // buildColumnDefinition builds the complete column definition string
 func buildColumnDefinition(info columnInfo) string {
-	parts := []string{fmt.Sprintf("%s %s", info.name, info.sqlType)}
-
-	if info.isPrimaryKey {
-		parts = append(parts, "PRIMARY KEY")
-	}
-
-	if info.isAutoIncr {
-		parts = handleAutoIncrementForColumn(parts, info)
+	var parts []string
+	
+	// Handle PostgreSQL SERIAL types first, before other attributes
+	if info.isAutoIncr && info.driver == PostgreSQL {
+		var sqlType string
+		if strings.Contains(info.sqlType, "BIGINT") {
+			sqlType = "BIGSERIAL"
+		} else {
+			sqlType = "SERIAL"
+		}
+		parts = []string{fmt.Sprintf("%s %s", info.name, sqlType)}
+		
+		if info.isPrimaryKey {
+			parts = append(parts, "PRIMARY KEY")
+		}
+	} else {
+		parts = []string{fmt.Sprintf("%s %s", info.name, info.sqlType)}
+		
+		if info.isPrimaryKey {
+			parts = append(parts, "PRIMARY KEY")
+		}
+		
+		if info.isAutoIncr {
+			parts = handleAutoIncrementForColumn(parts, info)
+		}
 	}
 
 	if info.isNotNull {
@@ -431,11 +453,23 @@ func isNavigationProperty(field reflect.StructField) bool {
 
 // extractSQLValue extracts a value from SQL tag
 func extractSQLValue(sqlTag, key string) string {
-	parts := strings.Split(sqlTag, ";")
-	for _, part := range parts {
-		if strings.HasPrefix(part, key+":") {
-			value := strings.TrimPrefix(part, key+":")
-			return strings.Trim(value, "'\"")
+	// Handle both semicolon and comma separated tags
+	separators := []string{";", ","}
+	
+	for _, sep := range separators {
+		parts := strings.Split(sqlTag, sep)
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if strings.HasPrefix(part, key+":") {
+				value := strings.TrimPrefix(part, key+":")
+				// Split again in case the value itself contains separators
+				// and return only the value part
+				valueParts := strings.Split(value, ",")
+				if len(valueParts) > 0 {
+					return strings.Trim(valueParts[0], "'\"")
+				}
+				return strings.Trim(value, "'\"")
+			}
 		}
 	}
 	return ""

@@ -168,8 +168,8 @@ func getDriver(driverName string) migrations.DatabaseDriver {
 	case "sqlite", "sqlite3":
 		return migrations.SQLite
 	default:
-		log.Fatalf("Unsupported driver: %s", driverName)
-		return ""
+		log.Printf("Unsupported driver: %s, defaulting to sqlite", driverName)
+		return migrations.SQLite
 	}
 }
 
