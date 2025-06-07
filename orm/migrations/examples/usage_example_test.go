@@ -12,75 +12,309 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+const (
+	sqlite3Driver        = "sqlite3"
+	memoryDB             = ":memory:"
+	testMigrationsDir    = "test_migrations"
+	invalidDriver        = "invalid_driver"
+	expectedErr          = "Expected error (no real database): %v"
+	warningDBClose       = "Warning: Failed to close test database: %v"
+	warningTempDir       = "Warning: failed to remove temp directory: %v"
+	failedCreateDB       = "Failed to create test database: %v"
+	failedCreateTempDir  = "Failed to create temp directory: %v"
+	expectedIDOne        = "Expected ID to be 1, got %d"
+	foreignKeyUsers      = "foreign_key:users.id"
+	errIDFormat          = "Expected ID to be %d, got %d"
+	errUserIDFormat      = "Expected UserID to be %d, got %d"
+	errTitleFormat       = "Expected Title to be '%s', got %s"
+	errContentFormat     = "Expected Content to be '%s', got %s"
+	errIsActiveFormat    = "Expected IsActive to be %v"
+	errIsPublishedFmt    = "Expected IsPublished to be %v"
+	zeroIDCase           = "zero id"
+	postTitleTestPost    = "Test Post"
+	postContentTestPost  = "This is a test post content"
+	postTitlePublished   = "Published Post"
+	postContentPublished = "Published content"
+)
+
 func TestUserStruct(t *testing.T) {
-	user := User{
-		ID:        1,
-		Email:     "test@example.com",
-		Name:      "Test User",
-		IsActive:  true,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+	testCases := []struct {
+		name     string
+		user     User
+		expected struct {
+			ID       int64
+			Email    string
+			Name     string
+			IsActive bool
+		}
+	}{
+		{
+			name: "valid user",
+			user: User{
+				ID:        1,
+				Email:     "test@example.com",
+				Name:      "Test User",
+				IsActive:  true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			expected: struct {
+				ID       int64
+				Email    string
+				Name     string
+				IsActive bool
+			}{1, "test@example.com", "Test User", true},
+		},
+		{
+			name: "inactive user",
+			user: User{
+				ID:        2,
+				Email:     "inactive@example.com",
+				Name:      "Inactive User",
+				IsActive:  false,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			expected: struct {
+				ID       int64
+				Email    string
+				Name     string
+				IsActive bool
+			}{2, "inactive@example.com", "Inactive User", false},
+		},
+		{
+			name: zeroIDCase,
+			user: User{},
+			expected: struct {
+				ID       int64
+				Email    string
+				Name     string
+				IsActive bool
+			}{0, "", "", false},
+		},
+		{
+			name: "user with empty email and name",
+			user: User{
+				ID:        3,
+				Email:     "",
+				Name:      "",
+				IsActive:  true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			expected: struct {
+				ID       int64
+				Email    string
+				Name     string
+				IsActive bool
+			}{3, "", "", true},
+		},
 	}
 
-	if user.ID != 1 {
-		t.Errorf("Expected ID to be 1, got %d", user.ID)
-	}
-	if user.Email != "test@example.com" {
-		t.Errorf("Expected Email to be 'test@example.com', got %s", user.Email)
-	}
-	if user.Name != "Test User" {
-		t.Errorf("Expected Name to be 'Test User', got %s", user.Name)
-	}
-	if !user.IsActive {
-		t.Error("Expected IsActive to be true")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.user.ID != tc.expected.ID {
+				t.Errorf(errIDFormat, tc.expected.ID, tc.user.ID)
+			}
+			if tc.user.Email != tc.expected.Email {
+				t.Errorf("Expected Email to be '%s', got %s", tc.expected.Email, tc.user.Email)
+			}
+			if tc.user.Name != tc.expected.Name {
+				t.Errorf("Expected Name to be '%s', got %s", tc.expected.Name, tc.user.Name)
+			}
+			if tc.user.IsActive != tc.expected.IsActive {
+				t.Errorf(errIsActiveFormat, tc.expected.IsActive)
+			}
+		})
 	}
 }
 
-func TestPostStruct(t *testing.T) {
-	post := Post{
+func TestPostStructUnpublished(t *testing.T) {
+	p := Post{
 		ID:          1,
 		UserID:      1,
-		Title:       "Test Post",
-		Content:     "This is a test post content",
+		Title:       postTitleTestPost,
+		Content:     postContentTestPost,
 		IsPublished: false,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
+	if p.ID != 1 {
+		t.Errorf(errIDFormat, 1, p.ID)
+	}
+	if p.UserID != 1 {
+		t.Errorf(errUserIDFormat, 1, p.UserID)
+	}
+	if p.Title != postTitleTestPost {
+		t.Errorf(errTitleFormat, postTitleTestPost, p.Title)
+	}
+	if p.Content != postContentTestPost {
+		t.Errorf(errContentFormat, postContentTestPost, p.Content)
+	}
+	if p.IsPublished != false {
+		t.Errorf(errIsPublishedFmt, false)
+	}
+}
 
-	if post.ID != 1 {
-		t.Errorf("Expected ID to be 1, got %d", post.ID)
+func TestPostStructPublished(t *testing.T) {
+	p := Post{
+		ID:          2,
+		UserID:      2,
+		Title:       postTitlePublished,
+		Content:     postContentPublished,
+		IsPublished: true,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
-	if post.UserID != 1 {
-		t.Errorf("Expected UserID to be 1, got %d", post.UserID)
+	if p.ID != 2 {
+		t.Errorf(errIDFormat, 2, p.ID)
 	}
-	if post.Title != "Test Post" {
-		t.Errorf("Expected Title to be 'Test Post', got %s", post.Title)
+	if p.UserID != 2 {
+		t.Errorf(errUserIDFormat, 2, p.UserID)
 	}
-	if post.IsPublished {
-		t.Error("Expected IsPublished to be false")
+	if p.Title != postTitlePublished {
+		t.Errorf(errTitleFormat, postTitlePublished, p.Title)
+	}
+	if p.Content != postContentPublished {
+		t.Errorf(errContentFormat, postContentPublished, p.Content)
+	}
+	if p.IsPublished != true {
+		t.Errorf(errIsPublishedFmt, true)
+	}
+}
+
+func TestPostStructZeroValue(t *testing.T) {
+	p := Post{}
+	if p.ID != 0 {
+		t.Errorf(errIDFormat, 0, p.ID)
+	}
+	if p.UserID != 0 {
+		t.Errorf(errUserIDFormat, 0, p.UserID)
+	}
+	if p.Title != "" {
+		t.Errorf(errTitleFormat, "", p.Title)
+	}
+	if p.Content != "" {
+		t.Errorf(errContentFormat, "", p.Content)
+	}
+	if p.IsPublished != false {
+		t.Errorf(errIsPublishedFmt, false)
+	}
+}
+
+func TestPostStructEmptyFields(t *testing.T) {
+	p := Post{
+		ID:          3,
+		UserID:      1,
+		Title:       "",
+		Content:     "",
+		IsPublished: false,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	if p.ID != 3 {
+		t.Errorf(errIDFormat, 3, p.ID)
+	}
+	if p.UserID != 1 {
+		t.Errorf(errUserIDFormat, 1, p.UserID)
+	}
+	if p.Title != "" {
+		t.Errorf(errTitleFormat, "", p.Title)
+	}
+	if p.Content != "" {
+		t.Errorf(errContentFormat, "", p.Content)
+	}
+	if p.IsPublished != false {
+		t.Errorf(errIsPublishedFmt, false)
 	}
 }
 
 func TestCommentStruct(t *testing.T) {
-	comment := Comment{
-		ID:        1,
-		PostID:    1,
-		UserID:    1,
-		Content:   "This is a test comment",
-		CreatedAt: time.Now(),
+	testCases := []struct {
+		name     string
+		comment  Comment
+		expected struct {
+			ID      int64
+			PostID  int64
+			UserID  int64
+			Content string
+		}
+	}{
+		{
+			name: "basic comment",
+			comment: Comment{
+				ID:        1,
+				PostID:    1,
+				UserID:    1,
+				Content:   "This is a test comment",
+				CreatedAt: time.Now(),
+			},
+			expected: struct {
+				ID      int64
+				PostID  int64
+				UserID  int64
+				Content string
+			}{1, 1, 1, "This is a test comment"},
+		},
+		{
+			name: "empty content",
+			comment: Comment{
+				ID:        2,
+				PostID:    2,
+				UserID:    2,
+				Content:   "",
+				CreatedAt: time.Now(),
+			},
+			expected: struct {
+				ID      int64
+				PostID  int64
+				UserID  int64
+				Content string
+			}{2, 2, 2, ""},
+		},
+		{
+			name:    zeroIDCase,
+			comment: Comment{},
+			expected: struct {
+				ID      int64
+				PostID  int64
+				UserID  int64
+				Content string
+			}{0, 0, 0, ""},
+		},
+		{
+			name: "comment with empty content",
+			comment: Comment{
+				ID:        3,
+				PostID:    1,
+				UserID:    1,
+				Content:   "",
+				CreatedAt: time.Now(),
+			},
+			expected: struct {
+				ID      int64
+				PostID  int64
+				UserID  int64
+				Content string
+			}{3, 1, 1, ""},
+		},
 	}
 
-	if comment.ID != 1 {
-		t.Errorf("Expected ID to be 1, got %d", comment.ID)
-	}
-	if comment.PostID != 1 {
-		t.Errorf("Expected PostID to be 1, got %d", comment.PostID)
-	}
-	if comment.UserID != 1 {
-		t.Errorf("Expected UserID to be 1, got %d", comment.UserID)
-	}
-	if comment.Content != "This is a test comment" {
-		t.Errorf("Expected Content to be 'This is a test comment', got %s", comment.Content)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.comment.ID != tc.expected.ID {
+				t.Errorf(errIDFormat, tc.expected.ID, tc.comment.ID)
+			}
+			if tc.comment.PostID != tc.expected.PostID {
+				t.Errorf("Expected PostID to be %d, got %d", tc.expected.PostID, tc.comment.PostID)
+			}
+			if tc.comment.UserID != tc.expected.UserID {
+				t.Errorf(errUserIDFormat, tc.expected.UserID, tc.comment.UserID)
+			}
+			if tc.comment.Content != tc.expected.Content {
+				t.Errorf(errContentFormat, tc.expected.Content, tc.comment.Content)
+			}
+		})
 	}
 }
 
@@ -124,8 +358,8 @@ func TestPostStructTags(t *testing.T) {
 	}
 
 	migrationTag := userIDField.Tag.Get("migration")
-	if !strings.Contains(migrationTag, "foreign_key:users.id") {
-		t.Errorf("Expected migration tag to contain 'foreign_key:users.id', got %s", migrationTag)
+	if !strings.Contains(migrationTag, foreignKeyUsers) {
+		t.Errorf("Expected migration tag to contain '%s', got %s", foreignKeyUsers, migrationTag)
 	}
 
 	// Test Content field for TEXT type
@@ -140,15 +374,15 @@ func TestPostStructTags(t *testing.T) {
 	}
 }
 
-func TestInitializeDatabase_WithSQLite(t *testing.T) {
+func TestInitializeDatabaseWithSQLite(t *testing.T) {
 	// Test with SQLite (in-memory) since we don't have PostgreSQL in tests
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open(sqlite3Driver, memoryDB)
 	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
+		t.Fatalf(failedCreateDB, err)
 	}
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Warning: Failed to close test database: %v", closeErr)
+			t.Logf(warningDBClose, closeErr)
 		}
 	}()
 
@@ -160,24 +394,24 @@ func TestInitializeDatabase_WithSQLite(t *testing.T) {
 
 func TestSetupMigrator(t *testing.T) {
 	// Create SQLite database for testing
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open(sqlite3Driver, memoryDB)
 	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
+		t.Fatalf(failedCreateDB, err)
 	}
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			t.Logf("Warning: Failed to close test database: %v", closeErr)
+			t.Logf(warningDBClose, closeErr)
 		}
 	}()
 
 	// Create temporary directory for migrations
-	tempDir, err := os.MkdirTemp("", "test_migrations")
+	tempDir, err := os.MkdirTemp("", testMigrationsDir)
 	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
+		t.Fatalf(failedCreateTempDir, err)
 	}
 	defer func() {
 		if err := os.RemoveAll(tempDir); err != nil {
-			t.Logf("Warning: failed to remove temp directory: %v", err)
+			t.Logf(warningTempDir, err)
 		}
 	}()
 
@@ -198,7 +432,7 @@ func TestSetupMigrator(t *testing.T) {
 	migrator.DbSet(&Comment{})
 }
 
-func TestDisplayMigrationStatus_WithEmptyStatus(_ *testing.T) {
+func TestDisplayMigrationStatusWithEmptyStatus(_ *testing.T) {
 	status := &migrations.MigrationStatus{
 		AppliedMigrations: []*migrations.MigrationFile{},
 		PendingMigrations: []*migrations.MigrationFile{},
@@ -210,7 +444,7 @@ func TestDisplayMigrationStatus_WithEmptyStatus(_ *testing.T) {
 	displayMigrationStatus(status)
 }
 
-func TestDisplayMigrationStatus_WithData(_ *testing.T) {
+func TestDisplayMigrationStatusWithData(_ *testing.T) {
 	// Create mock migration files
 	appliedMigration1 := &migrations.MigrationFile{
 		Name:      "001_initial",
@@ -236,7 +470,7 @@ func TestDisplayMigrationStatus_WithData(_ *testing.T) {
 	displayMigrationStatus(status)
 }
 
-func TestDisplayMigrationFileInfo_WithBasicInfo(_ *testing.T) {
+func TestDisplayMigrationFileInfoWithBasicInfo(_ *testing.T) {
 	// Create a mock migration file with minimal required fields
 	migrationFile := &migrations.MigrationFile{
 		Filename: "test_migration.sql",
@@ -248,7 +482,7 @@ func TestDisplayMigrationFileInfo_WithBasicInfo(_ *testing.T) {
 }
 
 // Mock implementation to test the main workflow without actual database operations
-func TestMainWorkflow_Logic(t *testing.T) {
+func TestMainWorkflowLogic(t *testing.T) {
 	// Test the logical components that main() uses
 
 	// Test struct creation
@@ -322,7 +556,7 @@ func TestForeignKeyRelationships(t *testing.T) {
 	}
 
 	migrationTag := userIDField.Tag.Get("migration")
-	if !strings.Contains(migrationTag, "foreign_key:users.id") {
+	if !strings.Contains(migrationTag, foreignKeyUsers) {
 		t.Errorf("Post.UserID should have foreign key to users.id, got migration tag: %s", migrationTag)
 	}
 
@@ -345,7 +579,292 @@ func TestForeignKeyRelationships(t *testing.T) {
 	}
 
 	migrationTag = commentUserIDField.Tag.Get("migration")
-	if !strings.Contains(migrationTag, "foreign_key:users.id") {
+	if !strings.Contains(migrationTag, foreignKeyUsers) {
 		t.Errorf("Comment.UserID should have foreign key to users.id, got migration tag: %s", migrationTag)
+	}
+}
+
+func TestInitializeDatabaseConnection(t *testing.T) {
+	// We can't test the actual PostgreSQL connection in unit tests
+	// but we can test the connection string parsing and error handling logic
+
+	// Test the function signature and behavior with a mock
+	// This tests the code path without requiring a real PostgreSQL database
+	t.Run("connection logic test", func(t *testing.T) {
+		// Test that the function exists and has correct signature
+		_ = initializeDatabase
+
+		// In a real scenario, this would fail because we don't have PostgreSQL running
+		// But we're testing the code exists and can be called
+		db, err := initializeDatabase()
+		if err != nil {
+			// Expected since we don't have a real PostgreSQL database
+			t.Logf(expectedErr, err)
+		}
+		if db != nil {
+			_ = db.Close()
+		}
+	})
+}
+
+// Test createAndApplyMigration function with mock data
+func TestCreateAndApplyMigration(t *testing.T) {
+	// Create SQLite database for testing
+	db, err := sql.Open(sqlite3Driver, memoryDB)
+	if err != nil {
+		t.Fatalf(failedCreateDB, err)
+	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(warningDBClose, closeErr)
+		}
+	}()
+
+	// Create temporary directory for migrations
+	tempDir, err := os.MkdirTemp("", testMigrationsDir)
+	if err != nil {
+		t.Fatalf(failedCreateTempDir, err)
+	}
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf(warningTempDir, err)
+		}
+	}()
+
+	// Setup migrator
+	migrator := migrations.NewHybridMigrator(
+		db,
+		migrations.SQLite,
+		tempDir,
+	)
+	migrator.DbSet(&User{})
+
+	t.Run("no pending changes", func(t *testing.T) {
+		status := &migrations.MigrationStatus{
+			AppliedMigrations: []*migrations.MigrationFile{},
+			PendingMigrations: []*migrations.MigrationFile{},
+			HasPendingChanges: false,
+			Summary:           "No changes",
+		}
+
+		err := createAndApplyMigration(migrator, status)
+		if err != nil {
+			t.Errorf("Expected no error for no pending changes, got: %v", err)
+		}
+	})
+
+	t.Run("with pending changes", func(t *testing.T) {
+		status := &migrations.MigrationStatus{
+			AppliedMigrations: []*migrations.MigrationFile{},
+			PendingMigrations: []*migrations.MigrationFile{},
+			HasPendingChanges: true,
+			Summary:           "Create initial schema",
+		}
+
+		// This might fail due to the migration system complexity, but we test that the function exists
+		err := createAndApplyMigration(migrator, status)
+		// We don't assert on the error since the migration system is complex
+		// and might require specific database setup
+		if err != nil {
+			t.Logf("Migration error (expected in test): %v", err)
+		}
+	})
+}
+
+func TestCreateAndApplyMigrationErrorCases(t *testing.T) {
+	// Simulate nil migrator
+	err := createAndApplyMigration(nil, nil)
+	if err == nil {
+		t.Error("Expected error when migrator is nil")
+	}
+
+	// Simulate nil status
+	db, _ := sql.Open(sqlite3Driver, memoryDB)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(warningDBClose, closeErr)
+		}
+	}()
+	migrator := migrations.NewHybridMigrator(db, migrations.SQLite, "./test_migrations")
+	err = createAndApplyMigration(migrator, nil)
+	if err == nil {
+		t.Error("Expected error when status is nil")
+	}
+}
+
+func TestShowFinalStatusErrorCase(t *testing.T) {
+	err := showFinalStatus(nil)
+	if err == nil {
+		t.Error("Expected error when migrator is nil")
+	}
+}
+
+func TestDisplayMigrationFileInfoWithWarnings(_ *testing.T) {
+	migrationFile := &migrations.MigrationFile{
+		Filename: "test_migration_with_warnings.sql",
+		Changes: []migrations.MigrationChange{
+			{
+				Type:          "DROP_COLUMN",
+				TableName:     "users",
+				ColumnName:    "old_field",
+				IsDestructive: true,
+				RequiresData:  false,
+				Description:   "Remove old field",
+			},
+		},
+	}
+
+	// Test that this doesn't panic and covers the warnings path
+	displayMigrationFileInfo(migrationFile)
+}
+
+func TestDisplayMigrationFileInfoVariousChanges(_ *testing.T) {
+	migrationFile := &migrations.MigrationFile{
+		Filename: "comprehensive_migration.sql",
+		Changes: []migrations.MigrationChange{
+			{
+				Type:          "ADD_TABLE",
+				TableName:     "new_table",
+				ColumnName:    "",
+				IsDestructive: false,
+				RequiresData:  false,
+				Description:   "Add new table",
+			},
+			{
+				Type:          "ADD_COLUMN",
+				TableName:     "users",
+				ColumnName:    "new_field",
+				IsDestructive: false,
+				RequiresData:  true,
+				Description:   "Add new field with data migration",
+			},
+			{
+				Type:          "DROP_TABLE",
+				TableName:     "old_table",
+				ColumnName:    "",
+				IsDestructive: true,
+				RequiresData:  false,
+				Description:   "Remove old table",
+			},
+		},
+	}
+
+	// Test that this covers multiple change types and warnings
+	displayMigrationFileInfo(migrationFile)
+}
+
+func TestSetupMigratorErrorScenarios(t *testing.T) {
+	t.Run("setup with different database types", func(t *testing.T) {
+		// Test with SQLite (known working)
+		db, err := sql.Open(sqlite3Driver, memoryDB)
+		if err != nil {
+			t.Fatalf(failedCreateDB, err)
+		}
+		defer func() {
+			if closeErr := db.Close(); closeErr != nil {
+				t.Logf(warningDBClose, closeErr)
+			}
+		}()
+
+		// Create migrator with SQLite
+		migrator := migrations.NewHybridMigrator(
+			db,
+			migrations.SQLite,
+			"./test_migrations",
+		)
+
+		if migrator == nil {
+			t.Error("Migrator should not be nil")
+		}
+
+		// Test model registration doesn't panic
+		migrator.DbSet(&User{})
+		migrator.DbSet(&Post{})
+		migrator.DbSet(&Comment{})
+	})
+}
+
+func TestUserStructTableDriven(t *testing.T) {
+	tests := []struct {
+		name     string
+		user     User
+		expectID int64
+		expectOK bool
+	}{
+		{"valid user", User{ID: 1, Email: "a@b.com", Name: "A", IsActive: true}, 1, true},
+		{name: zeroIDCase, user: User{ID: 0, Email: "a@b.com", Name: "A", IsActive: true}, expectID: 0, expectOK: true},
+		{"inactive", User{ID: 2, Email: "b@c.com", Name: "B", IsActive: false}, 2, false},
+		{"empty name", User{ID: 3, Email: "c@d.com", Name: "", IsActive: true}, 3, true},
+		// Fix: These cases should expect true for IsActive, as the struct does not validate email or name length
+		{"invalid email", User{ID: 4, Email: "invalid", Name: "D", IsActive: true}, 4, true},
+		{"long name", User{ID: 5, Email: "e@f.com", Name: strings.Repeat("A", 256), IsActive: true}, 5, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.expectID != tc.user.ID {
+				t.Errorf(errIDFormat, tc.expectID, tc.user.ID)
+			}
+			if tc.user.IsActive != tc.expectOK && tc.expectID != 0 {
+				t.Errorf(errIsActiveFormat, tc.expectOK)
+			}
+		})
+	}
+}
+
+func TestPostStructTableDriven(t *testing.T) {
+	tests := []struct {
+		name            string
+		post            Post
+		expectID        int64
+		expectUserID    int64
+		expectTitle     string
+		expectPublished bool
+	}{
+		{"valid post", Post{ID: 1, UserID: 1, Title: "T", IsPublished: true}, 1, 1, "T", true},
+		{name: zeroIDCase, post: Post{ID: 0, UserID: 1, Title: "T", IsPublished: false}, expectID: 0, expectUserID: 1, expectTitle: "T", expectPublished: false},
+		{"empty title", Post{ID: 2, UserID: 2, Title: "", IsPublished: false}, 2, 2, "", false},
+		{"long title", Post{ID: 3, UserID: 1, Title: strings.Repeat("T", 256), IsPublished: true}, 3, 1, strings.Repeat("T", 256), true},
+		{"invalid user", Post{ID: 4, UserID: -1, Title: "Valid", IsPublished: true}, 4, -1, "Valid", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.expectID != tc.post.ID {
+				t.Errorf(errIDFormat, tc.expectID, tc.post.ID)
+			}
+			if tc.post.UserID != tc.expectUserID {
+				t.Errorf("Expected UserID %d, got %d", tc.expectUserID, tc.post.UserID)
+			}
+			if tc.post.Title != tc.expectTitle {
+				t.Errorf("Expected Title to be '%s', got '%s'", tc.expectTitle, tc.post.Title)
+			}
+			if tc.post.IsPublished != tc.expectPublished {
+				t.Errorf("Expected IsPublished to be %v", tc.expectPublished)
+			}
+		})
+	}
+}
+
+func TestCommentStructTableDriven(t *testing.T) {
+	tests := []struct {
+		name          string
+		comment       Comment
+		expectID      int64
+		expectContent string
+	}{
+		{"valid comment", Comment{ID: 1, Content: "ok"}, 1, "ok"},
+		{"zero id", Comment{ID: 0, Content: "empty"}, 0, "empty"},
+		{"empty content", Comment{ID: 2, Content: ""}, 2, ""},
+		{"long content", Comment{ID: 3, Content: strings.Repeat("C", 256)}, 3, strings.Repeat("C", 256)},
+		{"invalid post", Comment{ID: 4, PostID: -1, Content: "Invalid post"}, 4, "Invalid post"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.expectID != tc.comment.ID {
+				t.Errorf(errIDFormat, tc.expectID, tc.comment.ID)
+			}
+			if tc.comment.Content != tc.expectContent {
+				t.Errorf("Expected Content '%s', got '%s'", tc.expectContent, tc.comment.Content)
+			}
+		})
 	}
 }

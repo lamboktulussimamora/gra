@@ -78,6 +78,10 @@ func setupMigrator(db *sql.DB) *migrations.HybridMigrator {
 
 // displayMigrationStatus shows the current migration status information.
 func displayMigrationStatus(status *migrations.MigrationStatus) {
+	if status == nil {
+		fmt.Println("   [ERROR] Migration status is nil")
+		return
+	}
 	fmt.Printf("   Applied migrations: %d\n", len(status.AppliedMigrations))
 	fmt.Printf("   Pending migrations: %d\n", len(status.PendingMigrations))
 	fmt.Printf("   Has pending changes: %t\n", status.HasPendingChanges)
@@ -90,6 +94,10 @@ func displayMigrationStatus(status *migrations.MigrationStatus) {
 
 // displayMigrationFileInfo shows information about a created migration file.
 func displayMigrationFileInfo(migrationFile *migrations.MigrationFile) {
+	if migrationFile == nil {
+		fmt.Println("   [ERROR] Migration file is nil")
+		return
+	}
 	fmt.Printf("   ✓ Migration created: %s\n", migrationFile.Filename)
 	fmt.Printf("   Has destructive changes: %t\n", migrationFile.HasDestructiveChanges())
 	fmt.Printf("   Changes count: %d\n", len(migrationFile.Changes))
@@ -105,6 +113,12 @@ func displayMigrationFileInfo(migrationFile *migrations.MigrationFile) {
 
 // createAndApplyMigration creates a new migration and applies it if needed.
 func createAndApplyMigration(migrator *migrations.HybridMigrator, status *migrations.MigrationStatus) error {
+	if migrator == nil {
+		return fmt.Errorf("migrator is nil")
+	}
+	if status == nil {
+		return fmt.Errorf("migration status is nil")
+	}
 	if !status.HasPendingChanges {
 		fmt.Println("3. No changes detected, skipping migration creation")
 		return nil
@@ -141,6 +155,9 @@ func createAndApplyMigration(migrator *migrations.HybridMigrator, status *migrat
 
 // showFinalStatus displays the final migration status after all operations.
 func showFinalStatus(migrator *migrations.HybridMigrator) error {
+	if migrator == nil {
+		return fmt.Errorf("migrator is nil")
+	}
 	fmt.Println("5. Final migration status...")
 	finalStatus, err := migrator.GetMigrationStatus()
 	if err != nil {
