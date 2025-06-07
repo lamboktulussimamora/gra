@@ -215,7 +215,7 @@ func TestTableConstants(t *testing.T) {
 
 func TestMainFunctionWithFlags(t *testing.T) {
 	// Test main function with different flag combinations
-	t.Run("no connection string", func(t *testing.T) {
+	t.Run("no connection string", func(_ *testing.T) {
 		// Reset flags
 		*conn = ""
 		*up = false
@@ -226,7 +226,7 @@ func TestMainFunctionWithFlags(t *testing.T) {
 		// If we reach here, main() executed successfully without crashing
 	})
 
-	t.Run("with connection string but no up flag", func(t *testing.T) {
+	t.Run("with connection string but no up flag", func(_ *testing.T) {
 		// Set connection string but don't set up flag
 		*conn = testValidConnection
 		*up = false
@@ -295,7 +295,7 @@ func testPostgresConnectionWithSSL(t *testing.T) {
 }
 
 func testEmptyConnection(t *testing.T) {
-	t.Run("empty connection string", func(t *testing.T) {
+	t.Run("empty connection string", func(_ *testing.T) {
 		conn := ""
 		if conn == "" {
 			// Empty connection should be handled in main()
@@ -500,7 +500,7 @@ func verifyMigrationWorkflow(t *testing.T, db *sql.DB) {
 }
 
 func TestMainFunctionWithUpFlag(t *testing.T) {
-	t.Run("main with up flag and valid connection", func(t *testing.T) {
+	t.Run("main with up flag and valid connection", func(_ *testing.T) {
 		// Test the main function with up flag set to true
 		// This tests the migration execution path
 		originalConn := *conn
@@ -520,7 +520,7 @@ func TestMainFunctionWithUpFlag(t *testing.T) {
 }
 
 func TestDatabaseErrorHandling(t *testing.T) {
-	t.Run("database connection error handling", func(t *testing.T) {
+	t.Run("database connection error handling", func(_ *testing.T) {
 		// Test error handling when database connection fails
 		originalConn := *conn
 		originalUp := *up
@@ -552,12 +552,8 @@ func TestFlagVariableInitialization(t *testing.T) {
 		connValue := *conn
 
 		// Values should be readable (testing dereferencing)
-		if upValue || !upValue {
-			// This tests that the boolean value is accessible
-		}
-		if len(connValue) >= 0 {
-			// This tests that the string value is accessible
-		}
+		_ = upValue   // Test that boolean value is accessible
+		_ = connValue // Test that string value is accessible
 	})
 }
 
@@ -603,7 +599,7 @@ func TestSQLStatements(t *testing.T) {
 }
 
 func TestMainUsageMessage(t *testing.T) {
-	t.Run("main function usage message", func(t *testing.T) {
+	t.Run("main function usage message", func(_ *testing.T) {
 		// Test that main() prints usage when no connection string is provided
 		originalConn := *conn
 
@@ -618,7 +614,7 @@ func TestMainUsageMessage(t *testing.T) {
 }
 
 func TestMainWithValidConnectionNoUp(t *testing.T) {
-	t.Run("main with valid connection but no up flag", func(t *testing.T) {
+	t.Run("main with valid connection but no up flag", func(_ *testing.T) {
 		// Test main() with a connection string but up=false
 		originalConn := *conn
 		originalUp := *up

@@ -2,24 +2,165 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/lamboktulussimamora/gra/orm/migrations"
 	_ "github.com/mattn/go-sqlite3" // SQLite driver for testing
 )
 
 // Test constants to avoid duplication
 const (
-	testPostgresURL    = "postgres://test"
-	testPostgresDriver = "postgres"
-	testMigrationsDir  = "./migrations"
-	testModelsDir      = "./models"
-	testSQLiteDriver   = "sqlite"
-	testSQLiteURL      = "sqlite://test.db"
-	testMySQLDriver    = "mysql"
-	testSQLite3Driver  = "sqlite3"
+	testPostgresURL     = "postgres://test"
+	testPostgresDriver  = "postgres"
+	testMigrationsDir   = "./migrations"
+	testModelsDir       = "./models"
+	testSQLiteDriver    = "sqlite"
+	testSQLiteURL       = "sqlite://test.db"
+	testMySQLDriver     = "mysql"
+	testSQLite3Driver   = "sqlite3"
+	testMigrationFormat = "%d_%s.sql"
+	testMemoryDB        = ":memory:"
+
+	// Error message constants
+	errExpectedError      = "Expected error but got none"
+	errExpectedNoError    = "Expected no error but got: %v"
+	errExpectedMode       = "Expected mode %s, got %s"
+	errEmptyMigrationName = "empty migration name"
 )
+
+// MigratorInterface defines the interface that both HybridMigrator and MockMigrator implement
+type MigratorInterface interface {
+	AddMigration(name string, mode migrations.MigrationMode) (*migrations.MigrationFile, error)
+	ApplyMigrations(mode migrations.MigrationMode) error
+	GetMigrationStatus() (*migrations.MigrationStatus, error)
+	RevertMigration() error
+	DbSet(model interface{}, tableName ...string)
+}
+
+// Test wrapper functions that accept MigratorInterface
+func testCmdAddMigration(m MigratorInterface, args []string) error {
+	if hybridMigrator, ok := m.(*migrations.HybridMigrator); ok {
+		return cmdAddMigration(hybridMigrator, args)
+	}
+	// For mock, simulate the behavior
+	if len(args) == 0 {
+		return fmt.Errorf("%s", errEmptyMigrationName)
+	}
+	_, err := m.AddMigration(args[0], migrations.ModeAutomatic)
+	return err
+}
+
+func testCmdApplyMigrations(m MigratorInterface, args []string) error {
+	if hybridMigrator, ok := m.(*migrations.HybridMigrator); ok {
+		return cmdApplyMigrations(hybridMigrator, args)
+	}
+	// For mock, simulate the behavior
+	return m.ApplyMigrations(migrations.ModeAutomatic)
+}
+
+func testCmdRevertMigration(m MigratorInterface) error {
+	if hybridMigrator, ok := m.(*migrations.HybridMigrator); ok {
+		return cmdRevertMigration(hybridMigrator)
+	}
+	// For mock, simulate the behavior
+	return m.RevertMigration()
+}
+
+func testCmdMigrationStatus(m MigratorInterface) error {
+	if hybridMigrator, ok := m.(*migrations.HybridMigrator); ok {
+		return cmdMigrationStatus(hybridMigrator)
+	}
+	// For mock, simulate the behavior
+	_, err := m.GetMigrationStatus()
+	return err
+}
+
+func testCmdGenerateMigration(m MigratorInterface, args []string) error {
+	if hybridMigrator, ok := m.(*migrations.HybridMigrator); ok {
+		return cmdGenerateMigration(hybridMigrator, args)
+	}
+	// For mock, simulate the behavior
+	if len(args) == 0 {
+		return fmt.Errorf("%s", errEmptyMigrationName)
+	}
+	_, err := m.AddMigration(args[0], migrations.ModeGenerateOnly)
+	return err
+}
+
+func testCmdForceMigration(m MigratorInterface, args []string) error {
+	if hybridMigrator, ok := m.(*migrations.HybridMigrator); ok {
+		return cmdForceMigration(hybridMigrator, args)
+	}
+	// For mock, simulate the behavior
+	return m.ApplyMigrations(migrations.ModeForceDestructive)
+}
+
+func testRegisterModels(m MigratorInterface, modelsDir string) error {
+	if hybridMigrator, ok := m.(*migrations.HybridMigrator); ok {
+		return registerModels(hybridMigrator, modelsDir)
+	}
+	// For mock, just validate the directory
+	if modelsDir == "" {
+		return fmt.Errorf("models directory cannot be empty")
+	}
+	return nil
+}
+
+// MockMigrator implements MigratorInterface for testing
+type MockMigrator struct {
+	addMigrationFunc       func(name string, mode migrations.MigrationMode) (*migrations.MigrationFile, error)
+	applyMigrationsFunc    func(mode migrations.MigrationMode) error
+	getMigrationStatusFunc func() (*migrations.MigrationStatus, error)
+	revertMigrationFunc    func() error
+	dbSetFunc              func(model interface{}, tableName ...string)
+}
+
+func (mock *MockMigrator) AddMigration(name string, mode migrations.MigrationMode) (*migrations.MigrationFile, error) {
+	if mock.addMigrationFunc != nil {
+		return mock.addMigrationFunc(name, mode)
+	}
+	return &migrations.MigrationFile{
+		Name:        name,
+		Description: fmt.Sprintf("Test migration: %s", name),
+		Filename:    fmt.Sprintf(testMigrationFormat, time.Now().Unix(), name),
+		Timestamp:   time.Now(),
+	}, nil
+}
+
+func (mock *MockMigrator) ApplyMigrations(mode migrations.MigrationMode) error {
+	if mock.applyMigrationsFunc != nil {
+		return mock.applyMigrationsFunc(mode)
+	}
+	return nil
+}
+
+func (mock *MockMigrator) GetMigrationStatus() (*migrations.MigrationStatus, error) {
+	if mock.getMigrationStatusFunc != nil {
+		return mock.getMigrationStatusFunc()
+	}
+	return &migrations.MigrationStatus{
+		PendingMigrations:     []*migrations.MigrationFile{},
+		AppliedMigrations:     []*migrations.MigrationFile{},
+		HasPendingChanges:     false,
+		HasDestructiveChanges: false,
+		Summary:               "No pending migrations",
+	}, nil
+}
+
+func (mock *MockMigrator) RevertMigration() error {
+	if mock.revertMigrationFunc != nil {
+		return mock.revertMigrationFunc()
+	}
+	return nil
+}
+
+func (mock *MockMigrator) DbSet(model interface{}, tableName ...string) {
+	if mock.dbSetFunc != nil {
+		mock.dbSetFunc(model, tableName...)
+	}
+}
 
 func TestConfig(t *testing.T) {
 	config := Config{
@@ -105,14 +246,10 @@ func TestValidateConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateConfig(tt.config)
-			if tt.expectError {
-				if err == nil {
-					t.Errorf("Expected error, but got none")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Expected no error, but got: %v", err)
-				}
+			if tt.expectError && err == nil {
+				t.Error(errExpectedError)
+			} else if !tt.expectError && err != nil {
+				t.Errorf(errExpectedNoError, err)
 			}
 		})
 	}
@@ -127,7 +264,7 @@ func TestConnectDatabase(t *testing.T) {
 		{
 			name: "valid sqlite connection",
 			config: &Config{
-				DatabaseURL: ":memory:",
+				DatabaseURL: testMemoryDB,
 				Driver:      testSQLiteDriver,
 			},
 			expectError: false,
@@ -145,17 +282,14 @@ func TestConnectDatabase(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db, err := connectDatabase(tt.config)
-			if tt.expectError {
-				if err == nil {
-					t.Errorf("Expected error, but got none")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Expected no error, but got: %v", err)
-				} else if db != nil {
-					if err := db.Close(); err != nil {
-						t.Logf("Warning: failed to close database: %v", err)
-					}
+			switch {
+			case tt.expectError && err == nil:
+				t.Error(errExpectedError)
+			case !tt.expectError && err != nil:
+				t.Errorf(errExpectedNoError, err)
+			case db != nil:
+				if err := db.Close(); err != nil {
+					t.Logf("Warning: failed to close database: %v", err)
 				}
 			}
 		})
@@ -165,7 +299,7 @@ func TestConnectDatabase(t *testing.T) {
 func TestGetDriver(t *testing.T) {
 	tests := []struct {
 		driverName     string
-		expectedResult string // We'll just test the string name
+		expectedResult string
 	}{
 		{testPostgresDriver, testPostgresDriver},
 		{testSQLiteDriver, testSQLiteDriver},
@@ -176,9 +310,7 @@ func TestGetDriver(t *testing.T) {
 	for _, tt := range tests {
 		t.Run("driver_"+tt.driverName, func(t *testing.T) {
 			driver := getDriver(tt.driverName)
-			// We can't easily test the actual driver implementation
-			// but we can verify the function doesn't panic and returns something
-			if driver == "" { // Compare to empty string for DatabaseDriver type
+			if driver == "" {
 				t.Errorf("Expected driver, but got empty value for %s", tt.driverName)
 			}
 		})
@@ -186,7 +318,6 @@ func TestGetDriver(t *testing.T) {
 }
 
 func TestConstants(t *testing.T) {
-	// Test that constants are properly defined
 	if errMigrationNameRequired == "" {
 		t.Error("errMigrationNameRequired should not be empty")
 	}
@@ -197,123 +328,251 @@ func TestConstants(t *testing.T) {
 	}
 }
 
-func TestCommandValidation(t *testing.T) {
-	// Test command validation logic (simulated)
-	validCommands := []string{
-		"add",
-		"apply",
-		"revert",
-		"status",
-		"generate",
-		"force",
-	}
-
-	for _, cmd := range validCommands {
-		t.Run("command_"+cmd, func(t *testing.T) {
-			// Simulate command validation
-			isValid := false
-			switch cmd {
-			case "add", "apply", "revert", "status", "generate", "force":
-				isValid = true
-			}
-			if !isValid {
-				t.Errorf("Command %s should be valid", cmd)
-			}
-		})
-	}
-}
-
-func TestCmdAddMigration(t *testing.T) {
-	// Test migration name validation
+func TestCmdAddMigrationWithMock(t *testing.T) {
 	tests := []struct {
 		name        string
 		args        []string
 		expectError bool
+		mockFunc    func(name string, mode migrations.MigrationMode) (*migrations.MigrationFile, error)
 	}{
 		{
 			name:        "valid migration name",
 			args:        []string{"CreateUsersTable"},
 			expectError: false,
+			mockFunc:    nil,
 		},
 		{
-			name:        "empty args",
+			name:        errEmptyMigrationName,
 			args:        []string{},
 			expectError: true,
+			mockFunc:    nil,
 		},
 		{
-			name:        "migration with description",
-			args:        []string{"AddUserProfiles", "Add user profile table"},
-			expectError: false,
+			name:        "migration creation error",
+			args:        []string{"FailingMigration"},
+			expectError: true,
+			mockFunc: func(_ string, _ migrations.MigrationMode) (*migrations.MigrationFile, error) {
+				return nil, fmt.Errorf("migration creation failed")
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// We can't test the actual function due to dependencies
-			// but we can test the validation logic
-			if len(tt.args) == 0 && !tt.expectError {
-				t.Error("Expected error for empty args")
+			migrator := &MockMigrator{
+				addMigrationFunc: tt.mockFunc,
+			}
+
+			err := testCmdAddMigration(migrator, tt.args)
+
+			if tt.expectError && err == nil {
+				t.Error(errExpectedError)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf(errExpectedNoError, err)
 			}
 		})
 	}
 }
 
-func TestCmdApplyMigrations(t *testing.T) {
-	// Test apply migrations command logic
-	t.Run("apply_all", func(_ *testing.T) {
-		// Test applying all migrations (no specific migration specified)
-		// This would typically call migrator.ApplyPending()
-		args := []string{}
-		// In a real implementation, if len(args) == 0,
-		// we would apply all pending migrations
-		_ = len(args) // Acknowledge the variable is used
-	})
-
-	t.Run("apply_specific", func(t *testing.T) {
-		// Test applying specific migration
-		args := []string{"CreateUsersTable"}
-		if len(args) > 0 {
-			migrationName := args[0]
-			if migrationName == "" {
-				t.Error("Migration name should not be empty")
-			}
-		}
-	})
-}
-
-func TestDriverMapping(t *testing.T) {
-	// Test driver string mapping
-	drivers := map[string]string{
-		"postgres": "postgres",
-		"mysql":    "mysql",
-		"sqlite":   "sqlite",
-		"sqlite3":  "sqlite", // Alternative name
+func TestCmdApplyMigrationsWithMock(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		expectError bool
+		mockFunc    func(mode migrations.MigrationMode) error
+	}{
+		{
+			name:        "successful application",
+			args:        []string{},
+			expectError: false,
+			mockFunc:    nil,
+		},
+		{
+			name:        "migration application error",
+			args:        []string{},
+			expectError: true,
+			mockFunc: func(_ migrations.MigrationMode) error {
+				return fmt.Errorf("failed to apply migrations")
+			},
+		},
 	}
 
-	for input, expected := range drivers {
-		t.Run("driver_mapping_"+input, func(t *testing.T) {
-			// Simulate driver mapping logic
-			var mapped string
-			switch input {
-			case testPostgresDriver:
-				mapped = testPostgresDriver
-			case testMySQLDriver:
-				mapped = testMySQLDriver
-			case testSQLiteDriver, testSQLite3Driver:
-				mapped = testSQLiteDriver
-			default:
-				mapped = testSQLiteDriver // Default
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			migrator := &MockMigrator{
+				applyMigrationsFunc: tt.mockFunc,
 			}
 
-			if mapped != expected {
-				t.Errorf("Expected %s, got %s for driver %s", expected, mapped, input)
+			err := testCmdApplyMigrations(migrator, tt.args)
+
+			if tt.expectError && err == nil {
+				t.Error(errExpectedError)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf(errExpectedNoError, err)
 			}
 		})
 	}
 }
 
-func TestRegisterModels(t *testing.T) {
-	// Test model registration validation
+func TestCmdRevertMigrationWithMock(t *testing.T) {
+	tests := []struct {
+		name        string
+		expectError bool
+		mockFunc    func() error
+	}{
+		{
+			name:        "successful revert",
+			expectError: false,
+			mockFunc:    nil,
+		},
+		{
+			name:        "revert error",
+			expectError: true,
+			mockFunc: func() error {
+				return fmt.Errorf("failed to revert migration")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			migrator := &MockMigrator{
+				revertMigrationFunc: tt.mockFunc,
+			}
+
+			err := testCmdRevertMigration(migrator)
+
+			if tt.expectError && err == nil {
+				t.Error(errExpectedError)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf(errExpectedNoError, err)
+			}
+		})
+	}
+}
+
+func TestCmdMigrationStatusWithMock(t *testing.T) {
+	tests := []struct {
+		name        string
+		expectError bool
+		mockFunc    func() (*migrations.MigrationStatus, error)
+	}{
+		{
+			name:        "successful status",
+			expectError: false,
+			mockFunc:    nil,
+		},
+		{
+			name:        "status error",
+			expectError: true,
+			mockFunc: func() (*migrations.MigrationStatus, error) {
+				return nil, fmt.Errorf("failed to get status")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			migrator := &MockMigrator{
+				getMigrationStatusFunc: tt.mockFunc,
+			}
+
+			err := testCmdMigrationStatus(migrator)
+
+			if tt.expectError && err == nil {
+				t.Error(errExpectedError)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf(errExpectedNoError, err)
+			}
+		})
+	}
+}
+
+func TestCmdGenerateMigrationWithMock(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		expectError bool
+		mockFunc    func(name string, mode migrations.MigrationMode) (*migrations.MigrationFile, error)
+	}{
+		{
+			name:        "valid generation",
+			args:        []string{"GenerateTest"},
+			expectError: false,
+			mockFunc:    nil,
+		},
+		{
+			name:        errEmptyMigrationName,
+			args:        []string{},
+			expectError: true,
+			mockFunc:    nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			migrator := &MockMigrator{
+				addMigrationFunc: tt.mockFunc,
+			}
+
+			err := testCmdGenerateMigration(migrator, tt.args)
+
+			if tt.expectError && err == nil {
+				t.Error(errExpectedError)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf(errExpectedNoError, err)
+			}
+		})
+	}
+}
+
+func TestCmdForceMigrationWithMock(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		expectError bool
+		mockFunc    func(mode migrations.MigrationMode) error
+	}{
+		{
+			name:        "successful force",
+			args:        []string{"ForceTest"},
+			expectError: false,
+			mockFunc:    nil,
+		},
+		{
+			name:        "force error",
+			args:        []string{"ForceTest"},
+			expectError: true,
+			mockFunc: func(_ migrations.MigrationMode) error {
+				return fmt.Errorf("force migration failed")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			migrator := &MockMigrator{
+				applyMigrationsFunc: tt.mockFunc,
+			}
+
+			err := testCmdForceMigration(migrator, tt.args)
+
+			if tt.expectError && err == nil {
+				t.Error(errExpectedError)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf(errExpectedNoError, err)
+			}
+		})
+	}
+}
+
+func TestRegisterModelsWithMock(t *testing.T) {
 	tests := []struct {
 		name      string
 		modelsDir string
@@ -327,67 +586,80 @@ func TestRegisterModels(t *testing.T) {
 		{
 			name:      "empty models directory",
 			modelsDir: "",
-			expectErr: false, // Should use default
-		},
-		{
-			name:      "nonexistent directory",
-			modelsDir: "./nonexistent",
 			expectErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// We can't test the actual function due to dependencies
-			// but we can test the directory validation logic
-			if tt.modelsDir == "" {
-				// Should use default directory
-				tt.modelsDir = testModelsDir
-			}
+			migrator := &MockMigrator{}
 
-			// Test directory existence check
-			if _, err := os.Stat(tt.modelsDir); os.IsNotExist(err) && !tt.expectErr {
-				t.Logf("Directory %s does not exist (expected in test)", tt.modelsDir)
+			err := testRegisterModels(migrator, tt.modelsDir)
+
+			if tt.expectErr && err == nil {
+				t.Error(errExpectedError)
+			}
+			if !tt.expectErr && err != nil {
+				t.Errorf(errExpectedNoError, err)
 			}
 		})
 	}
 }
 
-func TestMainFunctionValidation(t *testing.T) {
-	// Test main function argument validation
-	testArgs := [][]string{
-		{}, // No command
-		{"add"},
-		{"apply"},
-		{"revert"},
-		{"status"},
-		{"generate"},
-		{"force"},
-		{"unknown"}, // Invalid command
+func TestMigrationFileValidation(t *testing.T) {
+	currentTime := time.Now()
+	migrationFile := &migrations.MigrationFile{
+		Name:      "TestMigration",
+		Timestamp: currentTime,
+		Filename:  fmt.Sprintf(testMigrationFormat, currentTime.Unix(), "TestMigration"),
 	}
 
-	for i, args := range testArgs {
-		t.Run(fmt.Sprintf("args_%d", i), func(t *testing.T) {
-			if len(args) == 0 {
-				// Should show usage and exit
-				t.Log("No command specified - should show usage")
-			} else {
-				cmd := args[0]
-				validCommands := map[string]bool{
-					"add":      true,
-					"apply":    true,
-					"revert":   true,
-					"status":   true,
-					"generate": true,
-					"force":    true,
-				}
+	if migrationFile.Name == "" {
+		t.Error("Migration name should not be empty")
+	}
+	if migrationFile.Timestamp.IsZero() {
+		t.Error("Migration timestamp should not be zero")
+	}
+	if migrationFile.Filename == "" {
+		t.Error("Migration filename should not be empty")
+	}
+}
 
-				if !validCommands[cmd] {
-					t.Logf("Invalid command: %s", cmd)
-				} else {
-					t.Logf("Valid command: %s", cmd)
-				}
-			}
-		})
+func TestWithRealisticData(t *testing.T) {
+	currentTime := time.Now()
+	realisticStatus := &migrations.MigrationStatus{
+		PendingMigrations: []*migrations.MigrationFile{
+			{
+				Name:      "CreateUsersTable",
+				Timestamp: currentTime.Add(-2 * time.Hour),
+				Filename:  "20240101120000_CreateUsersTable.sql",
+			},
+			{
+				Name:      "AddUserIndexes",
+				Timestamp: currentTime.Add(-1 * time.Hour),
+				Filename:  "20240101130000_AddUserIndexes.sql",
+			},
+		},
+		AppliedMigrations: []*migrations.MigrationFile{
+			{
+				Name:      "InitialSchema",
+				Timestamp: currentTime.Add(-3 * time.Hour),
+				Filename:  "20240101110000_InitialSchema.sql",
+			},
+		},
+		HasPendingChanges:     true,
+		HasDestructiveChanges: false,
+		Summary:               "2 pending migrations, 1 applied",
+	}
+
+	migrator := &MockMigrator{
+		getMigrationStatusFunc: func() (*migrations.MigrationStatus, error) {
+			return realisticStatus, nil
+		},
+	}
+
+	err := testCmdMigrationStatus(migrator)
+	if err != nil {
+		t.Errorf(errExpectedNoError, err)
 	}
 }

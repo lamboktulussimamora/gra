@@ -797,8 +797,16 @@ func TestSaveMigrationToFile(t *testing.T) {
 		t.Errorf("Migration file was not created: %s", expectedFile)
 	}
 
-	// Read file content and verify
-	content, err := os.ReadFile(expectedFile)
+	// Read file content and verify - validate file path for security
+	if !strings.HasSuffix(expectedFile, ".sql") || strings.Contains(expectedFile, "..") {
+		t.Fatalf("Invalid file path: %s", expectedFile)
+	}
+	// Use filepath.Clean to sanitize the path and ensure it's within tempDir
+	cleanPath := filepath.Clean(expectedFile)
+	if !strings.HasPrefix(cleanPath, filepath.Clean(tempDir)) {
+		t.Fatalf("File path outside expected directory: %s", cleanPath)
+	}
+	content, err := os.ReadFile(cleanPath)
 	if err != nil {
 		t.Fatalf("Failed to read migration file: %v", err)
 	}
@@ -842,7 +850,7 @@ func TestLoadMigrationsFromFilesystem(t *testing.T) {
 
 	t.Run("valid migration files", func(t *testing.T) {
 		migrationsDir := filepath.Join(tempDir, "migrations")
-		err := os.MkdirAll(migrationsDir, 0755)
+		err := os.MkdirAll(migrationsDir, 0750)
 		if err != nil {
 			t.Fatalf("Failed to create migrations directory: %v", err)
 		}
@@ -863,18 +871,18 @@ CREATE INDEX idx_users_id ON users(id);
 -- DOWN Migration
 -- DROP INDEX idx_users_id;`
 
-		err = os.WriteFile(filepath.Join(migrationsDir, "001_CreateUsers.sql"), []byte(migration1), 0644)
+		err = os.WriteFile(filepath.Join(migrationsDir, "001_CreateUsers.sql"), []byte(migration1), 0600)
 		if err != nil {
 			t.Fatalf("Failed to create migration file: %v", err)
 		}
 
-		err = os.WriteFile(filepath.Join(migrationsDir, "002_AddIndex.sql"), []byte(migration2), 0644)
+		err = os.WriteFile(filepath.Join(migrationsDir, "002_AddIndex.sql"), []byte(migration2), 0600)
 		if err != nil {
 			t.Fatalf("Failed to create migration file: %v", err)
 		}
 
 		// Create file with invalid name (should be skipped)
-		err = os.WriteFile(filepath.Join(migrationsDir, "invalid_migration.sql"), []byte("-- Invalid"), 0644)
+		err = os.WriteFile(filepath.Join(migrationsDir, "invalid_migration.sql"), []byte("-- Invalid"), 0600)
 		if err != nil {
 			t.Fatalf("Failed to create invalid migration file: %v", err)
 		}
@@ -895,13 +903,13 @@ CREATE INDEX idx_users_id ON users(id);
 
 	t.Run("invalid migration file content", func(t *testing.T) {
 		migrationsDir := filepath.Join(tempDir, "invalid_migrations")
-		err := os.MkdirAll(migrationsDir, 0755)
+		err := os.MkdirAll(migrationsDir, 0750)
 		if err != nil {
 			t.Fatalf("Failed to create migrations directory: %v", err)
 		}
 
 		// Create migration file with invalid version
-		err = os.WriteFile(filepath.Join(migrationsDir, "abc_InvalidVersion.sql"), []byte("-- Invalid version"), 0644)
+		err = os.WriteFile(filepath.Join(migrationsDir, "abc_InvalidVersion.sql"), []byte("-- Invalid version"), 0600)
 		if err != nil {
 			t.Fatalf("Failed to create invalid migration file: %v", err)
 		}
@@ -999,8 +1007,11 @@ func TestAddMigrationFunction(t *testing.T) {
 	})
 }
 
-func TestUpdateDatabaseFunction(t *testing.T) {
-	t.Run("update database without target", func(t *testing.T) {
+// Helper function to test migration operations with optional target
+func testMigrationOperation(t *testing.T, operation func(*migrations.EFMigrationManager, []string, CLIConfig), operationName string) {
+	t.Helper()
+	
+	t.Run(operationName+" without target", func(t *testing.T) {
 		db, err := sql.Open("sqlite3", testMemoryDB)
 		if err != nil {
 			t.Fatalf("Failed to open test database: %v", err)
@@ -1011,11 +1022,11 @@ func TestUpdateDatabaseFunction(t *testing.T) {
 		config := CLIConfig{}
 
 		args := []string{}
-		updateDatabase(manager, args, config)
+		operation(manager, args, config)
 		// Should complete without error
 	})
 
-	t.Run("update database with target", func(t *testing.T) {
+	t.Run(operationName+" with target", func(t *testing.T) {
 		db, err := sql.Open("sqlite3", testMemoryDB)
 		if err != nil {
 			t.Fatalf("Failed to open test database: %v", err)
@@ -1026,9 +1037,13 @@ func TestUpdateDatabaseFunction(t *testing.T) {
 		config := CLIConfig{}
 
 		args := []string{"TargetMigration"}
-		updateDatabase(manager, args, config)
+		operation(manager, args, config)
 		// Should complete without error
 	})
+}
+
+func TestUpdateDatabaseFunction(t *testing.T) {
+	testMigrationOperation(t, updateDatabase, "update database")
 }
 
 func TestGetMigrationsFunction(t *testing.T) {
@@ -1098,35 +1113,7 @@ func TestShowStatusFunction(t *testing.T) {
 }
 
 func TestGenerateScriptFunction(t *testing.T) {
-	t.Run("generate script all pending", func(t *testing.T) {
-		db, err := sql.Open("sqlite3", testMemoryDB)
-		if err != nil {
-			t.Fatalf("Failed to open test database: %v", err)
-		}
-		defer func() { _ = db.Close() }()
-
-		manager := createTestMigrationManager(t, db)
-		config := CLIConfig{}
-
-		args := []string{}
-		generateScript(manager, args, config)
-		// Should complete without error
-	})
-
-	t.Run("generate script with target", func(t *testing.T) {
-		db, err := sql.Open("sqlite3", testMemoryDB)
-		if err != nil {
-			t.Fatalf("Failed to open test database: %v", err)
-		}
-		defer func() { _ = db.Close() }()
-
-		manager := createTestMigrationManager(t, db)
-		config := CLIConfig{}
-
-		args := []string{"TargetMigration"}
-		generateScript(manager, args, config)
-		// Should complete without error
-	})
+	testMigrationOperation(t, generateScript, "generate script")
 }
 
 func TestRemoveMigrationFunction(t *testing.T) {
@@ -1455,9 +1442,8 @@ func TestExecuteCommandRouting(t *testing.T) {
 					t.Errorf("Expected output to contain %q, got: %s", tt.expectLog, output)
 				}
 			}
-
 			// For help commands, verify they show usage
-			if tt.command == "help" || tt.command == "-h" || tt.command == "--help" {
+			if tt.command == testHelpCommand || tt.command == "-h" || tt.command == testHelpFlag {
 				if !strings.Contains(output, "GRA Entity Framework Core-like Migration Tool") {
 					t.Errorf("Help command should show usage, got: %s", output)
 				}
@@ -1538,7 +1524,7 @@ DROP TABLE user_profiles;`,
 
 	for _, file := range migrationFiles {
 		filePath := filepath.Join(tempDir, file.filename)
-		if err := os.WriteFile(filePath, []byte(file.content), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte(file.content), 0600); err != nil {
 			t.Fatalf("Failed to create migration file %s: %v", file.filename, err)
 		}
 	}
@@ -1617,7 +1603,7 @@ CREATE TABLE test_table (
 DROP TABLE test_table;`
 
 	filePath := filepath.Join(tempDir, "1_CreateTestTable.sql")
-	if err := os.WriteFile(filePath, []byte(migrationContent), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(migrationContent), 0600); err != nil {
 		t.Fatalf("Failed to create migration file: %v", err)
 	}
 
@@ -1681,12 +1667,12 @@ func captureOutput(f func()) string {
 	f()
 
 	// Close the writer and restore stdout
-	w.Close()
+	_ = w.Close()
 	os.Stdout = originalStdout
 
 	// Get the output
 	output := <-outputChan
-	r.Close()
+	_ = r.Close()
 
 	return output
 }
