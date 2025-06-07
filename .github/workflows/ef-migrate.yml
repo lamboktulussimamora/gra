@@ -1,0 +1,335 @@
+name: EF Migration Tool CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'tools/ef-migrate/**'
+      - 'orm/migrations/**'
+      - '.github/workflows/ef-migrate.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'tools/ef-migrate/**'
+      - 'orm/migrations/**'
+      - '.github/workflows/ef-migrate.yml'
+  release:
+    types: [published]
+
+env:
+  GO_VERSION: '1.24'
+  TOOL_NAME: 'ef-migrate'
+  TOOL_PATH: 'tools/ef-migrate'
+
+jobs:
+  test:
+    name: Test EF Migration Tool
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: test_gra
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        cache-dependency-path: go.sum
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Install dependencies
+      run: |
+        go mod download
+        go mod verify
+
+    - name: Run unit tests
+      working-directory: ${{ env.TOOL_PATH }}
+      run: |
+        go test -v -race -coverprofile=coverage.out ./...
+
+    - name: Generate coverage report
+      working-directory: ${{ env.TOOL_PATH }}
+      run: |
+        go tool cover -html=coverage.out -o coverage.html
+        go tool cover -func=coverage.out
+
+    - name: Upload coverage to codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ${{ env.TOOL_PATH }}/coverage.out
+        flags: ef-migrate
+        name: ef-migrate-coverage
+
+    - name: Upload coverage artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: ${{ env.TOOL_PATH }}/coverage.html
+        retention-days: 30
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: test
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: integration_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Build EF Migration Tool
+      working-directory: ${{ env.TOOL_PATH }}
+      run: |
+        go build -o ef-migrate .
+
+    - name: Test PostgreSQL Integration
+      working-directory: ${{ env.TOOL_PATH }}
+      env:
+        DATABASE_URL: "postgres://postgres:postgres@localhost:5432/integration_test?sslmode=disable"
+      run: |
+        # Test version command
+        ./ef-migrate version
+        
+        # Test help command
+        ./ef-migrate help
+        
+        # Test status command
+        ./ef-migrate status
+        
+        # Test add migration
+        ./ef-migrate add-migration TestMigration "Integration test migration"
+        
+        # Test list migrations
+        ./ef-migrate list
+        
+        # Test update database
+        ./ef-migrate update-database
+        
+        # Test status after update
+        ./ef-migrate status
+
+    - name: Test SQLite Integration
+      working-directory: ${{ env.TOOL_PATH }}
+      run: |
+        # Test with SQLite database
+        ./ef-migrate -connection "./test.db" status
+        ./ef-migrate -connection "./test.db" add-migration SQLiteTest "SQLite integration test"
+        ./ef-migrate -connection "./test.db" update-database
+        ./ef-migrate -connection "./test.db" list
+
+  build:
+    name: Build Multi-Platform Binaries
+    runs-on: ubuntu-latest
+    needs: [test, integration-test]
+    if: github.event_name == 'push' || github.event_name == 'release'
+    
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Build binary
+      working-directory: ${{ env.TOOL_PATH }}
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+        BUILD_TIME: ${{ github.run_id }}
+        GIT_COMMIT: ${{ github.sha }}
+      run: |
+        BINARY_NAME="${{ env.TOOL_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}"
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          BINARY_NAME="${BINARY_NAME}.exe"
+        fi
+        
+        go build \
+          -ldflags "-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" \
+          -o "${BINARY_NAME}" \
+          .
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ env.TOOL_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: ${{ env.TOOL_PATH }}/${{ env.TOOL_NAME }}-*
+        retention-days: 30
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Run Gosec Security Scanner
+      uses: securecodewarrior/github-action-gosec@master
+      with:
+        args: '-fmt sarif -out gosec.sarif ./tools/ef-migrate/...'
+
+    - name: Upload SARIF file
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: gosec.sarif
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build, security-scan]
+    if: github.event_name == 'release'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: ./artifacts
+
+    - name: Create release archive
+      run: |
+        mkdir -p release
+        cd artifacts
+        for dir in */; do
+          cd "$dir"
+          if [[ $dir == *"windows"* ]]; then
+            zip -r "../../release/${dir%/}.zip" *
+          else
+            tar -czf "../../release/${dir%/}.tar.gz" *
+          fi
+          cd ..
+        done
+
+    - name: Upload release assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: release/*
+        draft: false
+        prerelease: ${{ contains(github.ref, 'rc') || contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, integration-test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKER_USERNAME }}/gra-ef-migrate
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: tools/ef-migrate/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  notify:
+    name: Notify on Success
+    runs-on: ubuntu-latest
+    needs: [test, integration-test, build, security-scan]
+    if: always() && github.event_name == 'push'
+
+    steps:
+    - name: Notify success
+      if: ${{ needs.test.result == 'success' && needs.integration-test.result == 'success' && needs.build.result == 'success' && needs.security-scan.result == 'success' }}
+      run: |
+        echo "✅ EF Migration Tool CI/CD completed successfully!"
+        echo "🚀 All tests passed, security scan clean, and builds successful"
+
+    - name: Notify failure
+      if: ${{ needs.test.result == 'failure' || needs.integration-test.result == 'failure' || needs.build.result == 'failure' || needs.security-scan.result == 'failure' }}
+      run: |
+        echo "❌ EF Migration Tool CI/CD failed!"
+        echo "🔍 Check the logs for details"
+        exit 1
