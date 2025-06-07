@@ -19,6 +19,13 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// Build information (set by build flags)
+var (
+	Version   = "dev"
+	BuildTime = "unknown"
+	GitCommit = "unknown"
+)
+
 // Constants for error messages and formatting
 const (
 	ErrorFailedToGetHistoryFmt = "❌ Failed to get migration history: %v"
@@ -93,7 +100,10 @@ func setupDatabaseConnection(config CLIConfig) (*sql.DB, error) {
 	switch {
 	case strings.HasPrefix(config.ConnectionString, "postgres://"), strings.Contains(config.ConnectionString, "user="):
 		driverName = "postgres"
-	case strings.HasSuffix(config.ConnectionString, ".db"), strings.Contains(config.ConnectionString, "sqlite"):
+	case strings.HasSuffix(config.ConnectionString, ".db"),
+		strings.Contains(config.ConnectionString, "sqlite"),
+		strings.HasPrefix(config.ConnectionString, "file:"),
+		config.ConnectionString == ":memory:":
 		driverName = "sqlite3"
 	default:
 		driverName = "postgres" // Default to postgres for backward compatibility
@@ -149,6 +159,8 @@ func executeCommand(manager *migrations.EFMigrationManager, command string, args
 		generateScript(manager, args, config)
 	case "remove-migration", "remove":
 		removeMigration(manager, args, config)
+	case "version", "-v", "--version":
+		printVersion()
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -158,12 +170,29 @@ func executeCommand(manager *migrations.EFMigrationManager, command string, args
 }
 
 func main() {
+	// Handle version flags before parsing other flags
+	for _, arg := range os.Args[1:] {
+		if arg == "-v" || arg == "--version" {
+			printVersion()
+			os.Exit(0)
+		}
+		if arg == "-h" || arg == "--help" {
+			printUsage()
+			os.Exit(0)
+		}
+	}
+
 	config, command, commandArgs := parseCommandLineArgs()
 
-	// Handle help command before database setup
-	if command == "help" || command == "-h" || command == "--help" {
+	// Handle help and version commands
+	if command == "help" {
 		printUsage()
-		os.Exit(1)
+		os.Exit(0)
+	}
+
+	if command == "version" {
+		printVersion()
+		os.Exit(0)
 	}
 
 	// Setup database connection
@@ -506,8 +535,18 @@ func sanitizeConnectionString(connectionString string) string {
 	return re.ReplaceAllString(connectionString, "${1}*****${3}")
 }
 
+// printVersion displays version information
+func printVersion() {
+	fmt.Printf("EF Migrate %s\n", Version)
+	fmt.Printf("Build Time: %s\n", BuildTime)
+	fmt.Printf("Git Commit: %s\n", GitCommit)
+	fmt.Printf("Go Version: %s\n", "go1.24")
+	fmt.Printf("Platform: %s\n", "Multi-platform (Linux, macOS, Windows)")
+}
+
 func printUsage() {
 	fmt.Println(`🚀 GRA Entity Framework Core-like Migration Tool`)
+	fmt.Printf("Version: %s | Build: %s | Commit: %s\n", Version, BuildTime, GitCommit)
 	fmt.Println(`===============================================`)
 	fmt.Println()
 	fmt.Println(`USAGE:`)
@@ -538,6 +577,10 @@ func printUsage() {
 	fmt.Println(`  get-migration                       List all migrations`)
 	fmt.Println(`  status                              Show migration status`)
 	fmt.Println(`  script [target]                     Generate SQL script`)
+	fmt.Println()
+	fmt.Println(`🔧 Utility:`)
+	fmt.Println(`  version                             Show version information`)
+	fmt.Println(`  help                                Show this help message`)
 	fmt.Println()
 	fmt.Println(`EXAMPLES:`)
 	fmt.Println()
