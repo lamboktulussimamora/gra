@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -9,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"bytes"
-	"io"
 
 	"github.com/lamboktulussimamora/gra/orm/migrations"
 	_ "github.com/mattn/go-sqlite3" // SQLite driver for testing
@@ -19,57 +19,57 @@ import (
 // Helper function to create a test migration manager
 func createTestMigrationManager(t *testing.T, db *sql.DB) *migrations.EFMigrationManager {
 	t.Helper()
-	
+
 	// Create a basic EF migration manager instance
 	// This is a mock implementation for testing purposes
 	config := migrations.DefaultEFMigrationConfig()
 	config.Logger = log.New(os.Stderr, "", 0) // Use a silent logger for tests
-	
+
 	manager := migrations.NewEFMigrationManager(db, config)
-	
+
 	// Initialize schema for tests
 	if err := manager.EnsureSchema(); err != nil {
 		t.Fatalf("Failed to ensure migration schema: %v", err)
 	}
-	
+
 	return manager
 }
 
 // Test constants
 const (
-	testPostgresDriver         = "postgres"
-	testHelpFlag              = "--help"
-	testHelpCommand           = "help"
-	testAddMigrationCmd       = "add-migration"
-	testUpdateDatabaseCmd     = "update-database"
-	testMemoryDB              = ":memory:"
-	testMigrationsDir         = "./test_migrations"
-	testExpectedFormat        = "Expected %q, got %q"
-	testCreateTableSQL        = "CREATE TABLE test (id INT);"
-	testDropTableSQL          = "DROP TABLE users;"
-	testUserDB                = "user"
-	testMaskedPassword        = "*****"
-	testLocalhost             = "localhost"
-	testPort5432              = "5432"
-	testDBName                = "mydb"
-	testFailedTempDir         = "Failed to create temp dir: %v"
-	testFailedOpenDB          = "Failed to open test database: %v"
-	testProgramName           = "ef-migrate"
-	testDefaultMigrationsDir  = "./migrations"
-	testVerboseFlag           = "-verbose"
-	testGetMigrationCmd       = "get-migration"
-	testRemoveMigrationCmd    = "remove-migration"
-	testPostgresConnStr       = "postgres://user:testpass@localhost/db"
-	testFailedToCreateDB      = "Failed to create test database: %v"
-	testFailedSetupManager    = "Failed to setup migration manager: %v"
-	testExpectedOutputFormat  = "Expected output to contain %q, got: %s"
-	testFailedCreateFile      = "Failed to create migration file: %v"
-	testWarningCloseDB        = "Warning: failed to close database: %v"
-	testUnknownCommand        = "Unknown command"
-	testSQLite3Driver         = "sqlite3"
-	testTestPassword          = "testpass"
-	testTestUser              = "testuser"
-	testTestDB                = "testdb"
+	testPostgresDriver       = "postgres"
+	testHelpFlag             = "--help"
+	testHelpCommand          = "help"
+	testAddMigrationCmd      = "add-migration"
+	testUpdateDatabaseCmd    = "update-database"
+	testMemoryDB             = ":memory:"
+	testMigrationsDir        = "./test_migrations"
+	testExpectedFormat       = "Expected %q, got %q"
+	testCreateTableSQL       = "CREATE TABLE test (id INT);"
+	testDropTableSQL         = "DROP TABLE users;"
+	testUserDB               = "user"
+	testMaskedPassword       = "*****"
+	testLocalhost            = "localhost"
+	testPort5432             = "5432"
+	testDBName               = "mydb"
+	testFailedTempDir        = "Failed to create temp dir: %v"
+	testFailedOpenDB         = "Failed to open test database: %v"
+	testProgramName          = "ef-migrate"
+	testDefaultMigrationsDir = "./migrations"
+	testVerboseFlag          = "-verbose"
+	testGetMigrationCmd      = "get-migration"
+	testRemoveMigrationCmd   = "remove-migration"
+	testPostgresConnStr      = "postgres://user:testpass@localhost/db"
+	testFailedToCreateDB     = "Failed to create test database: %v"
+	testFailedSetupManager   = "Failed to setup migration manager: %v"
+	testExpectedOutputFormat = "Expected output to contain %q, got: %s"
+	testFailedCreateFile     = "Failed to create migration file: %v"
+	testWarningCloseDB       = "Warning: failed to close database: %v"
+	testUnknownCommand       = "Unknown command"
+	testSQLite3Driver        = "sqlite3"
+	testTestPassword         = "testpass"
+	testTestUser             = "testuser"
+	testTestDB               = "testdb"
 )
 
 func TestParseCommandLineArgs(t *testing.T) {
@@ -1240,7 +1240,7 @@ func TestParseCommandLineArgsWithMocking(t *testing.T) {
 			// Find command position (after all flags)
 			cmdPos := -1
 			for i, arg := range args {
-				if !strings.HasPrefix(arg, "-") && (i == 0 || !strings.HasPrefix(args[i-1], "-") || 
+				if !strings.HasPrefix(arg, "-") && (i == 0 || !strings.HasPrefix(args[i-1], "-") ||
 					args[i-1] == "-verbose") {
 					cmdPos = i
 					break
@@ -1250,15 +1250,15 @@ func TestParseCommandLineArgsWithMocking(t *testing.T) {
 			if cmdPos != -1 {
 				command := args[cmdPos]
 				commandArgs := args[cmdPos+1:]
-				
+
 				if command != tt.expectedCmd {
 					t.Errorf("Expected command %s, got %s", tt.expectedCmd, command)
 				}
-				
+
 				if len(commandArgs) != len(tt.expectedArgs) {
 					t.Errorf("Expected %d args, got %d", len(tt.expectedArgs), len(commandArgs))
 				}
-				
+
 				for i, arg := range commandArgs {
 					if i < len(tt.expectedArgs) && arg != tt.expectedArgs[i] {
 						t.Errorf("Expected arg[%d] %s, got %s", i, tt.expectedArgs[i], arg)
@@ -1495,12 +1495,7 @@ func TestGetMigrationsWithData(t *testing.T) {
 		Verbose:       true,
 	}
 
-	manager, err := setupMigrationManager(db, config)
-	if err != nil {
-		t.Fatalf("Failed to setup migration manager: %v", err)
-	}
-
-	// Create test migration files
+	// Create test migration files BEFORE setting up the manager
 	migrationFiles := []struct {
 		filename string
 		content  string
@@ -1546,6 +1541,11 @@ DROP TABLE user_profiles;`,
 		if err := os.WriteFile(filePath, []byte(file.content), 0644); err != nil {
 			t.Fatalf("Failed to create migration file %s: %v", file.filename, err)
 		}
+	}
+
+	manager, err := setupMigrationManager(db, config)
+	if err != nil {
+		t.Fatalf("Failed to setup migration manager: %v", err)
 	}
 
 	// Test getMigrations
@@ -1622,18 +1622,18 @@ DROP TABLE test_table;`
 	}
 
 	tests := []struct {
-		name        string
-		args        []string
+		name           string
+		args           []string
 		expectInOutput []string
 	}{
 		{
-			name:        "generate script all pending",
-			args:        []string{},
+			name:           "generate script all pending",
+			args:           []string{},
 			expectInOutput: []string{"Generating migration script"},
 		},
 		{
-			name:        "generate script with target",
-			args:        []string{"CreateTestTable"},
+			name:           "generate script with target",
+			args:           []string{"CreateTestTable"},
 			expectInOutput: []string{"Generating migration script"},
 		},
 	}
