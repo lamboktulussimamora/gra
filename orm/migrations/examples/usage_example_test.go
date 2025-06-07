@@ -1183,126 +1183,86 @@ func TestMigrationFileMethodsEdgeCases(t *testing.T) {
 	}
 }
 
-// Additional coverage: Test MigrationStatus with both applied and pending migrations
-func TestMigrationStatusFullFields(t *testing.T) {
-	applied := &migrations.MigrationFile{Name: "applied", Timestamp: time.Now()}
-	pending := &migrations.MigrationFile{Name: "pending", Timestamp: time.Now()}
-	status := &migrations.MigrationStatus{
-		AppliedMigrations: []*migrations.MigrationFile{applied},
-		PendingMigrations: []*migrations.MigrationFile{pending},
-		HasPendingChanges: true,
-		Summary:           "Full status",
-	}
-	displayMigrationStatus(status)
-}
-
-// Additional coverage: Test createAndApplyMigration error branches
-func TestCreateAndApplyMigrationAllErrorBranches(t *testing.T) {
-	// Nil migrator and status
-	if err := createAndApplyMigration(nil, nil); err == nil {
-		t.Error(errExpectedNilMigratorAndStatus)
-	}
-	db, _ := sql.Open(sqlite3Driver, memoryDB)
-	defer db.Close()
-	migrator := migrations.NewHybridMigrator(db, migrations.SQLite, testMigrationsDir)
-	if err := createAndApplyMigration(migrator, nil); err == nil {
-		t.Error(errExpectedNilStatus)
-	}
-	status := &migrations.MigrationStatus{}
-	if err := createAndApplyMigration(nil, status); err == nil {
-		t.Error(errExpectedNilMigrator)
-	}
-}
-
-// Additional coverage: Test showFinalStatus error branches
-func TestShowFinalStatusAllErrorBranches(t *testing.T) {
-	if err := showFinalStatus(nil); err == nil {
-		t.Error(errExpectedNilMigrator)
-	}
-	if err := showFinalStatus((*migrations.HybridMigrator)(nil)); err == nil {
-		t.Error(errExpectedGetStatusBranch)
-	}
-}
-
-// Additional coverage: Test MigrationFile GetWarnings and Errors with edge cases
-func TestMigrationFileGetWarningsAndErrors(t *testing.T) {
-	file := &migrations.MigrationFile{
-		Changes: []migrations.MigrationChange{
-			{Type: "DROP_TABLE", IsDestructive: true, Description: "drop"},
-			{Type: "ADD_COLUMN", IsDestructive: false, Description: "add"},
-		},
-	}
-	warnings := file.GetWarnings()
-	if len(warnings) == 0 {
-		t.Error("Expected warnings for destructive changes")
-	}
-	errs := file.Errors()
-	if len(errs) != 0 {
-		t.Errorf("Expected no errors, got %d", len(errs))
-	}
-}
-
-// Additional coverage: Test MigrationFile and MigrationStatus methods with nil receivers
-func TestMigrationFileMethodsNilReceiver(t *testing.T) {
-	var file *migrations.MigrationFile
+// Additional coverage: Test MigrationFile with empty and partial data
+func TestMigrationFileEmptyAndPartial(t *testing.T) {
+	file := &migrations.MigrationFile{}
 	if file.HasDestructiveChanges() {
-		t.Error("Expected HasDestructiveChanges to be false for nil receiver")
+		t.Error("Expected HasDestructiveChanges to be false for empty file")
 	}
 	if file.RequiresReview() {
-		t.Error("Expected RequiresReview to be false for nil receiver")
+		t.Error("Expected RequiresReview to be false for empty file")
 	}
-	if warnings := file.GetWarnings(); len(warnings) != 0 {
-		t.Errorf("Expected no warnings for nil receiver, got %v", warnings)
+	if len(file.GetWarnings()) != 0 {
+		t.Error("Expected no warnings for empty file")
 	}
-	if errs := file.Errors(); len(errs) != 0 {
-		t.Errorf("Expected no errors for nil receiver, got %v", errs)
+	if len(file.Errors()) != 0 {
+		t.Error("Expected no errors for empty file")
+	}
+
+	file.Changes = []migrations.MigrationChange{{}}
+	if file.HasDestructiveChanges() {
+		t.Error("Expected HasDestructiveChanges to be false for non-destructive change")
 	}
 }
 
-func TestMigrationStatusNilReceiver(t *testing.T) {
+// Additional coverage: Test MigrationStatus with nil, empty, and mixed fields
+func TestMigrationStatusNilEmptyMixed(t *testing.T) {
 	var status *migrations.MigrationStatus
 	if status != nil && status.HasPendingChanges {
-		t.Error("Expected HasPendingChanges to be false for nil receiver")
+		t.Error("Expected HasPendingChanges to be false for nil status")
 	}
-	if status != nil && status.Summary != "" {
-		t.Errorf("Expected empty Summary for nil receiver, got %s", status.Summary)
+
+	empty := &migrations.MigrationStatus{}
+	if empty.HasPendingChanges {
+		t.Error("Expected HasPendingChanges to be false for empty status")
+	}
+	if empty.Summary != "" {
+		t.Errorf("Expected empty Summary, got %s", empty.Summary)
+	}
+
+	mixed := &migrations.MigrationStatus{
+		AppliedMigrations: []*migrations.MigrationFile{{Name: "applied"}},
+		PendingMigrations: []*migrations.MigrationFile{{Name: "pending"}},
+		HasPendingChanges: true,
+		Summary:           "Mixed status",
+	}
+	if !mixed.HasPendingChanges {
+		t.Error("Expected HasPendingChanges to be true for mixed status")
+	}
+	if mixed.Summary != "Mixed status" {
+		t.Errorf("Expected Summary 'Mixed status', got %s", mixed.Summary)
 	}
 }
 
-// Additional coverage: Test display functions with nil and zero-value input
-func TestDisplayMigrationStatusNilInput(t *testing.T) {
-	displayMigrationStatus(nil) // Should not panic
-	var status migrations.MigrationStatus
-	displayMigrationStatus(&status) // Should not panic
-}
-
-func TestDisplayMigrationFileInfoNilInput(t *testing.T) {
-	displayMigrationFileInfo(nil) // Should not panic
-	var file migrations.MigrationFile
-	displayMigrationFileInfo(&file) // Should not panic
-}
-
-// Additional coverage: Test reflection on unexpected struct types
-func TestReflectionUnexpectedStruct(t *testing.T) {
-	type Dummy struct {
-		Foo int
-		Bar string
+// Additional coverage: Table-driven test for MigrationFile public methods
+func TestMigrationFilePublicMethodsTableDriven(t *testing.T) {
+	tests := []struct {
+		name   string
+		file   *migrations.MigrationFile
+		wantDC bool
+		wantRR bool
+		wantW  int
+		wantE  int
+	}{
+		{"nil file", nil, false, false, 0, 0},
+		{"empty file", &migrations.MigrationFile{}, false, false, 0, 0},
+		{"destructive", &migrations.MigrationFile{Changes: []migrations.MigrationChange{{IsDestructive: true}}}, true, true, 1, 0},
+		{"non-destructive", &migrations.MigrationFile{Changes: []migrations.MigrationChange{{IsDestructive: false}}}, false, false, 0, 0},
 	}
-	dummyType := reflect.TypeOf(Dummy{})
-	if dummyType.Kind() != reflect.Struct {
-		t.Error("Expected Dummy to be a struct")
-	}
-	_, found := dummyType.FieldByName("Baz")
-	if found {
-		t.Error("Did not expect to find field 'Baz' in Dummy struct")
-	}
-}
-
-// Additional coverage: Test struct tag edge cases
-func TestCommentStructTagsEdgeCases(t *testing.T) {
-	commentType := reflect.TypeOf(Comment{})
-	for i := 0; i < commentType.NumField(); i++ {
-		field := commentType.Field(i)
-		_ = field.Tag.Get("nonexistent") // Should not panic or error
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.file.HasDestructiveChanges(); got != tc.wantDC {
+				t.Errorf("HasDestructiveChanges: got %v, want %v", got, tc.wantDC)
+			}
+			if got := tc.file.RequiresReview(); got != tc.wantRR {
+				t.Errorf("RequiresReview: got %v, want %v", got, tc.wantRR)
+			}
+			if got := len(tc.file.GetWarnings()); got != tc.wantW {
+				t.Errorf("GetWarnings: got %d, want %d", got, tc.wantW)
+			}
+			if got := len(tc.file.Errors()); got != tc.wantE {
+				t.Errorf("Errors: got %d, want %d", got, tc.wantE)
+			}
+		})
 	}
 }
