@@ -2,6 +2,7 @@ package dbcontext
 
 import (
 	"database/sql"
+	"reflect"
 	"testing"
 	"time"
 
@@ -649,14 +650,552 @@ func TestUtilityFunctions(t *testing.T) {
 }
 
 func TestStringMethod(t *testing.T) {
+	// Test EntityState String method
+	states := []EntityState{
+		EntityStateUnchanged,
+		EntityStateAdded,
+		EntityStateModified,
+		EntityStateDeleted,
+	}
+
+	expected := []string{
+		"Unchanged",
+		"Added",
+		"Modified",
+		"Deleted",
+	}
+
+	for i, state := range states {
+		if state.String() != expected[i] {
+			t.Errorf(testExpectedGotFormat, expected[i], state.String())
+		}
+	}
+
+	// Test unknown state
+	unknownState := EntityState(999)
+	if unknownState.String() != "Unknown" {
+		t.Errorf(testExpectedGotFormat, "Unknown", unknownState.String())
+	}
+}
+
+// Test EF Context functionality
+func TestEFContext(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Test NewEFContext
+	ctx := NewEFContext(db)
+	if ctx == nil {
+		t.Fatal("EFContext should not be nil")
+	}
+	if ctx != nil && ctx.db != db {
+		t.Error("EFContext should have the correct database")
+	}
+
+	// Test BaseEntity methods
+	entity := &BaseEntity{ID: 1}
+
+	// Test GetID
+	id := entity.GetID()
+	if id != uint(1) {
+		t.Errorf("GetID should return 1, got %v", id)
+	}
+
+	// Test SetID
+	entity.SetID(uint(42))
+	if entity.ID != 42 {
+		t.Errorf("SetID should set ID to 42, got %v", entity.ID)
+	}
+
+	// Test SetID with invalid type (should not crash)
+	entity.SetID("invalid")
+	if entity.ID != 42 {
+		t.Error("SetID with invalid type should not change ID")
+	}
+
+	// Test ExtractFieldsForDebug
+	columns, values := ctx.ExtractFieldsForDebug(entity)
+	if len(columns) == 0 || len(values) == 0 {
+		t.Error("ExtractFieldsForDebug should return columns and values")
+	}
+
+	// Test SaveChanges (should not error)
+	err := ctx.SaveChanges()
+	if err != nil {
+		t.Errorf("SaveChanges should not error, got %v", err)
+	}
+}
+
+func TestEFContextErrors(t *testing.T) {
+	// Test with nil database
+	ctx := NewEFContext(nil)
+
+	entity := &BaseEntity{ID: 1}
+
+	// Test Add with nil database
+	err := ctx.Add(entity)
+	if err == nil {
+		t.Error("Add should return error with nil database")
+	}
+
+	// Test Update with nil database
+	err = ctx.Update(entity)
+	if err == nil {
+		t.Error("Update should return error with nil database")
+	}
+
+	// Test Remove with nil database
+	err = ctx.Remove(entity)
+	if err == nil {
+		t.Error("Remove should return error with nil database")
+	}
+
+	// Test Find with nil database
+	err = ctx.Find(entity, 1)
+	if err == nil {
+		t.Error("Find should return error with nil database")
+	}
+}
+
+// Test utility functions for better coverage
+func TestUtilityFunctionsCoverage(t *testing.T) {
+	// Test toSnakeCase function
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{"UserName", "user_name"},
+		{"userName", "user_name"},
+		{"user_name", "user_name"},
+		{"", ""},
+		{"A", "a"},
+		{"CamelCase", "camel_case"},
+	}
+
+	for _, tc := range testCases {
+		result := toSnakeCase(tc.input)
+		if result != tc.expected {
+			t.Errorf("toSnakeCase(%s): expected %s, got %s", tc.input, tc.expected, result)
+		}
+	}
+
+	// Test toCamelCase function (already has some coverage but let's add more cases)
+	camelCases := []struct {
+		input    string
+		expected string
+	}{
+		{"user_name", "UserName"},
+		{"user_id", "UserId"},
+		{"created_at", "CreatedAt"},
+		{"", ""},
+		{"id", "Id"},
+		{"user", "User"},
+		{"user_name_field", "UserNameField"},
+	}
+
+	for _, tc := range camelCases {
+		result := toCamelCase(tc.input)
+		if result != tc.expected {
+			t.Errorf("toCamelCase(%s): expected %s, got %s", tc.input, tc.expected, result)
+		}
+	}
+}
+
+func TestDatabaseDriverDetection(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Test detectDatabaseDriver with SQLite
+	driver := detectDatabaseDriver(db)
+	if driver != testSQLite3Driver {
+		t.Errorf("Expected sqlite3 driver, got %s", driver)
+	}
+}
+
+func TestFieldSettersIndirect(t *testing.T) {
+	// We can't directly test the field setter functions because they don't return errors
+	// Instead, we test them through setFieldValue which calls them indirectly
+
+	// Test string field
+	var strEntity struct {
+		Value string
+	}
+	field := reflect.ValueOf(&strEntity).Elem().Field(0)
+	err := setFieldValue(field, "test string")
+	if err != nil {
+		t.Errorf("setFieldValue for string should not error: %v", err)
+	}
+	if strEntity.Value != "test string" {
+		t.Errorf("Expected 'test string', got %s", strEntity.Value)
+	}
+
+	// Test int field
+	var intEntity struct {
+		Value int64
+	}
+	field = reflect.ValueOf(&intEntity).Elem().Field(0)
+	err = setFieldValue(field, int64(42))
+	if err != nil {
+		t.Errorf("setFieldValue for int should not error: %v", err)
+	}
+	if intEntity.Value != 42 {
+		t.Errorf("Expected 42, got %d", intEntity.Value)
+	}
+
+	// Test uint field
+	var uintEntity struct {
+		Value uint64
+	}
+	field = reflect.ValueOf(&uintEntity).Elem().Field(0)
+	err = setFieldValue(field, int64(42))
+	if err != nil {
+		t.Errorf("setFieldValue for uint should not error: %v", err)
+	}
+	if uintEntity.Value != 42 {
+		t.Errorf("Expected 42, got %d", uintEntity.Value)
+	}
+
+	// Test float field
+	var floatEntity struct {
+		Value float64
+	}
+	field = reflect.ValueOf(&floatEntity).Elem().Field(0)
+	err = setFieldValue(field, float64(3.14))
+	if err != nil {
+		t.Errorf("setFieldValue for float should not error: %v", err)
+	}
+	if floatEntity.Value != 3.14 {
+		t.Errorf("Expected 3.14, got %f", floatEntity.Value)
+	}
+
+	// Test bool field
+	var boolEntity struct {
+		Value bool
+	}
+	field = reflect.ValueOf(&boolEntity).Elem().Field(0)
+	err = setFieldValue(field, true)
+	if err != nil {
+		t.Errorf("setFieldValue for bool should not error: %v", err)
+	}
+	if !boolEntity.Value {
+		t.Error("Expected true")
+	}
+
+	// Test time field
+	var timeEntity struct {
+		Value time.Time
+	}
+	field = reflect.ValueOf(&timeEntity).Elem().Field(0)
+	now := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+	err = setFieldValue(field, now)
+	if err != nil {
+		t.Errorf("setFieldValue for time should not error: %v", err)
+	}
+	if !timeEntity.Value.Equal(now) {
+		t.Errorf("Time values should be equal: got %v, expected %v", timeEntity.Value, now)
+	}
+}
+
+func TestEmbeddedStructHandling(t *testing.T) {
+	// Test embedded struct handling with a custom struct
+	type EmbeddedStruct struct {
+		Field1 string `db:"field1"`
+		Field2 int    `db:"field2"`
+	}
+
+	type TestEntity struct {
+		ID       int64          `db:"id"`
+		Name     string         `db:"name"`
+		Embedded EmbeddedStruct `db:"-"` // Embedded struct
+	}
+
+	entity := &TestEntity{
+		ID:   1,
+		Name: "test",
+		Embedded: EmbeddedStruct{
+			Field1: "embedded_value",
+			Field2: 42,
+		},
+	}
+
+	// Test getFieldData with embedded structs (this should cover handleEmbeddedStruct)
+	columns, values, placeholders := getFieldData(entity, false, testSQLite3Driver)
+
+	if len(columns) == 0 {
+		t.Error("getFieldData should return columns for embedded struct")
+	}
+	if len(values) == 0 {
+		t.Error("getFieldData should return values for embedded struct")
+	}
+	if len(placeholders) == 0 {
+		t.Error("getFieldData should return placeholders for embedded struct")
+	}
+}
+
+func TestGetTableName(t *testing.T) {
+	// Test getTableName with TableName method
+	user := &TestUser{}
+	tableName := getTableName(user)
+	if tableName != "testusers" {
+		t.Errorf("Expected 'testusers', got %s", tableName)
+	}
+
+	// Test getTableName without TableName method
+	type SimpleEntity struct {
+		ID   int64  `db:"id"`
+		Name string `db:"name"`
+	}
+	simple := &SimpleEntity{}
+	tableName = getTableName(simple)
+	if tableName != "simple_entity" {
+		t.Errorf("Expected 'simple_entity', got %s", tableName)
+	}
+}
+
+func TestPlaceholderHandling(t *testing.T) {
+	// Test getPlaceholder for different drivers
+	sqlitePlaceholder := getPlaceholder(testSQLite3Driver, 0)
+	if sqlitePlaceholder != "?" {
+		t.Errorf("Expected '?', got %s", sqlitePlaceholder)
+	}
+
+	postgresPlaceholder := getPlaceholder(testPostgresDriver, 0)
+	if postgresPlaceholder != "$1" {
+		t.Errorf("Expected '$1', got %s", postgresPlaceholder)
+	}
+
+	postgresPlaceholder2 := getPlaceholder(testPostgresDriver, 2)
+	if postgresPlaceholder2 != "$3" {
+		t.Errorf("Expected '$3', got %s", postgresPlaceholder2)
+	}
+}
+
+func TestColumnNameExtraction(t *testing.T) {
+	// Test getColumnNameFromFieldData
+	type TestStruct struct {
+		Field1 string `db:"custom_name"`
+		Field2 string // No db tag, should use snake_case conversion
+	}
+
+	// Test with db tag
+	field1, _ := reflect.TypeOf(TestStruct{}).FieldByName("Field1")
+	columnName := getColumnNameFromFieldData(field1)
+	if columnName != "custom_name" {
+		t.Errorf("Expected 'custom_name', got %s", columnName)
+	}
+
+	// Test without db tag (should convert to snake_case)
+	field2, _ := reflect.TypeOf(TestStruct{}).FieldByName("Field2")
+	columnName = getColumnNameFromFieldData(field2)
+	if columnName != "field2" {
+		t.Errorf("Expected 'field2', got %s", columnName)
+	}
+}
+
+func TestShouldSkipField(t *testing.T) {
+	type TestStruct struct {
+		ID           int64  `db:"id"`
+		Name         string `db:"name"`
+		IgnoredField string `db:"-"`
+		SQLIgnored   string `sql:"-"`
+		PublicField  string
+	}
+
+	structType := reflect.TypeOf(TestStruct{})
+
+	// Test ID field exclusion
+	idField, _ := structType.FieldByName("ID")
+	if !shouldSkipField(idField, true) {
+		t.Error("ID field should be skipped when excludeID is true")
+	}
+	if shouldSkipField(idField, false) {
+		t.Error("ID field should not be skipped when excludeID is false")
+	}
+
+	// Test db tag exclusion
+	ignoredField, _ := structType.FieldByName("IgnoredField")
+	if !shouldSkipField(ignoredField, false) {
+		t.Error("Field with db:\"-\" should be skipped")
+	}
+
+	// Test sql tag exclusion
+	sqlIgnoredField, _ := structType.FieldByName("SQLIgnored")
+	if !shouldSkipField(sqlIgnoredField, false) {
+		t.Error("Field with sql:\"-\" should be skipped")
+	}
+
+	// Test public field inclusion
+	publicField, _ := structType.FieldByName("PublicField")
+	if shouldSkipField(publicField, false) {
+		t.Error("Public field should not be skipped")
+	}
+}
+
+func TestEntityStateEnumCoverage(t *testing.T) {
+	// Test all possible entity states to ensure complete coverage
 	tracker := NewChangeTracker()
-	user := &TestUser{Name: testUserName}
+	entity := &TestUser{Name: "Test"}
 
-	tracker.TrackEntity(user, EntityStateAdded)
+	// Test all entity states
+	states := []EntityState{
+		EntityStateUnchanged,
+		EntityStateAdded,
+		EntityStateModified,
+		EntityStateDeleted,
+	}
 
-	// Test String method
+	for _, state := range states {
+		tracker.SetEntityState(entity, state)
+		retrievedState := tracker.GetEntityState(entity)
+		if retrievedState != state {
+			t.Errorf("Expected state %v, got %v", state, retrievedState)
+		}
+	}
+
+	// Test getting state for untracked entity
+	newEntity := &TestUser{Name: "New"}
+	state := tracker.GetEntityState(newEntity)
+	if state != EntityStateUnchanged {
+		t.Errorf("Untracked entity should have Unchanged state, got %v", state)
+	}
+}
+
+func TestAdvancedQueryScenarios(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Insert test data
+	_, err := db.Exec(testInsertQuery, testAliceName, testAliceEmail, true)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+	_, err = db.Exec(testInsertQuery, testBobName, testBobEmail, false)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+
+	ctx := NewEnhancedDbContextWithDB(db)
+	set := NewEnhancedDbSet[TestUser](ctx)
+
+	// Test Single with multiple results (should error)
+	_, err = set.Single()
+	if err == nil {
+		t.Error("Single should error when multiple results exist")
+	}
+
+	// Test First with no results (should error)
+	_, err = set.Where("name = ?", testNonExistent).First()
+	if err == nil {
+		t.Error("First should error when no results exist")
+	}
+}
+
+func TestScanEntityAdvanced(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	// Insert test data with various field types
+	_, err := db.Exec(testInsertQuery, testAliceName, testAliceEmail, true)
+	if err != nil {
+		t.Fatalf(testInsertDataError, err)
+	}
+
+	// Query to test scanEntity function
+	rows, err := db.Query("SELECT id, name, email, is_active, created_at FROM testusers WHERE name = ?", testAliceName)
+	if err != nil {
+		t.Fatalf("Failed to query database: %v", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			t.Logf("Failed to close rows: %v", closeErr)
+		}
+	}()
+
+	if rows.Next() {
+		entity := &TestUser{}
+		err = scanEntity(rows, entity)
+		if err != nil {
+			t.Errorf("scanEntity should not error: %v", err)
+		}
+		if entity.Name != testAliceName {
+			t.Errorf("Expected name %s, got %s", testAliceName, entity.Name)
+		}
+		if entity.Email != testAliceEmail {
+			t.Errorf("Expected email %s, got %s", testAliceEmail, entity.Email)
+		}
+		if !entity.IsActive {
+			t.Error("Expected IsActive to be true")
+		}
+	} else {
+		t.Error("Expected at least one row")
+	}
+}
+
+// Additional test for improved String method coverage on ChangeTracker
+func TestChangeTrackerString(t *testing.T) {
+	tracker := NewChangeTracker()
+	entity1 := &TestUser{Name: "User1"}
+	entity2 := &TestUser{Name: "User2"}
+
+	// Test empty tracker
 	str := tracker.String()
 	if str == "" {
-		t.Error("String method should return non-empty string")
+		t.Error("ChangeTracker String should return some representation")
+	}
+
+	// Add entities with different states
+	tracker.SetEntityState(entity1, EntityStateAdded)
+	tracker.SetEntityState(entity2, EntityStateModified)
+
+	str = tracker.String()
+	if str == "" {
+		t.Error("ChangeTracker String should return representation with entities")
+	}
+}
+
+func TestPlaceholderAdjustment(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	ctx := NewEnhancedDbContextWithDB(db)
+	set := NewEnhancedDbSet[TestUser](ctx)
+
+	// Test complex where conditions to improve adjustPlaceholdersForCondition coverage
+	newSet := *set
+	newSet.ctx.driver = testPostgresDriver
+
+	// Test condition with multiple placeholders
+	condition := "name = ? AND email = ? AND is_active = ?"
+	adjustedCondition := newSet.adjustPlaceholdersForCondition(condition)
+	expectedCondition := "name = $1 AND email = $2 AND is_active = $3"
+	if adjustedCondition != expectedCondition {
+		t.Errorf("Expected %s, got %s", expectedCondition, adjustedCondition)
+	}
+
+	// Test condition without placeholders
+	condition = "is_active = true"
+	adjustedCondition = newSet.adjustPlaceholdersForCondition(condition)
+	if adjustedCondition != condition {
+		t.Errorf("Condition without placeholders should remain unchanged")
 	}
 }

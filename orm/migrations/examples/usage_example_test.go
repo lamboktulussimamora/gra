@@ -722,8 +722,8 @@ func TestShowFinalStatusAllBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
-	defer db.Close()
+	defer func() { _ = os.RemoveAll(tempDir) }()
+	defer func() { _ = db.Close() }()
 	migrator := migrations.NewHybridMigrator(db, migrations.SQLite, tempDir)
 	migrator.DbSet(&User{})
 	_ = migrator.GetMigrationStatus // ensure method exists
@@ -1073,7 +1073,7 @@ func TestCreateAndApplyMigrationNilStatusAndMigrator(t *testing.T) {
 	}
 	// Nil status
 	db, _ := sql.Open(sqlite3Driver, memoryDB)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	migrator := migrations.NewHybridMigrator(db, migrations.SQLite, testMigrationsDir)
 	if err := createAndApplyMigration(migrator, nil); err == nil {
 		t.Error("Expected error for nil status")

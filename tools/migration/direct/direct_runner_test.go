@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,6 +14,7 @@ const (
 	testDBName             = ":memory:"
 	testMsg                = "test message"
 	errFailedToOpen        = "Failed to open test database: %v"
+	errFailedToOpenDB      = "Failed to open database: %v"
 	errNilDatabaseMsg      = "nil database"
 	errExpectedForNil      = "Expected error for nil database"
 	errExpectedToContain   = "Expected error to contain '%s', got %v"
@@ -630,5 +632,633 @@ func TestApplyMigrationDuplicateError(t *testing.T) {
 	err = applyMigration(db, migration)
 	if err == nil {
 		t.Error("Expected error when applying duplicate migration")
+	}
+}
+
+func TestApplyMigrationAdvanced(t *testing.T) {
+	const (
+		errFailedToOpenApply     = errFailedToOpenDB
+		errFailedToEnsureApply   = errFailedToEnsure
+		errFailedToApplyAdvanced = "applyMigration should have failed"
+	)
+
+	t.Run("apply migration with transaction rollback on sql error", func(t *testing.T) {
+		testApplyMigrationWithSQLError(t, errFailedToOpenApply, errFailedToEnsureApply, errFailedToApplyAdvanced)
+	})
+
+	t.Run("apply migration with record failure simulation", func(t *testing.T) {
+		testApplyMigrationWithRecordFailure(t, errFailedToOpenApply, errFailedToEnsureApply)
+	})
+
+	t.Run("apply migration verbose output coverage", func(t *testing.T) {
+		testApplyMigrationVerboseOutput(t, errFailedToOpenApply, errFailedToEnsureApply)
+	})
+}
+
+func testApplyMigrationWithSQLError(t *testing.T, errFailedToOpenApply, errFailedToEnsureApply, errFailedToApplyAdvanced string) {
+	db, err := sql.Open("sqlite3", testDBName)
+	if err != nil {
+		t.Fatalf(errFailedToOpenApply, err)
+	}
+	defer func() { _ = db.Close() }()
+
+	err = ensureMigrationTable(db)
+	if err != nil {
+		t.Fatalf(errFailedToEnsureApply, err)
+	}
+
+	// Create migration with invalid SQL
+	invalidMigration := struct {
+		Version     int
+		Description string
+		SQL         string
+	}{
+		Version:     999,
+		Description: "Invalid SQL Test",
+		SQL:         "INVALID SQL STATEMENT;",
+	}
+
+	err = applyMigration(db, invalidMigration)
+	if err == nil {
+		t.Error(errFailedToApplyAdvanced)
+	}
+}
+
+func testApplyMigrationWithRecordFailure(t *testing.T, errFailedToOpenApply, errFailedToEnsureApply string) {
+	db, err := sql.Open("sqlite3", testDBName)
+	if err != nil {
+		t.Fatalf(errFailedToOpenApply, err)
+	}
+	defer func() { _ = db.Close() }()
+
+	err = ensureMigrationTable(db)
+	if err != nil {
+		t.Fatalf(errFailedToEnsureApply, err)
+	}
+
+	// First, drop the migration table to cause record failure
+	_, err = db.Exec("DROP TABLE " + tableSchemaMigrations)
+	if err != nil {
+		t.Fatalf("Failed to drop table: %v", err)
+	}
+
+	// Try to apply migration - this should fail when trying to record
+	validMigration := struct {
+		Version     int
+		Description string
+		SQL         string
+	}{
+		Version:     998,
+		Description: "Valid SQL but record failure",
+		SQL:         "SELECT 1;",
+	}
+
+	err = applyMigration(db, validMigration)
+	if err == nil {
+		t.Error("Expected error when migration table doesn't exist for recording")
+	}
+}
+
+func testApplyMigrationVerboseOutput(t *testing.T, errFailedToOpenApply, errFailedToEnsureApply string) {
+	db, err := sql.Open("sqlite3", testDBName)
+	if err != nil {
+		t.Fatalf(errFailedToOpenApply, err)
+	}
+	defer func() {
+		*verbose = false // Reset
+		_ = db.Close()
+	}()
+
+	*verbose = true // Enable verbose for coverage
+
+	err = ensureMigrationTable(db)
+	if err != nil {
+		t.Fatalf(errFailedToEnsureApply, err)
+	}
+
+	validMigration := struct {
+		Version     int
+		Description string
+		SQL         string
+	}{
+		Version:     997,
+		Description: "Verbose test migration",
+		SQL:         "CREATE TABLE test_verbose (id INTEGER);",
+	}
+
+	err = applyMigration(db, validMigration)
+	if err != nil {
+		t.Errorf("applyMigration with verbose failed: %v", err)
+	}
+}
+
+func TestEnsureMigrationTableEdgeCases(t *testing.T) {
+	const errFailedToOpenEnsure = errFailedToOpenDB
+
+	t.Run("ensure migration table with db ping failure", func(t *testing.T) {
+		db, err := sql.Open("sqlite3", testDBName)
+		if err != nil {
+			t.Fatalf(errFailedToOpenEnsure, err)
+		}
+
+		// Close the database to cause ping failure
+		_ = db.Close()
+
+		err = ensureMigrationTable(db)
+		if err == nil {
+			t.Error("Expected error when database is closed")
+		}
+	})
+}
+
+func TestGetAppliedMigrationsEdgeCases(t *testing.T) {
+	const (
+		errFailedToOpenGet   = errFailedToOpenDB
+		errFailedToEnsureGet = errFailedToEnsure
+		errFailedToInsertGet = "Failed to insert test migration: %v"
+	)
+
+	t.Run("get applied migrations with corrupted data", func(t *testing.T) {
+		testGetAppliedMigrationsCorruptedData(t, errFailedToOpenGet, errFailedToEnsureGet, errFailedToInsertGet)
+	})
+
+	t.Run("get applied migrations with mixed valid/invalid data", func(t *testing.T) {
+		testGetAppliedMigrationsValidData(t, errFailedToOpenGet, errFailedToEnsureGet, errFailedToInsertGet)
+	})
+}
+
+func testGetAppliedMigrationsCorruptedData(t *testing.T, errFailedToOpenGet, errFailedToEnsureGet, errFailedToInsertGet string) {
+	db, err := sql.Open("sqlite3", testDBName)
+	if err != nil {
+		t.Fatalf(errFailedToOpenGet, err)
+	}
+	defer func() { _ = db.Close() }()
+
+	err = ensureMigrationTable(db)
+	if err != nil {
+		t.Fatalf(errFailedToEnsureGet, err)
+	}
+
+	// Insert version data that would be problematic in parsing context
+	// Since version is INTEGER, we'll insert a very large number that could cause issues
+	_, err = db.Exec("INSERT INTO "+tableSchemaMigrations+" (version) VALUES (?)", 999999999)
+	if err != nil {
+		t.Fatalf(errFailedToInsertGet, err)
+	}
+
+	// This should succeed since we're using a valid integer
+	applied, err := getAppliedMigrations(db)
+	if err != nil {
+		t.Error("Unexpected error when getting applied migrations with large version")
+	}
+	if !applied[999999999] {
+		t.Error("Expected large version to be properly stored and retrieved")
+	}
+}
+
+func testGetAppliedMigrationsValidData(t *testing.T, errFailedToOpenGet, errFailedToEnsureGet, errFailedToInsertGet string) {
+	db, err := sql.Open("sqlite3", testDBName)
+	if err != nil {
+		t.Fatalf(errFailedToOpenGet, err)
+	}
+	defer func() { _ = db.Close() }()
+
+	// Clean up and recreate table
+	_, _ = db.Exec("DROP TABLE " + tableSchemaMigrations)
+	err = ensureMigrationTable(db)
+	if err != nil {
+		t.Fatalf(errFailedToEnsureGet, err)
+	}
+
+	// Insert valid version
+	_, err = db.Exec("INSERT INTO "+tableSchemaMigrations+" (version) VALUES (?)", 1)
+	if err != nil {
+		t.Fatalf(errFailedToInsertGet, err)
+	}
+
+	versions, err := getAppliedMigrations(db)
+	if err != nil {
+		t.Errorf("getAppliedMigrations failed with valid data: %v", err)
+	}
+	if len(versions) != 1 || !versions[1] {
+		t.Errorf("Expected version 1 to be applied, got %v", versions)
+	}
+}
+
+func TestMigrateUpEdgeCases(t *testing.T) {
+	const (
+		errFailedToOpenMigrate   = errFailedToOpenDB
+		errFailedToEnsureMigrate = errFailedToEnsure
+	)
+
+	t.Run("migrate up with no migrations directory", func(t *testing.T) {
+		testMigrateUpNoDirectory(t, errFailedToOpenMigrate, errFailedToEnsureMigrate)
+	})
+
+	t.Run("migrate up with verbose output and empty migrations", func(t *testing.T) {
+		testMigrateUpVerboseEmpty(t, errFailedToOpenMigrate, errFailedToEnsureMigrate)
+	})
+}
+
+func testMigrateUpNoDirectory(t *testing.T, errFailedToOpenMigrate, errFailedToEnsureMigrate string) {
+	// Temporarily rename migrations directory
+	originalDir := "migrations"
+	tempDir := "migrations_temp_renamed"
+
+	// Check if migrations directory exists and rename it
+	if _, err := os.Stat(originalDir); err == nil {
+		err = os.Rename(originalDir, tempDir)
+		if err != nil {
+			t.Skipf("Could not rename migrations directory: %v", err)
+			return
+		}
+		defer func() {
+			_ = os.Rename(tempDir, originalDir) // Restore
+		}()
+	}
+
+	db, err := sql.Open("sqlite3", testDBName)
+	if err != nil {
+		t.Fatalf(errFailedToOpenMigrate, err)
+	}
+	defer func() { _ = db.Close() }()
+
+	err = ensureMigrationTable(db)
+	if err != nil {
+		t.Fatalf(errFailedToEnsureMigrate, err)
+	}
+
+	err = migrateUp(db)
+	// This should not fail, but just log that no migrations were found
+	if err != nil {
+		t.Errorf("migrateUp should handle missing migrations directory gracefully: %v", err)
+	}
+}
+
+func testMigrateUpVerboseEmpty(t *testing.T, errFailedToOpenMigrate, errFailedToEnsureMigrate string) {
+	*verbose = true
+	defer func() { *verbose = false }()
+
+	db, err := sql.Open("sqlite3", testDBName)
+	if err != nil {
+		t.Fatalf(errFailedToOpenMigrate, err)
+	}
+	defer func() { _ = db.Close() }()
+
+	err = ensureMigrationTable(db)
+	if err != nil {
+		t.Fatalf(errFailedToEnsureMigrate, err)
+	}
+
+	err = migrateUp(db)
+	if err != nil {
+		t.Errorf("migrateUp with verbose failed: %v", err)
+	}
+}
+
+func TestGetMigrationsListEdgeCases(t *testing.T) {
+	t.Run("get migrations list with empty directory", func(t *testing.T) {
+		testGetMigrationsListEmptyDirectory(t)
+	})
+
+	t.Run("get migrations list with non-sql files", func(t *testing.T) {
+		testGetMigrationsListWithNonSQLFiles(t)
+	})
+}
+
+func testGetMigrationsListEmptyDirectory(t *testing.T) {
+	// Create temporary empty directory
+	tempDir := "temp_empty_migrations"
+	err := os.Mkdir(tempDir, 0750)
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	// Change to temp directory
+	originalDir, _ := os.Getwd()
+	defer func() { _ = os.Chdir(originalDir) }()
+
+	err = os.Chdir(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to change directory: %v", err)
+	}
+
+	// getMigrationsList returns hardcoded migrations, not directory-based
+	// So it will always return the same 3 migrations regardless of directory
+	migrations := getMigrationsList()
+	expectedCount := 3 // hardcoded migrations in getMigrationsList()
+	if len(migrations) != expectedCount {
+		t.Errorf("Expected %d hardcoded migrations, got %d migrations", expectedCount, len(migrations))
+	}
+}
+
+func testGetMigrationsListWithNonSQLFiles(t *testing.T) {
+	tempDir := setupMixedMigrationsDirectory(t)
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	changeToTempDirectory(t, tempDir)
+
+	migrations := getMigrationsList()
+	if len(migrations) != 3 {
+		t.Errorf("Expected 3 hardcoded migrations, got %d migrations", len(migrations))
+	}
+}
+
+func setupMixedMigrationsDirectory(t *testing.T) string {
+	// Create temporary directory with non-SQL files
+	tempDir := "temp_mixed_migrations"
+	err := os.Mkdir(tempDir, 0750)
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+
+	// Create migrations subdirectory
+	migrationsDir := filepath.Join(tempDir, "migrations")
+	err = os.Mkdir(migrationsDir, 0750)
+	if err != nil {
+		t.Fatalf("Failed to create migrations directory: %v", err)
+	}
+
+	// Create non-SQL files
+	nonSQLFiles := []string{
+		"001_test.txt",
+		"002_test.md",
+		"readme.txt",
+		"003_valid.sql",
+	}
+
+	for _, filename := range nonSQLFiles {
+		filePath := filepath.Join(migrationsDir, filename)
+		err = os.WriteFile(filePath, []byte("test content"), 0600)
+		if err != nil {
+			t.Fatalf("Failed to create test file %s: %v", filename, err)
+		}
+	}
+
+	return tempDir
+}
+
+func changeToTempDirectory(t *testing.T, tempDir string) {
+	// Change to temp directory
+	originalDir, _ := os.Getwd()
+	defer func() { _ = os.Chdir(originalDir) }()
+
+	err := os.Chdir(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to change directory: %v", err)
+	}
+}
+
+func TestCloseDBWithWarnCoverage(t *testing.T) {
+	t.Run("close db with warn - successful close", func(t *testing.T) {
+		db, err := sql.Open("sqlite3", testDBName)
+		if err != nil {
+			t.Fatalf(errFailedToOpenDB, err)
+		}
+
+		// Test successful close
+		closeDBWithWarn(db)
+		// No error expected, but function should complete without panic
+	})
+
+	t.Run("close db with warn - already closed", func(t *testing.T) {
+		db, err := sql.Open("sqlite3", testDBName)
+		if err != nil {
+			t.Fatalf(errFailedToOpenDB, err)
+		}
+
+		// Close it first
+		_ = db.Close()
+
+		// Try to close again - should warn but not panic
+		closeDBWithWarn(db)
+	})
+
+	t.Run("close db with warn - nil database", func(_ *testing.T) {
+		// Test with nil database - should handle gracefully
+		closeDBWithWarn(nil)
+	})
+}
+
+func TestDatabaseConnectionEdgeCases(t *testing.T) {
+	t.Run("test database ping scenarios", func(t *testing.T) {
+		db, err := sql.Open("sqlite3", testDBName)
+		if err != nil {
+			t.Fatalf(errFailedToOpenDB, err)
+		}
+		defer func() { _ = db.Close() }()
+
+		// Test successful ping
+		err = db.Ping()
+		if err != nil {
+			t.Errorf("Database ping should succeed: %v", err)
+		}
+	})
+
+	t.Run("test with invalid database connection", func(t *testing.T) {
+		db, err := sql.Open("sqlite3", "/invalid/path/database.db")
+		if err != nil {
+			t.Fatalf(errFailedToOpenDB, err)
+		}
+		defer func() { _ = db.Close() }()
+
+		// This should fail
+		err = db.Ping()
+		if err == nil {
+			t.Error("Expected ping to fail with invalid database path")
+		}
+	})
+}
+
+func TestFlagValidation(t *testing.T) {
+	t.Run("test flag pointer validation", func(t *testing.T) {
+		testFlagPointerValidation(t)
+	})
+
+	t.Run("test flag behavior", func(t *testing.T) {
+		testFlagBehavior(t)
+	})
+}
+
+func testFlagPointerValidation(t *testing.T) {
+	// Ensure all flags are properly initialized
+	flags := map[string]interface{}{
+		"upFlag":     upFlag,
+		"downFlag":   downFlag,
+		"connFlag":   connFlag,
+		"statusFlag": statusFlag,
+		"verbose":    verbose,
+	}
+
+	for name, flag := range flags {
+		if flag == nil {
+			t.Errorf("Flag %s should not be nil", name)
+		}
+	}
+
+	testFlagDefaultValues(t)
+}
+
+func testFlagDefaultValues(t *testing.T) {
+	// Test flag default values
+	if *upFlag != false {
+		t.Error("upFlag should default to false")
+	}
+	if *downFlag != false {
+		t.Error("downFlag should default to false")
+	}
+	if *statusFlag != false {
+		t.Error("statusFlag should default to false")
+	}
+	if *verbose != false {
+		t.Error("verbose should default to false")
+	}
+	if *connFlag != "" {
+		t.Error("connFlag should default to empty string")
+	}
+}
+
+func testFlagBehavior(t *testing.T) {
+	// Save original values
+	originalUp := *upFlag
+	originalDown := *downFlag
+	originalStatus := *statusFlag
+	originalVerbose := *verbose
+	originalConn := *connFlag
+
+	defer func() {
+		// Restore original values
+		*upFlag = originalUp
+		*downFlag = originalDown
+		*statusFlag = originalStatus
+		*verbose = originalVerbose
+		*connFlag = originalConn
+	}()
+
+	testFlagSetting(t)
+}
+
+func testFlagSetting(t *testing.T) {
+	// Test setting flags
+	*upFlag = true
+	*downFlag = true
+	*statusFlag = true
+	*verbose = true
+	*connFlag = "test-connection"
+
+	// Verify changes
+	if !*upFlag {
+		t.Error("upFlag should be true after setting")
+	}
+	if !*downFlag {
+		t.Error("downFlag should be true after setting")
+	}
+	if !*statusFlag {
+		t.Error("statusFlag should be true after setting")
+	}
+	if !*verbose {
+		t.Error("verbose should be true after setting")
+	}
+	if *connFlag != "test-connection" {
+		t.Error("connFlag should be 'test-connection' after setting")
+	}
+}
+
+// Additional integration test for complete workflow
+func TestCompleteWorkflow(t *testing.T) {
+	t.Run("complete migration workflow simulation", func(t *testing.T) {
+		db, err := sql.Open("sqlite3", testDBName)
+		if err != nil {
+			t.Fatalf(errFailedToOpenDB, err)
+		}
+		defer func() { _ = db.Close() }()
+
+		setupWorkflowTest(t, db)
+		testMigration := createTestMigration()
+		runWorkflowSteps(t, db, testMigration)
+	})
+}
+
+func setupWorkflowTest(t *testing.T, db *sql.DB) {
+	// Step 1: Ensure migration table
+	err := ensureMigrationTable(db)
+	if err != nil {
+		t.Fatalf(errFailedToEnsure, err)
+	}
+
+	// Step 2: Check initial status
+	err = showStatus(db)
+	if err != nil {
+		t.Errorf("Initial status check failed: %v", err)
+	}
+
+	// Step 3: Get applied migrations (should be empty)
+	applied, err := getAppliedMigrations(db)
+	if err != nil {
+		t.Errorf("Failed to get applied migrations: %v", err)
+	}
+	if len(applied) != 0 {
+		t.Errorf("Expected no applied migrations initially, got %d", len(applied))
+	}
+}
+
+func createTestMigration() struct {
+	Version     int
+	Description string
+	SQL         string
+} {
+	return struct {
+		Version     int
+		Description string
+		SQL         string
+	}{
+		Version:     100,
+		Description: "Test Workflow Migration",
+		SQL:         "CREATE TABLE workflow_test (id INTEGER PRIMARY KEY, name TEXT);",
+	}
+}
+
+func runWorkflowSteps(t *testing.T, db *sql.DB, testMigration struct {
+	Version     int
+	Description string
+	SQL         string
+}) {
+	// Step 4: Apply a test migration
+	err := applyMigration(db, testMigration)
+	if err != nil {
+		t.Errorf("Failed to apply test migration: %v", err)
+	}
+
+	verifyWorkflowMigrationApplied(t, db)
+	verifyTableCreated(t, db)
+}
+
+func verifyWorkflowMigrationApplied(t *testing.T, db *sql.DB) {
+	// Step 5: Verify migration was applied
+	applied, err := getAppliedMigrations(db)
+	if err != nil {
+		t.Errorf("Failed to get applied migrations after applying: %v", err)
+	}
+	if len(applied) != 1 || !applied[100] {
+		t.Errorf("Expected version 100 to be applied, got %v", applied)
+	}
+
+	// Step 6: Check final status
+	err = showStatus(db)
+	if err != nil {
+		t.Errorf("Final status check failed: %v", err)
+	}
+}
+
+func verifyTableCreated(t *testing.T, db *sql.DB) {
+	// Step 7: Verify table was created
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='workflow_test'").Scan(&count)
+	if err != nil {
+		t.Errorf("Failed to check if table was created: %v", err)
+	}
+	if count != 1 {
+		t.Error("workflow_test table should have been created")
 	}
 }

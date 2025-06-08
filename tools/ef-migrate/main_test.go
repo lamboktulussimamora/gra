@@ -102,18 +102,6 @@ const (
 	testFailedCreateFile     = "Failed to create migration file: %v"
 	testWarningCloseDB       = "Warning: failed to close database: %v"
 
-	// Migration file content
-	testMigrationContent = `-- Migration: CreateUsers
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL
-);`
-
-	// SQL statement constants
-	testCreateTableSQL = "CREATE TABLE test (id INT);"
-	testDropTableSQL   = "DROP TABLE users;"
-
 	// Additional connection strings for test cases
 	testSafeConnStr4 = "postgres://user:pass@localhost/db"
 )
@@ -1887,7 +1875,7 @@ DROP TABLE IF EXISTS complex_table;`,
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			filePath := filepath.Join(tempDir, tt.filename)
-			if err := os.WriteFile(filePath, []byte(tt.content), 0644); err != nil {
+			if err := os.WriteFile(filePath, []byte(tt.content), 0600); err != nil {
 				t.Fatalf("Failed to create test file: %v", err)
 			}
 
@@ -2390,10 +2378,10 @@ DROP TABLE advanced_test2;`
 	filePath1 := filepath.Join(tempDir, "001_CreateAdvancedTest1.sql")
 	filePath2 := filepath.Join(tempDir, "002_CreateAdvancedTest2.sql")
 
-	if err := os.WriteFile(filePath1, []byte(migrationContent1), 0644); err != nil {
+	if err := os.WriteFile(filePath1, []byte(migrationContent1), 0600); err != nil {
 		t.Fatalf(testFailedCreateFile, err)
 	}
-	if err := os.WriteFile(filePath2, []byte(migrationContent2), 0644); err != nil {
+	if err := os.WriteFile(filePath2, []byte(migrationContent2), 0600); err != nil {
 		t.Fatalf(testFailedCreateFile, err)
 	}
 
@@ -2644,7 +2632,7 @@ DROP TABLE المستخدمين;`,
 			filename := fmt.Sprintf("001_%s.sql", tt.migrationName)
 			filePath := filepath.Join(tempDir, filename)
 
-			err := os.WriteFile(filePath, []byte(tt.migrationContent), 0644)
+			err := os.WriteFile(filePath, []byte(tt.migrationContent), 0600)
 			if err != nil {
 				t.Fatalf("Failed to create Unicode migration file: %v", err)
 			}

@@ -957,7 +957,11 @@ func setBoolField(field reflect.Value, value interface{}) {
 
 // Helper for setting time.Time fields
 func setTimeField(field reflect.Value, value interface{}) {
-	if str, ok := value.(string); ok {
+	if t, ok := value.(time.Time); ok {
+		// Direct time.Time value
+		field.Set(reflect.ValueOf(t))
+	} else if str, ok := value.(string); ok {
+		// String value - try to parse it
 		if t, err := time.Parse("2006-01-02 15:04:05", str); err == nil {
 			field.Set(reflect.ValueOf(t))
 		}
