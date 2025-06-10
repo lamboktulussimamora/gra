@@ -568,7 +568,7 @@ func TestCmdForceMigrationWithMock(t *testing.T) {
 			name:        "force error",
 			args:        []string{"ForceTest"},
 			expectError: true,
-			mockFunc: func(name string, mode migrations.MigrationMode) (*migrations.MigrationFile, error) {
+			mockFunc: func(_ string, mode migrations.MigrationMode) (*migrations.MigrationFile, error) {
 				if mode != migrations.ModeForceDestructive {
 					return nil, fmt.Errorf(errExpectedForceMode, mode)
 				}
@@ -730,7 +730,7 @@ func TestDisplayAppliedMigrations(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name, func(_ *testing.T) {
 			// This function outputs to stdout, so we can't easily capture the output
 			// but we can ensure it doesn't panic or error
 			displayAppliedMigrations(tt.migrations)
@@ -778,7 +778,7 @@ func TestDisplayPendingMigrations(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name, func(_ *testing.T) {
 			// This function outputs to stdout, so we can't easily capture the output
 			// but we can ensure it doesn't panic or error
 			displayPendingMigrations(tt.migrations)
@@ -818,7 +818,7 @@ func TestDisplayCurrentChanges(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name, func(_ *testing.T) {
 			// This function outputs to stdout, so we can't easily capture the output
 			// but we can ensure it doesn't panic or error
 			displayCurrentChanges(tt.status)
@@ -875,7 +875,7 @@ func TestCmdAddMigrationReal(t *testing.T) {
 			name:        "valid migration with description",
 			args:        []string{"CreateUsersTable"},
 			expectError: false,
-			mockFunc: func(name string, mode migrations.MigrationMode) (*migrations.MigrationFile, error) {
+			mockFunc: func(name string, _ migrations.MigrationMode) (*migrations.MigrationFile, error) {
 				return &migrations.MigrationFile{
 					Name:        name,
 					Description: "Test migration",
@@ -888,7 +888,7 @@ func TestCmdAddMigrationReal(t *testing.T) {
 			name:        "migration creation failure",
 			args:        []string{"FailingMigration"},
 			expectError: true,
-			mockFunc: func(name string, mode migrations.MigrationMode) (*migrations.MigrationFile, error) {
+			mockFunc: func(_ string, _ migrations.MigrationMode) (*migrations.MigrationFile, error) {
 				return nil, fmt.Errorf("database connection failed")
 			},
 		},
@@ -962,7 +962,7 @@ func TestCmdApplyMigrationsReal(t *testing.T) {
 			name:        "migration application failure",
 			args:        []string{},
 			expectError: true,
-			mockFunc: func(mode migrations.MigrationMode) error {
+			mockFunc: func(_ migrations.MigrationMode) error {
 				return fmt.Errorf("failed to apply migrations")
 			},
 		},
@@ -1111,7 +1111,7 @@ func TestCmdGenerateMigrationReal(t *testing.T) {
 			name:        "generation failure",
 			args:        []string{"FailingGeneration"},
 			expectError: true,
-			mockFunc: func(name string, mode migrations.MigrationMode) (*migrations.MigrationFile, error) {
+			mockFunc: func(_ string, _ migrations.MigrationMode) (*migrations.MigrationFile, error) {
 				return nil, fmt.Errorf("failed to generate migration")
 			},
 		},
@@ -1177,7 +1177,7 @@ func TestCmdForceMigrationReal(t *testing.T) {
 			name:        "force migration failure",
 			args:        []string{"FailingForce"},
 			expectError: true,
-			mockFunc: func(name string, mode migrations.MigrationMode) (*migrations.MigrationFile, error) {
+			mockFunc: func(_ string, _ migrations.MigrationMode) (*migrations.MigrationFile, error) {
 				return nil, fmt.Errorf("failed to create force migration")
 			},
 		},
@@ -1253,10 +1253,8 @@ func TestMigrationFileWarnings(t *testing.T) {
 	if errors == nil {
 		errors = []string{} // Handle nil case
 	}
-	// Test that method doesn't panic - check slice is valid
-	if errors != nil && len(errors) >= 0 {
-		// This is always true but validates the slice
-	}
+	// Test that method doesn't panic - validate slice
+	_ = len(errors) // Validates the slice without empty block
 
 	requiresReview := migrationFile.RequiresReview()
 	// Test that method doesn't panic
@@ -1266,7 +1264,7 @@ func TestMigrationFileWarnings(t *testing.T) {
 func TestCompleteWorkflow(t *testing.T) {
 	// Test a complete workflow to ensure all commands work together
 	migrator := &MockMigrator{
-		addMigrationFunc: func(name string, mode migrations.MigrationMode) (*migrations.MigrationFile, error) {
+		addMigrationFunc: func(name string, _ migrations.MigrationMode) (*migrations.MigrationFile, error) {
 			return &migrations.MigrationFile{
 				Name:        name,
 				Description: fmt.Sprintf("Migration: %s", name),
@@ -1274,7 +1272,7 @@ func TestCompleteWorkflow(t *testing.T) {
 				Timestamp:   time.Now(),
 			}, nil
 		},
-		applyMigrationsFunc: func(mode migrations.MigrationMode) error {
+		applyMigrationsFunc: func(_ migrations.MigrationMode) error {
 			return nil
 		},
 		getMigrationStatusFunc: func() (*migrations.MigrationStatus, error) {

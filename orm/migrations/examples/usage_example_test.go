@@ -903,7 +903,7 @@ func TestCommentStructTableDriven(t *testing.T) {
 	}
 }
 
-func TestMigrationStatusEdgeCases(t *testing.T) {
+func TestMigrationStatusEdgeCases(_ *testing.T) {
 	// Nil MigrationStatus pointer (should not panic)
 	displayMigrationStatus(nil)
 
@@ -933,7 +933,7 @@ func TestMigrationStatusEdgeCases(t *testing.T) {
 	displayMigrationStatus(statusNilSlices)
 }
 
-func TestMigrationFileEdgeCases(t *testing.T) {
+func TestMigrationFileEdgeCases(_ *testing.T) {
 	// Nil MigrationFile pointer (should not panic)
 	displayMigrationFileInfo(nil)
 
@@ -979,7 +979,7 @@ func BenchmarkDisplayMigrationFileInfo(b *testing.B) {
 }
 
 // Test that all public methods for MigrationStatus and MigrationFile do not panic and have correct return types
-func TestPublicMethodsDoNotPanic(t *testing.T) {
+func TestPublicMethodsDoNotPanic(_ *testing.T) {
 	// MigrationStatus
 	status := &migrations.MigrationStatus{}
 	_ = status.HasPendingChanges
@@ -993,7 +993,7 @@ func TestPublicMethodsDoNotPanic(t *testing.T) {
 	_ = file.Errors()
 }
 
-func TestDisplayMigrationStatusNilAndPartialCases(t *testing.T) {
+func TestDisplayMigrationStatusNilAndPartialCases(_ *testing.T) {
 	// Nil pointer
 	displayMigrationStatus(nil)
 
@@ -1018,7 +1018,7 @@ func TestDisplayMigrationStatusNilAndPartialCases(t *testing.T) {
 	displayMigrationStatus(status)
 }
 
-func TestDisplayMigrationFileInfoNilAndPartialCases(t *testing.T) {
+func TestDisplayMigrationFileInfoNilAndPartialCases(_ *testing.T) {
 	// Nil pointer
 	displayMigrationFileInfo(nil)
 
@@ -1039,7 +1039,7 @@ func TestDisplayMigrationFileInfoNilAndPartialCases(t *testing.T) {
 	displayMigrationFileInfo(file)
 }
 
-func TestMigrationStatusPartialFields(t *testing.T) {
+func TestMigrationStatusPartialFields(_ *testing.T) {
 	// AppliedMigrations nil, PendingMigrations non-nil
 	status := &migrations.MigrationStatus{
 		PendingMigrations: []*migrations.MigrationFile{{Name: "pending"}},
@@ -1053,7 +1053,7 @@ func TestMigrationStatusPartialFields(t *testing.T) {
 	displayMigrationStatus(status)
 }
 
-func TestMigrationFilePartialFields(t *testing.T) {
+func TestMigrationFilePartialFields(_ *testing.T) {
 	// MigrationFile with nil Changes
 	file := &migrations.MigrationFile{Filename: "partial.sql"}
 	displayMigrationFileInfo(file)

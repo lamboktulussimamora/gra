@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -668,21 +669,15 @@ func (v *Validator) validateRange(field reflect.Value, fieldName, rangeValues, c
 
 // Helper functions for parsing numbers
 func parseInt(s string) (int64, error) {
-	var result int64
-	_, err := fmt.Sscanf(s, "%d", &result)
-	return result, err
+	return strconv.ParseInt(s, 10, 64)
 }
 
 func parseUint(s string) (uint64, error) {
-	var result uint64
-	_, err := fmt.Sscanf(s, "%d", &result)
-	return result, err
+	return strconv.ParseUint(s, 10, 64)
 }
 
 func parseFloat(s string) (float64, error) {
-	var result float64
-	_, err := fmt.Sscanf(s, "%f", &result)
-	return result, err
+	return strconv.ParseFloat(s, 64)
 }
 
 // BatchResult contains validation results for a batch of objects

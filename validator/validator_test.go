@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -36,6 +37,7 @@ const (
 	testZipCode     = "10001"
 	testValidCode   = "ABC"
 	testInvalidCode = "123"
+	testPhoneNumber = "+1234567890"
 
 	// Test product values
 	testProductName = "Product 1"
@@ -47,13 +49,26 @@ const (
 	testPrice1 = 19.99
 	testPrice2 = 29.99
 
+	// Field type constants
+	fieldTypeString = "string"
+
 	// Common test validation messages
-	msgValidationPass = "Expected valid %s to pass validation, got errors: %v"
-	msgValidationFail = "Expected '%s' to fail validation, but got no errors"
-	msgNoError        = "Expected no errors, got %d errors: %v"
-	msgInvalidField   = "Expected error for field '%s', got error for '%s'"
-	msgFieldNoError   = "Expected error for field %s, but none was reported"
-	msgErrorCount     = "Expected %d errors, got %d: %v"
+	msgValidationPass     = "Expected valid %s to pass validation, got errors: %v"
+	msgValidationFail     = "Expected '%s' to fail validation, but got no errors"
+	msgNoError            = "Expected no errors, got %d errors: %v"
+	msgInvalidField       = "Expected error for field '%s', got error for '%s'"
+	msgFieldNoError       = "Expected error for field %s, but none was reported"
+	msgErrorCount         = "Expected %d errors, got %d: %v"
+	msgFieldNotFoundError = "Expected error for field '%s', but not found in errors: %v"
+
+	// Additional validation test messages
+	msgNoErrorsValidRange  = "Expected no errors for valid range, got: %v"
+	msgErrorOutsideRange   = "Expected error for value outside range"
+	msgErrorInvalidEnum    = "Expected error for invalid enum value"
+	msgExpectedRequiredErr = "Expected 'is required' error message"
+	msgExpectedMinLenErr   = "Expected minimum length error"
+	msgExpectedMaxLenErr   = "Expected maximum length error"
+	msgExpectedEnumErr     = "Expected enum error message"
 )
 
 // TestNew ensures the validator creates a new instance correctly
@@ -1384,5 +1399,664 @@ func TestSimpleSliceValidation(t *testing.T) {
 	// Should have 2 errors, one for each nil slice
 	if len(errors) != 2 {
 		t.Errorf("Expected 2 errors for nil slices, got %d", len(errors))
+	}
+}
+
+// TestSchemaFunctionsCoverage tests schema-related functions that had 0% coverage
+func TestSchemaFunctionsCoverage(t *testing.T) {
+	// Test NewSchema function
+	t.Run("NewSchema", func(t *testing.T) {
+		schema := NewSchema()
+		if schema == nil {
+			t.Error("NewSchema should return a non-nil schema")
+			return
+		}
+		if schema.Fields == nil {
+			t.Error("NewSchema should initialize Fields map")
+		}
+	})
+
+	// Test AddField function
+	t.Run("AddField", func(t *testing.T) {
+		schema := NewSchema()
+		field := SchemaField{
+			Type:     "string",
+			Required: true,
+		}
+
+		result := schema.AddField("testField", field)
+		if result != schema {
+			t.Error("AddField should return the same schema instance")
+		}
+
+		if storedField, exists := schema.Fields["testField"]; !exists {
+			t.Error("AddField should add the field to the schema")
+		} else if storedField.Type != fieldTypeString || !storedField.Required {
+			t.Error("AddField should store the field correctly")
+		}
+	})
+
+	// Test Schema.Validate function
+	t.Run("Schema_Validate", func(t *testing.T) {
+		schema := NewSchema()
+		schema.AddField("name", SchemaField{
+			Type:      "string",
+			Required:  true,
+			MinLength: 2,
+		})
+		schema.AddField("age", SchemaField{
+			Type:     "number",
+			Required: false,
+			Min:      0,
+		})
+
+		// Test valid data
+		validData := map[string]any{
+			"name": "John",
+			"age":  25,
+		}
+		errors := schema.Validate(validData)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid data, got: %v", errors)
+		}
+
+		// Test missing required field
+		invalidData := map[string]any{
+			"age": 25,
+		}
+		errors = schema.Validate(invalidData)
+		if len(errors) == 0 {
+			t.Error("Expected error for missing required field")
+		}
+	})
+}
+
+// TestParsingFunctionsCoverage tests parsing functions that had 0% coverage
+func TestParsingFunctionsCoverage(t *testing.T) {
+	// Test enum validation which will trigger internal parsing
+	t.Run("enum_validation_parsing", func(t *testing.T) {
+		type TestStruct struct {
+			Status string `json:"status" validate:"enum=active,inactive,pending"`
+		}
+
+		v := New()
+		// Valid enum value
+		valid := TestStruct{Status: "active"}
+		errors := v.Validate(valid)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid enum value, got: %v", errors)
+		}
+
+		// Invalid enum value
+		invalid := TestStruct{Status: "unknown"}
+		errors = v.Validate(invalid)
+		if len(errors) == 0 {
+			t.Error("Expected error for invalid enum value")
+		}
+	})
+
+	// Test min/max validation which uses parsing internally
+	t.Run("min_max_validation_parsing", func(t *testing.T) {
+		type TestStruct struct {
+			Age int `json:"age" validate:"min=18,max=65"`
+		}
+
+		v := New()
+		// Valid value
+		valid := TestStruct{Age: 30}
+		errors := v.Validate(valid)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid age, got: %v", errors)
+		}
+
+		// Invalid value (too low)
+		invalid := TestStruct{Age: 15}
+		errors = v.Validate(invalid)
+		if len(errors) == 0 {
+			t.Error("Expected error for age below minimum")
+		}
+	})
+
+	// Test float validation parsing
+	t.Run("float_validation_parsing", func(t *testing.T) {
+		type TestStruct struct {
+			Price float64 `json:"price" validate:"min=0.01"`
+		}
+
+		v := New()
+		// Valid value
+		valid := TestStruct{Price: 15.99}
+		errors := v.Validate(valid)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid price, got: %v", errors)
+		}
+
+		// Invalid value (too low)
+		invalid := TestStruct{Price: -1.0}
+		errors = v.Validate(invalid)
+		if len(errors) == 0 {
+			t.Error("Expected error for negative price")
+		}
+	})
+}
+
+// TestValidationRulesParsing tests parsing functions that had low coverage
+func TestValidationRulesParsing(t *testing.T) {
+	t.Run("parseRulesBeforeRegexp", func(t *testing.T) {
+		type TestStruct struct {
+			TestField string `json:"testField" validate:"required,min=3,regexp=^[a-z]+$,max=10"`
+		}
+
+		v := New()
+		// This should trigger parseRulesBeforeRegexp internally
+		invalid := TestStruct{TestField: "AB"} // uppercase, fails regexp
+		errors := v.Validate(invalid)
+		if len(errors) == 0 {
+			t.Error("Expected validation errors")
+		}
+	})
+
+	t.Run("parseRegexpAndRemainingRules", func(t *testing.T) {
+		type TestStruct struct {
+			TestField string `json:"testField" validate:"regexp=^[a-z]+$,min=3,max=10"`
+		}
+
+		v := New()
+		// This should trigger parseRegexpAndRemainingRules internally
+		invalid := TestStruct{TestField: "ABC"} // uppercase, fails regexp
+		errors := v.Validate(invalid)
+		if len(errors) == 0 {
+			t.Error("Expected validation errors")
+		}
+	})
+}
+
+// TestSchemaValidationFunctions tests schema validation functions with 0% coverage
+func TestSchemaValidationFunctions(t *testing.T) {
+	t.Run("handleRequiredField", func(t *testing.T) {
+		schema := NewSchema()
+		schema.AddField("requiredField", SchemaField{
+			Type:     "string",
+			Required: true,
+		})
+
+		// Test missing required field
+		data := map[string]any{}
+		errors := schema.Validate(data)
+		if len(errors) == 0 {
+			t.Error("Expected error for missing required field")
+		}
+
+		// Check error message
+		found := false
+		for _, err := range errors {
+			if err.Field == "requiredField" && strings.Contains(err.Message, "is required") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("Expected 'is required' error message")
+		}
+	})
+
+	t.Run("processFieldValidation", func(t *testing.T) {
+		schema := NewSchema()
+		schema.AddField("stringField", SchemaField{
+			Type:      "string",
+			MinLength: 5,
+		})
+		schema.AddField("numberField", SchemaField{
+			Type: "number",
+			Min:  10,
+		})
+
+		// Test field validation
+		data := map[string]any{
+			"stringField": "abc", // too short
+			"numberField": 5,     // too small
+		}
+		errors := schema.Validate(data)
+		if len(errors) != 2 {
+			t.Errorf("Expected 2 errors, got %d: %v", len(errors), errors)
+		}
+	})
+
+	t.Run("validateArray", func(t *testing.T) {
+		schema := NewSchema()
+		schema.AddField("arrayField", SchemaField{
+			Type: "array",
+		})
+
+		// Test array validation
+		data := map[string]any{
+			"arrayField": []any{"item1", "item2"},
+		}
+		errors := schema.Validate(data)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid array, got: %v", errors)
+		}
+
+		// Test non-array value
+		data = map[string]any{
+			"arrayField": "not an array",
+		}
+		errors = schema.Validate(data)
+		if len(errors) == 0 {
+			t.Error("Expected error for non-array value")
+		}
+	})
+
+	t.Run("validateType", func(t *testing.T) {
+		schema := NewSchema()
+		schema.AddField("stringField", SchemaField{Type: "string"})
+		schema.AddField("numberField", SchemaField{Type: "number"})
+		schema.AddField("boolField", SchemaField{Type: "boolean"})
+		schema.AddField("objectField", SchemaField{Type: "object"})
+		schema.AddField("arrayField", SchemaField{Type: "array"})
+
+		// Test correct types
+		validData := map[string]any{
+			"stringField": "hello",
+			"numberField": 42,
+			"boolField":   true,
+			"objectField": map[string]any{"key": "value"},
+			"arrayField":  []any{"item"},
+		}
+		errors := schema.Validate(validData)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for correct types, got: %v", errors)
+		}
+
+		// Test incorrect types
+		invalidData := map[string]any{
+			"stringField": 123,
+			"numberField": "not a number",
+			"boolField":   "not a bool",
+		}
+		errors = schema.Validate(invalidData)
+		if len(errors) != 3 {
+			t.Errorf("Expected 3 type errors, got %d: %v", len(errors), errors)
+		}
+	})
+
+	t.Run("validateString", func(t *testing.T) {
+		schema := NewSchema()
+		schema.AddField("testString", SchemaField{
+			Type:      "string",
+			MinLength: 3,
+			MaxLength: 10,
+			Pattern:   "^[a-z]+$",
+			Enum:      []string{"hello", "world", "test"},
+		})
+
+		// Test valid string
+		data := map[string]any{
+			"testString": "hello",
+		}
+		errors := schema.Validate(data)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid string, got: %v", errors)
+		}
+
+		// Test invalid length
+		data = map[string]any{
+			"testString": "hi", // too short
+		}
+		errors = schema.Validate(data)
+		if len(errors) == 0 {
+			t.Error("Expected error for string too short")
+		}
+
+		// Test invalid pattern
+		data = map[string]any{
+			"testString": "HELLO", // uppercase, fails pattern
+		}
+		errors = schema.Validate(data)
+		if len(errors) == 0 {
+			t.Error("Expected error for invalid pattern")
+		}
+
+		// Test invalid enum
+		data = map[string]any{
+			"testString": "invalid", // not in enum
+		}
+		errors = schema.Validate(data)
+		if len(errors) == 0 {
+			t.Error("Expected error for invalid enum value")
+		}
+	})
+
+	t.Run("validateStringLength", func(t *testing.T) {
+		schema := NewSchema()
+		schema.AddField("testString", SchemaField{
+			Type:      "string",
+			MinLength: 5,
+			MaxLength: 10,
+		})
+
+		// Test string within length bounds
+		data := map[string]any{
+			"testString": "hello",
+		}
+		errors := schema.Validate(data)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid length, got: %v", errors)
+		}
+
+		// Test string too short
+		data = map[string]any{
+			"testString": "hi",
+		}
+		errors = schema.Validate(data)
+		if len(errors) == 0 || !strings.Contains(errors[0].Message, "at least 5 characters") {
+			t.Error("Expected minimum length error")
+		}
+
+		// Test string too long
+		data = map[string]any{
+			"testString": "this is too long",
+		}
+		errors = schema.Validate(data)
+		if len(errors) == 0 || !strings.Contains(errors[0].Message, "at most 10 characters") {
+			t.Error("Expected maximum length error")
+		}
+	})
+
+	t.Run("validateStringPattern", func(t *testing.T) {
+		schema := NewSchema()
+		schema.AddField("testString", SchemaField{
+			Type:    "string",
+			Pattern: "^[a-z]{3,5}$",
+		})
+
+		// Test valid pattern
+		data := map[string]any{
+			"testString": "abc",
+		}
+		errors := schema.Validate(data)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid pattern, got: %v", errors)
+		}
+
+		// Test invalid pattern
+		data = map[string]any{
+			"testString": "ABC123",
+		}
+		errors = schema.Validate(data)
+		if len(errors) == 0 {
+			t.Error("Expected error for invalid pattern")
+		}
+	})
+
+	t.Run("validateStringEnum", func(t *testing.T) {
+		schema := NewSchema()
+		schema.AddField("status", SchemaField{
+			Type: "string",
+			Enum: []string{"active", "inactive", "pending"},
+		})
+
+		// Test valid enum value
+		data := map[string]any{
+			"status": "active",
+		}
+		errors := schema.Validate(data)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid enum, got: %v", errors)
+		}
+
+		// Test invalid enum value
+		data = map[string]any{
+			"status": "unknown",
+		}
+		errors = schema.Validate(data)
+		if len(errors) == 0 {
+			t.Error("Expected error for invalid enum value")
+		}
+	})
+
+	t.Run("validateNumber", func(t *testing.T) {
+		schema := NewSchema()
+		schema.AddField("testNumber", SchemaField{
+			Type: "number",
+			Min:  10,
+			Max:  100,
+		})
+
+		// Test valid number
+		data := map[string]any{
+			"testNumber": 50,
+		}
+		errors := schema.Validate(data)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid number, got: %v", errors)
+		}
+
+		// Test number below minimum
+		data = map[string]any{
+			"testNumber": 5,
+		}
+		errors = schema.Validate(data)
+		if len(errors) == 0 {
+			t.Error("Expected error for number below minimum")
+		}
+
+		// Test number above maximum
+		data = map[string]any{
+			"testNumber": 150,
+		}
+		errors = schema.Validate(data)
+		if len(errors) == 0 {
+			t.Error("Expected error for number above maximum")
+		}
+	})
+}
+
+// TestEnumValidationCoverage tests enum validation with 0% coverage
+func TestEnumValidationCoverage(t *testing.T) {
+	type TestStruct struct {
+		Status string `json:"status" validate:"enum=active,inactive,pending"`
+		Role   string `json:"role" validate:"enum=admin,user,guest"`
+	}
+
+	v := New()
+
+	// Test valid enum values
+	valid := TestStruct{Status: "active", Role: "admin"}
+	errors := v.Validate(valid)
+	if len(errors) > 0 {
+		t.Errorf("Expected no errors for valid enum values, got: %v", errors)
+	}
+
+	// Test invalid enum value
+	invalid := TestStruct{Status: "unknown", Role: "admin"}
+	errors = v.Validate(invalid)
+	if len(errors) == 0 {
+		t.Error(msgErrorInvalidEnum)
+	}
+
+	// Test empty enum value (should pass if not required)
+	empty := TestStruct{Status: "", Role: "admin"}
+	errors = v.Validate(empty)
+	if len(errors) > 0 {
+		t.Errorf("Expected no errors for empty enum value, got: %v", errors)
+	}
+}
+
+// TestValidationFunctionsCoverage tests various validation functions with 0% coverage
+func TestValidationFunctionsCoverage(t *testing.T) {
+	// Test enum validation coverage
+	t.Run("validateEnum", func(t *testing.T) {
+		type TestStruct struct {
+			Status string `json:"status" validate:"enum=active,inactive,pending"`
+		}
+
+		v := New()
+
+		// Valid enum value
+		valid := TestStruct{Status: "active"}
+		errors := v.Validate(valid)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid enum value, got: %v", errors)
+		}
+
+		// Invalid enum value
+		invalid := TestStruct{Status: "unknown"}
+		errors = v.Validate(invalid)
+		if len(errors) == 0 {
+			t.Error("Expected error for invalid enum value")
+		}
+
+		// Empty enum value (should pass if not required)
+		empty := TestStruct{Status: ""}
+		errors = v.Validate(empty)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for empty enum value, got: %v", errors)
+		}
+	})
+
+	// Test min/max validation for different types
+	t.Run("validateMinMax", func(t *testing.T) {
+		type TestStruct struct {
+			Age   int     `json:"age" validate:"min=18,max=65"`
+			Price float64 `json:"price" validate:"min=0.01,max=999.99"`
+			Count uint    `json:"count" validate:"min=1,max=100"`
+		}
+
+		v := New()
+
+		// Valid values
+		valid := TestStruct{Age: 30, Price: 50.00, Count: 10}
+		errors := v.Validate(valid)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid values, got: %v", errors)
+		}
+
+		// Invalid age (below min)
+		invalidAge := TestStruct{Age: 15, Price: 50.00, Count: 10}
+		errors = v.Validate(invalidAge)
+		if len(errors) == 0 {
+			t.Error("Expected error for age below minimum")
+		}
+
+		// Invalid price (above max)
+		invalidPrice := TestStruct{Age: 30, Price: 1000.00, Count: 10}
+		errors = v.Validate(invalidPrice)
+		if len(errors) == 0 {
+			t.Error("Expected error for price above maximum")
+		}
+	})
+
+	// Test regexp validation coverage
+	t.Run("validateRegexp", func(t *testing.T) {
+		type TestStruct struct {
+			Code string `json:"code" validate:"regexp=^[A-Z]{3}$"`
+		}
+
+		v := New()
+
+		// Valid pattern
+		valid := TestStruct{Code: "ABC"}
+		errors := v.Validate(valid)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid pattern, got: %v", errors)
+		}
+
+		// Invalid pattern
+		invalid := TestStruct{Code: "123"}
+		errors = v.Validate(invalid)
+		if len(errors) == 0 {
+			t.Error("Expected error for invalid pattern")
+		}
+	})
+
+	// Test email validation coverage
+	t.Run("validateEmail", func(t *testing.T) {
+		type TestStruct struct {
+			Email string `json:"email" validate:"email"`
+		}
+
+		v := New()
+
+		// Valid email
+		valid := TestStruct{Email: "test@example.com"}
+		errors := v.Validate(valid)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid email, got: %v", errors)
+		}
+
+		// Invalid email
+		invalid := TestStruct{Email: "not-an-email"}
+		errors = v.Validate(invalid)
+		if len(errors) == 0 {
+			t.Error("Expected error for invalid email")
+		}
+	})
+}
+
+// TestAddErrorFunction tests the addError function that had 75% coverage
+func TestAddErrorFunction(t *testing.T) {
+	v := New()
+
+	// Test adding error with custom message
+	type TestStruct struct {
+		Name string `json:"name" validate:"required" message:"Name is mandatory"`
+	}
+
+	invalid := TestStruct{Name: ""}
+	errors := v.Validate(invalid)
+	if len(errors) == 0 {
+		t.Error("Expected validation error")
+	}
+
+	// The addError function should handle both custom and default messages
+	if len(errors) > 0 {
+		// Check that error was added correctly
+		if errors[0].Field != "name" {
+			t.Errorf("Expected field 'name', got '%s'", errors[0].Field)
+		}
+		if errors[0].Message == "" {
+			t.Error("Expected non-empty error message")
+		}
+	}
+}
+
+// TestHasBatchErrorsFunction tests HasBatchErrors function that had 75% coverage
+func TestHasBatchErrorsFunction(t *testing.T) {
+	v := New()
+
+	type TestStruct struct {
+		Name string `json:"name" validate:"required"`
+	}
+
+	// Test with no errors
+	validInputs := []any{
+		TestStruct{Name: "John"},
+		TestStruct{Name: "Jane"},
+	}
+
+	batchErrors := v.ValidateBatch(validInputs)
+	hasErrors := v.HasBatchErrors(batchErrors)
+	if hasErrors {
+		t.Error("Expected no batch errors for valid inputs")
+	}
+
+	// Test with errors
+	invalidInputs := []any{
+		TestStruct{Name: "John"},
+		TestStruct{Name: ""}, // Invalid
+	}
+
+	batchErrors = v.ValidateBatch(invalidInputs)
+	hasErrors = v.HasBatchErrors(batchErrors)
+	if !hasErrors {
+		t.Error("Expected batch errors for invalid inputs")
+	}
+
+	// Test edge case with empty batch
+	emptyBatch := []BatchResult{}
+	hasErrors = v.HasBatchErrors(emptyBatch)
+	if hasErrors {
+		t.Error("Expected no errors for empty batch")
 	}
 }

@@ -317,7 +317,7 @@ func TestDriverDetection(t *testing.T) {
 			case "postgres://user:pass@localhost/db", "host=localhost user=test dbname=test":
 				driverName = testPostgresDriver
 			case "./test.db", "file:test.sqlite":
-				driverName = "sqlite3"
+				driverName = testSQLite3Driver
 			default:
 				driverName = testPostgresDriver // Default
 			}
@@ -1783,14 +1783,14 @@ func TestComplexConnectionStringParsing(t *testing.T) {
 			var detectedDriver string
 			switch {
 			case strings.HasPrefix(config.ConnectionString, "postgres://"), strings.Contains(config.ConnectionString, "user="):
-				detectedDriver = "postgres"
+				detectedDriver = testPostgresDriver
 			case strings.HasSuffix(config.ConnectionString, ".db"),
 				strings.Contains(config.ConnectionString, "sqlite"),
 				strings.HasPrefix(config.ConnectionString, "file:"),
 				config.ConnectionString == ":memory:":
-				detectedDriver = "sqlite3"
+				detectedDriver = testSQLite3Driver
 			default:
-				detectedDriver = "postgres" // Default
+				detectedDriver = testPostgresDriver // Default
 			}
 
 			if detectedDriver != tt.expectedDriver {
@@ -1806,7 +1806,11 @@ func TestMigrationFileValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf(testFailedTempDir, err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to clean up temp directory: %v", err)
+		}
+	}()
 
 	tests := []struct {
 		name        string
@@ -1880,7 +1884,7 @@ DROP TABLE IF EXISTS complex_table;`,
 			}
 
 			// Test file reading and basic validation
-			content, err := os.ReadFile(filePath)
+			content, err := os.ReadFile(filePath) // #nosec G304 - Reading test files in controlled test environment
 			if err != nil {
 				if !tt.shouldError {
 					t.Errorf("Unexpected error reading file: %v", err)
@@ -1919,7 +1923,11 @@ DROP TABLE IF EXISTS complex_table;`,
 func TestEnvironmentVariableHandling(t *testing.T) {
 	// Save original environment
 	originalDBURL := os.Getenv("DATABASE_URL")
-	defer os.Setenv("DATABASE_URL", originalDBURL)
+	defer func() {
+		if err := os.Setenv("DATABASE_URL", originalDBURL); err != nil {
+			t.Logf("Failed to restore DATABASE_URL: %v", err)
+		}
+	}()
 
 	tests := []struct {
 		name        string
@@ -1988,7 +1996,9 @@ func TestEnvironmentVariableHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set environment variable for this test
-			os.Setenv("DATABASE_URL", tt.envValue)
+			if err := os.Setenv("DATABASE_URL", tt.envValue); err != nil {
+				t.Logf("Failed to set DATABASE_URL: %v", err)
+			}
 
 			// Test the logic from setupDatabaseConnection
 			config := tt.config
@@ -2312,10 +2322,8 @@ func TestSecurityValidation(t *testing.T) {
 				if strings.Contains(masked, "secretpass") || strings.Contains(masked, "p@ss!w0rd") {
 					t.Errorf("Password not properly masked in: %s", masked)
 				}
-			} else {
-				if masked != tt.connectionString {
-					t.Errorf("Expected no masking for %s, got: %s", tt.connectionString, masked)
-				}
+			} else if masked != tt.connectionString {
+				t.Errorf("Expected no masking for %s, got: %s", tt.connectionString, masked)
 			}
 		})
 	}
@@ -2338,7 +2346,11 @@ func TestAdvancedCommandScenarios(t *testing.T) {
 	if err != nil {
 		t.Fatalf(testFailedTempDir, err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to clean up temp directory: %v", err)
+		}
+	}()
 
 	db, err := sql.Open(testSQLite3Driver, testMemoryDB)
 	if err != nil {
@@ -2568,7 +2580,11 @@ func TestUnicodeAndInternationalization(t *testing.T) {
 	if err != nil {
 		t.Fatalf(testFailedTempDir, err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to clean up temp directory: %v", err)
+		}
+	}()
 
 	tests := []struct {
 		name             string
@@ -2638,7 +2654,7 @@ DROP TABLE المستخدمين;`,
 			}
 
 			// Verify file can be read back correctly
-			content, err := os.ReadFile(filePath)
+			content, err := os.ReadFile(filePath) // #nosec G304 - Reading test files in controlled test environment
 			if err != nil {
 				t.Errorf("Failed to read Unicode migration file: %v", err)
 				return
