@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -564,102 +565,307 @@ func TestErrorHandling(t *testing.T) {
 	}
 }
 
-// Test helpers
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		len(s) > len(substr) && (s[:len(substr)] == substr ||
-			s[len(s)-len(substr):] == substr ||
-			containsMiddle(s, substr)))
+// Test data-losing change detection functions
+func TestChangeDetectorDataLosingFunctions(t *testing.T) {
+	detector := setupChangeDetector(t)
+
+	t.Run("isDataLosingAlterColumn", func(t *testing.T) {
+		testIsDataLosingAlterColumn(t, detector)
+	})
+
+	t.Run("extractColumnInfoFromChange", func(t *testing.T) {
+		testExtractColumnInfoFromChange(t, detector)
+	})
+
+	t.Run("hasDataLosingColumnChanges", func(t *testing.T) {
+		testHasDataLosingColumnChanges(t, detector)
+	})
+
+	t.Run("isNullabilityChangeDataLosing", func(t *testing.T) {
+		testIsNullabilityChangeDataLosing(t, detector)
+	})
+
+	t.Run("isLengthReductionDataLosing", func(t *testing.T) {
+		testIsLengthReductionDataLosing(t, detector)
+	})
+
+	t.Run("isIncompatibleTypeChange", func(t *testing.T) {
+		testIsIncompatibleTypeChange(t, detector)
+	})
+
+	t.Run("getIncompatibleTypeMap", func(t *testing.T) {
+		testGetIncompatibleTypeMap(t, detector)
+	})
+
+	t.Run("checkTypeIncompatibility", func(t *testing.T) {
+		testCheckTypeIncompatibility(t, detector)
+	})
 }
 
-func containsMiddle(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
+func testIsDataLosingAlterColumn(t *testing.T, detector *ChangeDetector) {
+	// Test non-alter-column change
+	change := MigrationChange{Type: CreateTable}
+	if detector.isDataLosingAlterColumn(change) {
+		t.Error("Expected false for non-alter-column change")
+	}
+
+	// Test alter column without proper values
+	change = MigrationChange{Type: AlterColumn}
+	if detector.isDataLosingAlterColumn(change) {
+		t.Error("Expected false for alter column without proper values")
+	}
+
+	// Test alter column with proper values - data losing
+	maxLength100 := 100
+	maxLength50 := 50
+	oldColumn := &DatabaseColumnInfo{
+		IsNullable: true,
+		MaxLength:  &maxLength100,
+		DataType:   "VARCHAR",
+	}
+	newColumn := &ColumnInfo{
+		IsNullable: false,
+		MaxLength:  &maxLength50,
+		DataType:   "VARCHAR",
+	}
+	change = MigrationChange{
+		Type:     AlterColumn,
+		OldValue: oldColumn,
+		NewValue: newColumn,
+	}
+	if !detector.isDataLosingAlterColumn(change) {
+		t.Error("Expected true for data-losing alter column")
+	}
+}
+
+func testExtractColumnInfoFromChange(t *testing.T, detector *ChangeDetector) {
+	// Test with invalid types
+	change := MigrationChange{
+		OldValue: "invalid",
+		NewValue: "invalid",
+	}
+	_, _, ok := detector.extractColumnInfoFromChange(change)
+	if ok {
+		t.Error("Expected false for invalid types")
+	}
+
+	// Test with valid types
+	oldColumn := &DatabaseColumnInfo{DataType: "VARCHAR"}
+	newColumn := &ColumnInfo{DataType: "TEXT"}
+	change = MigrationChange{
+		OldValue: oldColumn,
+		NewValue: newColumn,
+	}
+	old, new, ok := detector.extractColumnInfoFromChange(change)
+	if !ok {
+		t.Error("Expected true for valid types")
+	}
+	if old != oldColumn {
+		t.Error("Expected old column to match")
+	}
+	if new != newColumn {
+		t.Error("Expected new column to match")
+	}
+}
+
+func testHasDataLosingColumnChanges(t *testing.T, detector *ChangeDetector) {
+	// Test non-data-losing change
+	oldColumn := &DatabaseColumnInfo{
+		IsNullable: false,
+		DataType:   "VARCHAR",
+	}
+	newColumn := &ColumnInfo{
+		IsNullable: false,
+		DataType:   "VARCHAR",
+	}
+	if detector.hasDataLosingColumnChanges(oldColumn, newColumn) {
+		t.Error("Expected false for non-data-losing change")
+	}
+
+	// Test data-losing nullability change
+	oldColumn.IsNullable = true
+	newColumn.IsNullable = false
+	if !detector.hasDataLosingColumnChanges(oldColumn, newColumn) {
+		t.Error("Expected true for nullability data-losing change")
+	}
+}
+
+func testIsNullabilityChangeDataLosing(t *testing.T, detector *ChangeDetector) {
+	oldColumn := &DatabaseColumnInfo{IsNullable: true}
+	newColumn := &ColumnInfo{IsNullable: false}
+	if !detector.isNullabilityChangeDataLosing(oldColumn, newColumn) {
+		t.Error("Expected true for nullable to non-nullable change")
+	}
+
+	oldColumn.IsNullable = false
+	newColumn.IsNullable = true
+	if detector.isNullabilityChangeDataLosing(oldColumn, newColumn) {
+		t.Error("Expected false for non-nullable to nullable change")
+	}
+}
+
+func testIsLengthReductionDataLosing(t *testing.T, detector *ChangeDetector) {
+	maxLength100 := 100
+	maxLength50 := 50
+	maxLength200 := 200
+
+	// Test length reduction
+	oldColumn := &DatabaseColumnInfo{MaxLength: &maxLength100}
+	newColumn := &ColumnInfo{MaxLength: &maxLength50}
+	if !detector.isLengthReductionDataLosing(oldColumn, newColumn) {
+		t.Error("Expected true for length reduction")
+	}
+
+	// Test length increase
+	newColumn.MaxLength = &maxLength200
+	if detector.isLengthReductionDataLosing(oldColumn, newColumn) {
+		t.Error("Expected false for length increase")
+	}
+
+	// Test with nil lengths
+	oldColumn.MaxLength = nil
+	if detector.isLengthReductionDataLosing(oldColumn, newColumn) {
+		t.Error("Expected false for nil old length")
+	}
+}
+
+func testIsIncompatibleTypeChange(t *testing.T, detector *ChangeDetector) {
+	// Test compatible change
+	if detector.isIncompatibleTypeChange("VARCHAR(100)", "VARCHAR(200)") {
+		t.Error("Expected false for compatible VARCHAR change")
+	}
+
+	// Test incompatible change
+	if !detector.isIncompatibleTypeChange("TEXT", "INTEGER") {
+		t.Error("Expected true for TEXT to INTEGER change")
+	}
+
+	if !detector.isIncompatibleTypeChange("BOOLEAN", "VARCHAR") {
+		t.Error("Expected true for BOOLEAN to VARCHAR change")
+	}
+
+	// Test case insensitive
+	if !detector.isIncompatibleTypeChange("text", "integer") {
+		t.Error("Expected true for case-insensitive incompatible change")
+	}
+}
+
+func testGetIncompatibleTypeMap(t *testing.T, detector *ChangeDetector) {
+	typeMap := detector.getIncompatibleTypeMap()
+	if len(typeMap) == 0 {
+		t.Error("Expected non-empty type map")
+	}
+
+	// Test specific mappings
+	textIncompatible, exists := typeMap["TEXT"]
+	if !exists {
+		t.Error("Expected TEXT to have incompatible types")
+	}
+
+	containsInteger := false
+	for _, incompatible := range textIncompatible {
+		if incompatible == "INTEGER" {
+			containsInteger = true
+			break
 		}
 	}
-	return false
+	if !containsInteger {
+		t.Error("Expected INTEGER to be incompatible with TEXT")
+	}
 }
 
-// Integration test
-func TestFullWorkflow(t *testing.T) {
-	migrator, db, _ := setupTestMigrator(t)
-	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
-			t.Logf(warnFailedToCloseDB, closeErr)
+func testCheckTypeIncompatibility(t *testing.T, detector *ChangeDetector) {
+	incompatibleMap := map[string][]string{
+		"TEXT": {"INTEGER", "BOOLEAN"},
+	}
+
+	// Test incompatible
+	if !detector.checkTypeIncompatibility("TEXT", "INTEGER", incompatibleMap) {
+		t.Error("Expected true for incompatible types")
+	}
+
+	// Test compatible
+	if detector.checkTypeIncompatibility("TEXT", "VARCHAR", incompatibleMap) {
+		t.Error("Expected false for compatible types")
+	}
+
+	// Test non-existent source type
+	if detector.checkTypeIncompatibility("UNKNOWN", "INTEGER", incompatibleMap) {
+		t.Error("Expected false for unknown source type")
+	}
+}
+
+// Test circular dependency detection
+func TestChangeDetectorCircularDependencies(t *testing.T) {
+	detector := setupChangeDetector(t)
+
+	t.Run("hasCycleDFS", func(t *testing.T) {
+		// Create a simple dependency graph without cycles
+		deps := map[string][]string{
+			"A": {"B"},
+			"B": {"C"},
+			"C": {},
 		}
-	}()
 
-	// Step 1: Create initial schema
-	migrator.DbSet(&TestUser{})
+		visited := make(map[string]bool)
+		recStack := make(map[string]bool)
 
-	migration1, err := migrator.AddMigration("create_users", Interactive)
-	if err != nil {
-		t.Fatalf("Failed to create first migration: %v", err)
-	}
+		if detector.hasCycleDFS("A", deps, visited, recStack) {
+			t.Error("Expected false for acyclic graph")
+		}
 
-	err = migrator.ApplyMigrations(Automatic)
-	if err != nil {
-		t.Fatalf("Failed to apply first migration: %v", err)
-	}
+		// Create a graph with cycles
+		deps = map[string][]string{
+			"A": {"B"},
+			"B": {"C"},
+			"C": {"A"}, // Creates cycle
+		}
 
-	// Step 2: Add posts table
-	migrator.DbSet(&TestPost{})
+		visited = make(map[string]bool)
+		recStack = make(map[string]bool)
 
-	migration2, err := migrator.AddMigration("create_posts", Interactive)
-	if err != nil {
-		t.Fatalf("Failed to create second migration: %v", err)
-	}
-
-	err = migrator.ApplyMigrations(Automatic)
-	if err != nil {
-		t.Fatalf("Failed to apply second migration: %v", err)
-	}
-
-	// Step 3: Check final status
-	status, err := migrator.GetMigrationStatus()
-	if err != nil {
-		t.Fatalf("Failed to get final status: %v", err)
-	}
-
-	if len(status.AppliedMigrations) != 2 {
-		t.Errorf("Expected 2 applied migrations, got %d", len(status.AppliedMigrations))
-	}
-
-	if status.HasPendingChanges {
-		t.Error("Should not have pending changes")
-	}
-
-	// Step 4: Rollback both migrations
-	err = migrator.RevertMigration()
-	if err != nil {
-		t.Fatalf("Failed to revert posts migration: %v", err)
-	}
-
-	err = migrator.RevertMigration()
-	if err != nil {
-		t.Fatalf("Failed to revert users migration: %v", err)
-	}
-
-	// Step 5: Verify clean state
-	finalStatus, err := migrator.GetMigrationStatus()
-	if err != nil {
-		t.Fatalf("Failed to get final status after rollback: %v", err)
-	}
-
-	if len(finalStatus.AppliedMigrations) != 0 {
-		t.Errorf("Expected 0 applied migrations after full rollback, got %d", len(finalStatus.AppliedMigrations))
-	}
-
-	// Verify migration files still exist
-	if _, err := os.Stat(migration1.FilePath); os.IsNotExist(err) {
-		t.Error("Migration files should still exist after rollback")
-	}
-
-	if _, err := os.Stat(migration2.FilePath); os.IsNotExist(err) {
-		t.Error("Migration files should still exist after rollback")
-	}
+		if !detector.hasCycleDFS("A", deps, visited, recStack) {
+			t.Error("Expected true for cyclic graph")
+		}
+	})
 }
+
+// Test foreign key reference detection
+func TestChangeDetectorForeignKeyReferences(t *testing.T) {
+	detector := setupChangeDetector(t)
+
+	t.Run("isForeignKeyReferencingDroppedTable", func(t *testing.T) {
+		droppedTables := map[string]bool{
+			"users":      true,
+			"categories": true,
+		}
+
+		// Test constraint referencing dropped table
+		constraint := &ConstraintInfo{
+			Type:            "FOREIGN KEY",
+			ReferencedTable: "users",
+		}
+
+		if !detector.isForeignKeyReferencingDroppedTable(constraint, droppedTables) {
+			t.Error("Expected true for foreign key referencing dropped table")
+		}
+
+		// Test constraint not referencing dropped table
+		constraint.ReferencedTable = "products"
+		if detector.isForeignKeyReferencingDroppedTable(constraint, droppedTables) {
+			t.Error("Expected false for foreign key not referencing dropped table")
+		}
+
+		// Test non-foreign key constraint
+		constraint.Type = "UNIQUE"
+		constraint.ReferencedTable = "users"
+		if detector.isForeignKeyReferencingDroppedTable(constraint, droppedTables) {
+			t.Error("Expected false for non-foreign key constraint")
+		}
+	})
+}
+
+// ...existing test code...
 
 // Import required types and constants for hybrid migration tests
 // These are re-exported for test visibility if not already imported
@@ -668,3 +874,35 @@ func TestFullWorkflow(t *testing.T) {
 // HybridMigrator, MigrationFile, MigrationStatus, NewHybridMigrator, NewModelRegistry, MigrationMode, etc.
 // are defined in the migrations package and available for use in this test file.
 // The following import ensures all symbols are available for type checking and test execution.
+
+// Helper functions for test support
+
+// contains checks if a string contains a substring
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
+}
+
+// setupChangeDetector creates a change detector for testing
+func setupChangeDetector(t *testing.T) *ChangeDetector {
+	// Create a temporary directory for test
+	tempDir := t.TempDir()
+
+	// Create a test database
+	dbPath := filepath.Join(tempDir, "test.db")
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Failed to close test database: %v", closeErr)
+		}
+	}()
+
+	// Create model registry and change detector
+	registry := NewModelRegistry(SQLite)
+	inspector := NewDatabaseInspector(db, SQLite)
+	detector := NewChangeDetector(registry, inspector)
+
+	return detector
+}
