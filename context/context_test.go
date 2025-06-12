@@ -43,6 +43,16 @@ const (
 	// HTTP header constants
 	headerContentType = "Content-Type"
 	contentTypeJSON   = "application/json"
+
+	// Test value constants
+	testHeaderValue   = "test-value"
+	customHeaderName  = "X-Custom-Header"
+	customHeaderValue = "custom-value"
+	sessionIDCookie   = "session_id"
+	sessionIDValue    = "abc123"
+	userPrefCookie    = "user_pref"
+	darkModeValue     = "dark_mode"
+	newCustomValue    = "new-value"
 )
 
 func TestNew(t *testing.T) {
@@ -546,5 +556,366 @@ func TestJSONDataEncodingError(t *testing.T) {
 
 	if w.code != http.StatusCreated {
 		t.Errorf(errStatusCode, http.StatusCreated, w.code)
+	}
+}
+
+// Test for GetHeader function
+func TestGetHeader(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+	r.Header.Set("X-Test-Header", testHeaderValue)
+	r.Header.Set("Authorization", "Bearer token123")
+	c := New(w, r)
+
+	// Test getting existing header
+	testValue := c.GetHeader("X-Test-Header")
+	if testValue != testHeaderValue {
+		t.Errorf("Expected header value '%s', got '%s'", testHeaderValue, testValue)
+	}
+
+	// Test getting another existing header
+	authValue := c.GetHeader("Authorization")
+	if authValue != "Bearer token123" {
+		t.Errorf("Expected Authorization header 'Bearer token123', got '%s'", authValue)
+	}
+
+	// Test getting non-existent header
+	emptyValue := c.GetHeader("Non-Existent-Header")
+	if emptyValue != "" {
+		t.Errorf("Expected empty string for non-existent header, got '%s'", emptyValue)
+	}
+
+	// Test case sensitivity
+	lowerValue := c.GetHeader("x-test-header")
+	if lowerValue != testHeaderValue {
+		t.Errorf("Expected header value '%s' (case insensitive), got '%s'", testHeaderValue, lowerValue)
+	}
+}
+
+// Test for SetHeader function
+func TestSetHeader(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+	c := New(w, r)
+
+	// Test setting a single header
+	result := c.SetHeader(customHeaderName, customHeaderValue)
+
+	// Verify method chaining returns context
+	if result != c {
+		t.Error("SetHeader should return the same context for method chaining")
+	}
+
+	// Verify header was set
+	headerValue := w.Header().Get(customHeaderName)
+	if headerValue != customHeaderValue {
+		t.Errorf("Expected header value '%s', got '%s'", customHeaderValue, headerValue)
+	}
+
+	// Test setting multiple headers
+	c.SetHeader("Content-Encoding", "gzip").
+		SetHeader("Cache-Control", "no-cache").
+		SetHeader("X-API-Version", "v1.0")
+
+	// Verify all headers were set
+	encodingValue := w.Header().Get("Content-Encoding")
+	if encodingValue != "gzip" {
+		t.Errorf("Expected Content-Encoding 'gzip', got '%s'", encodingValue)
+	}
+
+	cacheValue := w.Header().Get("Cache-Control")
+	if cacheValue != "no-cache" {
+		t.Errorf("Expected Cache-Control 'no-cache', got '%s'", cacheValue)
+	}
+
+	versionValue := w.Header().Get("X-API-Version")
+	if versionValue != "v1.0" {
+		t.Errorf("Expected X-API-Version 'v1.0', got '%s'", versionValue)
+	}
+
+	// Test overwriting existing header
+	c.SetHeader(customHeaderName, newCustomValue)
+	updatedValue := w.Header().Get(customHeaderName)
+	if updatedValue != newCustomValue {
+		t.Errorf("Expected updated header value '%s', got '%s'", newCustomValue, updatedValue)
+	}
+}
+
+// Test for GetCookie function
+func TestGetCookie(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+
+	// Add cookies to request
+	r.AddCookie(&http.Cookie{Name: sessionIDCookie, Value: sessionIDValue})
+	r.AddCookie(&http.Cookie{Name: userPrefCookie, Value: darkModeValue})
+
+	c := New(w, r)
+
+	// Test getting existing cookie
+	sessionValue, err := c.GetCookie(sessionIDCookie)
+	if err != nil {
+		t.Errorf("Expected no error getting %s cookie, got: %v", sessionIDCookie, err)
+	}
+	if sessionValue != sessionIDValue {
+		t.Errorf("Expected %s value '%s', got '%s'", sessionIDCookie, sessionIDValue, sessionValue)
+	}
+
+	// Test getting another existing cookie
+	prefValue, err := c.GetCookie(userPrefCookie)
+	if err != nil {
+		t.Errorf("Expected no error getting %s cookie, got: %v", userPrefCookie, err)
+	}
+	if prefValue != darkModeValue {
+		t.Errorf("Expected %s value '%s', got '%s'", userPrefCookie, darkModeValue, prefValue)
+	}
+
+	// Test getting non-existent cookie
+	_, err = c.GetCookie("non_existent")
+	if err == nil {
+		t.Error("Expected error when getting non-existent cookie, got nil")
+	}
+	if err != http.ErrNoCookie {
+		t.Errorf("Expected http.ErrNoCookie, got: %v", err)
+	}
+
+	// Test empty cookie value
+	r.AddCookie(&http.Cookie{Name: "empty_cookie", Value: ""})
+	emptyValue, err := c.GetCookie("empty_cookie")
+	if err != nil {
+		t.Errorf("Expected no error getting empty cookie, got: %v", err)
+	}
+	if emptyValue != "" {
+		t.Errorf("Expected empty cookie value '', got '%s'", emptyValue)
+	}
+}
+
+// Test for SetCookie function - basic functionality
+func TestSetCookie(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+	c := New(w, r)
+
+	// Test setting a basic cookie
+	result := c.SetCookie(sessionIDCookie, sessionIDValue, 3600, "/", "", false, true)
+
+	// Verify method chaining returns context
+	if result != c {
+		t.Error("SetCookie should return the same context for method chaining")
+	}
+
+	// Verify cookie was set
+	cookies := w.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Errorf("Expected 1 cookie, got %d", len(cookies))
+	}
+
+	cookie := cookies[0]
+	validateBasicCookie(t, cookie)
+}
+
+// Test for SetCookie function - multiple cookies with chaining
+func TestSetCookieChaining(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+	c := New(w, r)
+
+	// Set initial cookie
+	c.SetCookie(sessionIDCookie, sessionIDValue, 3600, "/", "", false, true)
+
+	// Test setting multiple cookies with chaining
+	c.SetCookie(userPrefCookie, darkModeValue, 86400, "/app", "example.com", true, false).
+		SetCookie("lang", "en", 0, "/", "", false, false)
+
+	// Verify multiple cookies were set
+	allCookies := w.Result().Cookies()
+	if len(allCookies) != 3 {
+		t.Errorf("Expected 3 cookies total, got %d", len(allCookies))
+	}
+
+	// Test cookie with all options set
+	prefCookie := allCookies[1]
+	validateAdvancedCookie(t, prefCookie)
+
+	// Test session cookie (MaxAge = 0)
+	langCookie := allCookies[2]
+	if langCookie.MaxAge != 0 {
+		t.Errorf("Expected session cookie MaxAge 0, got %d", langCookie.MaxAge)
+	}
+}
+
+// Helper function to validate basic cookie properties
+func validateBasicCookie(t *testing.T, cookie *http.Cookie) {
+	if cookie.Name != sessionIDCookie {
+		t.Errorf("Expected cookie name '%s', got '%s'", sessionIDCookie, cookie.Name)
+	}
+	if cookie.Value != sessionIDValue {
+		t.Errorf("Expected cookie value '%s', got '%s'", sessionIDValue, cookie.Value)
+	}
+	if cookie.MaxAge != 3600 {
+		t.Errorf("Expected MaxAge 3600, got %d", cookie.MaxAge)
+	}
+	if cookie.Path != "/" {
+		t.Errorf("Expected Path '/', got '%s'", cookie.Path)
+	}
+	if cookie.Domain != "" {
+		t.Errorf("Expected empty Domain, got '%s'", cookie.Domain)
+	}
+	if cookie.Secure != false {
+		t.Errorf("Expected Secure false, got %t", cookie.Secure)
+	}
+	if cookie.HttpOnly != true {
+		t.Errorf("Expected HttpOnly true, got %t", cookie.HttpOnly)
+	}
+}
+
+// Helper function to validate advanced cookie properties
+func validateAdvancedCookie(t *testing.T, prefCookie *http.Cookie) {
+	if prefCookie.Name != userPrefCookie {
+		t.Errorf("Expected second cookie name '%s', got '%s'", userPrefCookie, prefCookie.Name)
+	}
+	if prefCookie.Value != darkModeValue {
+		t.Errorf("Expected second cookie value '%s', got '%s'", darkModeValue, prefCookie.Value)
+	}
+	if prefCookie.MaxAge != 86400 {
+		t.Errorf("Expected second cookie MaxAge 86400, got %d", prefCookie.MaxAge)
+	}
+	if prefCookie.Path != "/app" {
+		t.Errorf("Expected second cookie Path '/app', got '%s'", prefCookie.Path)
+	}
+	if prefCookie.Domain != "example.com" {
+		t.Errorf("Expected second cookie Domain 'example.com', got '%s'", prefCookie.Domain)
+	}
+	if prefCookie.Secure != true {
+		t.Errorf("Expected second cookie Secure true, got %t", prefCookie.Secure)
+	}
+	if prefCookie.HttpOnly != false {
+		t.Errorf("Expected second cookie HttpOnly false, got %t", prefCookie.HttpOnly)
+	}
+}
+
+// Test for GetContentType function
+func TestGetContentType(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/test", nil)
+
+	// Test with JSON content type
+	r.Header.Set(HeaderContentType, contentTypeJSON)
+	c := New(w, r)
+
+	contentType := c.GetContentType()
+	if contentType != contentTypeJSON {
+		t.Errorf("Expected content type '%s', got '%s'", contentTypeJSON, contentType)
+	}
+
+	// Test with form data content type
+	r.Header.Set(HeaderContentType, "application/x-www-form-urlencoded")
+	contentType = c.GetContentType()
+	if contentType != "application/x-www-form-urlencoded" {
+		t.Errorf("Expected content type 'application/x-www-form-urlencoded', got '%s'", contentType)
+	}
+
+	// Test with multipart form data
+	r.Header.Set(HeaderContentType, "multipart/form-data; boundary=something")
+	contentType = c.GetContentType()
+	if contentType != "multipart/form-data; boundary=something" {
+		t.Errorf("Expected content type 'multipart/form-data; boundary=something', got '%s'", contentType)
+	}
+
+	// Test with no content type header
+	r.Header.Del(HeaderContentType)
+	contentType = c.GetContentType()
+	if contentType != "" {
+		t.Errorf("Expected empty content type, got '%s'", contentType)
+	}
+
+	// Test with empty content type
+	r.Header.Set(HeaderContentType, "")
+	contentType = c.GetContentType()
+	if contentType != "" {
+		t.Errorf("Expected empty content type, got '%s'", contentType)
+	}
+}
+
+// Test for Redirect function
+func TestRedirect(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/old-path", nil)
+	c := New(w, r)
+
+	// Test temporary redirect (302)
+	c.Redirect(http.StatusFound, "/new-path")
+
+	if w.Code != http.StatusFound {
+		t.Errorf(errStatusCode, http.StatusFound, w.Code)
+	}
+
+	location := w.Header().Get("Location")
+	if location != "/new-path" {
+		t.Errorf("Expected Location header '/new-path', got '%s'", location)
+	}
+
+	// Test permanent redirect (301)
+	w2 := httptest.NewRecorder()
+	r2 := httptest.NewRequest("GET", "/old-path", nil)
+	c2 := New(w2, r2)
+
+	c2.Redirect(http.StatusMovedPermanently, "https://example.com/new-location")
+
+	if w2.Code != http.StatusMovedPermanently {
+		t.Errorf(errStatusCode, http.StatusMovedPermanently, w2.Code)
+	}
+
+	location2 := w2.Header().Get("Location")
+	if location2 != "https://example.com/new-location" {
+		t.Errorf("Expected Location header 'https://example.com/new-location', got '%s'", location2)
+	}
+
+	// Test see other redirect (303)
+	w3 := httptest.NewRecorder()
+	r3 := httptest.NewRequest("POST", "/form-submit", nil)
+	c3 := New(w3, r3)
+
+	c3.Redirect(http.StatusSeeOther, "/success")
+
+	if w3.Code != http.StatusSeeOther {
+		t.Errorf(errStatusCode, http.StatusSeeOther, w3.Code)
+	}
+
+	location3 := w3.Header().Get("Location")
+	if location3 != "/success" {
+		t.Errorf("Expected Location header '/success', got '%s'", location3)
+	}
+
+	// Test relative URL redirect
+	w4 := httptest.NewRecorder()
+	r4 := httptest.NewRequest("GET", "/test", nil)
+	c4 := New(w4, r4)
+
+	c4.Redirect(http.StatusFound, "../parent")
+
+	if w4.Code != http.StatusFound {
+		t.Errorf(errStatusCode, http.StatusFound, w4.Code)
+	}
+
+	location4 := w4.Header().Get("Location")
+	if location4 != "/parent" { // http.Redirect normalizes the relative URL
+		t.Errorf("Expected Location header '/parent', got '%s'", location4)
+	}
+
+	// Test empty URL redirect
+	w5 := httptest.NewRecorder()
+	r5 := httptest.NewRequest("GET", "/test", nil)
+	c5 := New(w5, r5)
+
+	c5.Redirect(http.StatusFound, "")
+
+	if w5.Code != http.StatusFound {
+		t.Errorf(errStatusCode, http.StatusFound, w5.Code)
+	}
+
+	location5 := w5.Header().Get("Location")
+	if location5 != "/" { // http.Redirect normalizes empty URL to "/"
+		t.Errorf("Expected Location header '/', got '%s'", location5)
 	}
 }

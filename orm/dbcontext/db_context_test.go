@@ -3,6 +3,7 @@ package dbcontext
 import (
 	"database/sql"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,38 +12,63 @@ import (
 
 // Test constants to avoid goconst violations
 const (
-	testDBCloseError      = "Failed to close database: %v"
-	testChangeTrackerNil  = "ChangeTracker should not be nil"
-	testUserName          = "Test User"
-	testInsertQuery       = "INSERT INTO testusers (name, email, is_active) VALUES (?, ?, ?)"
-	testInsertDataError   = "Failed to insert test data: %v"
-	testNameCondition     = "name = ?"
-	testJohnDoe           = "John Doe"
-	testJohnEmail         = "john@example.com"
-	testJohnUpdated       = "John Updated"
-	testAliceName         = "Alice"
-	testAliceEmail        = "alice@example.com"
-	testBobName           = "Bob"
-	testBobEmail          = "bob@example.com"
-	testNonExistent       = "NonExistent"
-	testCountQuery        = "SELECT COUNT(*) FROM testusers WHERE name = ?"
-	testCountDeletedQuery = "SELECT COUNT(*) FROM testusers WHERE id = ?"
-	testSQLite3Driver     = "sqlite3"
-	testMemoryDB          = ":memory:"
-	testIsActiveCondition = "is_active = ?"
-	testIDCondition       = "id = ?"
-	testEmailCondition    = "email = ?"
-	testPostgresDriver    = "postgres"
-	testMySQLDriver       = "mysql"
-	testSQLite3URL        = "sqlite3://test.db"
-	testPostgresURL       = "postgres://user:pass@localhost/db"
-	testUnknownURL        = "unknown://test"
-	testSelectQuery       = "SELECT * FROM users WHERE id = ? AND name = ?"
-	testSelectSingleQuery = "SELECT * FROM users WHERE id = ?"
-	testPostgresQuery     = "SELECT * FROM users WHERE id = $1 AND name = $2"
-	testExpectedGotFormat = "Expected %s, got %s"
-	testNameLikePattern   = "A%"
-	testAliceLikeName     = "name"
+	testDBCloseError           = "Failed to close database: %v"
+	testChangeTrackerNil       = "ChangeTracker should not be nil"
+	testUserName               = "Test User"
+	testInsertQuery            = "INSERT INTO testusers (name, email, is_active) VALUES (?, ?, ?)"
+	testInsertDataError        = "Failed to insert test data: %v"
+	testNameCondition          = "name = ?"
+	testJohnDoe                = "John Doe"
+	testJohnEmail              = "john@example.com"
+	testJohnUpdated            = "John Updated"
+	testAliceName              = "Alice"
+	testAliceEmail             = "alice@example.com"
+	testBobName                = "Bob"
+	testBobEmail               = "bob@example.com"
+	testNonExistent            = "NonExistent"
+	testCountQuery             = "SELECT COUNT(*) FROM testusers WHERE name = ?"
+	testCountDeletedQuery      = "SELECT COUNT(*) FROM testusers WHERE id = ?"
+	testSQLite3Driver          = "sqlite3"
+	testMemoryDB               = ":memory:"
+	testIsActiveCondition      = "is_active = ?"
+	testIDCondition            = "id = ?"
+	testEmailCondition         = "email = ?"
+	testPostgresDriver         = "postgres"
+	testMySQLDriver            = "mysql"
+	testSQLite3URL             = "sqlite3://test.db"
+	testPostgresURL            = "postgres://user:pass@localhost/db"
+	testUnknownURL             = "unknown://test"
+	testSelectQuery            = "SELECT * FROM users WHERE id = ? AND name = ?"
+	testSelectSingleQuery      = "SELECT * FROM users WHERE id = ?"
+	testPostgresQuery          = "SELECT * FROM users WHERE id = $1 AND name = $2"
+	testExpectedGotFormat      = "Expected %s, got %s"
+	testNameLikePattern        = "A%"
+	testAliceLikeName          = "name"
+	testExpectedErrorFormat    = "Expected error '%s', got '%s'"
+	testUpdateNotImplemented   = "update not yet implemented"
+	testDeleteNotImplemented   = "delete not yet implemented"
+	testFindByIDNotImplemented = "findByID not yet implemented"
+	testExpectedTableName      = "test_users"
+	testExpectedBaseTableName  = "base_entitys"
+	testCreateTableQuery       = `
+		CREATE TABLE testusers (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			email TEXT UNIQUE,
+			is_active BOOLEAN DEFAULT 1,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`
+	testCreateEFTableQuery = `
+		CREATE TABLE test_user_entitys (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			email TEXT UNIQUE,
+			is_active BOOLEAN DEFAULT 1,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`
 )
 
 // Test entity for testing
@@ -52,6 +78,14 @@ type TestUser struct {
 	Email     string    `db:"email"`
 	IsActive  bool      `db:"is_active"`
 	CreatedAt time.Time `db:"created_at"`
+}
+
+// TestUserEntity that implements EntityInterface for EF testing
+type TestUserEntity struct {
+	BaseEntity
+	Name     string `db:"name"`
+	Email    string `db:"email"`
+	IsActive bool   `db:"is_active"`
 }
 
 // TableName returns the table name for TestUser
@@ -66,15 +100,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 	}
 
 	// Create test table
-	_, err = db.Exec(`
-		CREATE TABLE testusers (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			email TEXT UNIQUE,
-			is_active BOOLEAN DEFAULT 1,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
+	_, err = db.Exec(testCreateTableQuery)
 	if err != nil {
 		t.Fatalf("Failed to create test table: %v", err)
 	}
@@ -1197,5 +1223,212 @@ func TestPlaceholderAdjustment(t *testing.T) {
 	adjustedCondition = newSet.adjustPlaceholdersForCondition(condition)
 	if adjustedCondition != condition {
 		t.Errorf("Condition without placeholders should remain unchanged")
+	}
+}
+
+// Test EF Context insert method with 0% coverage
+func TestEFContextInsertMethod(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf(testDBCloseError, closeErr)
+		}
+	}()
+
+	ctx := NewEFContext(db)
+
+	// Create table for testing
+	_, err := db.Exec("DROP TABLE IF EXISTS test_user_entitys")
+	if err != nil {
+		t.Logf("Warning: could not drop table: %v", err)
+	}
+	_, err = db.Exec(testCreateEFTableQuery)
+	if err != nil {
+		t.Fatalf("Failed to create test table: %v", err)
+	}
+
+	// Test insert method (0% coverage)
+	entity := &TestUserEntity{
+		Name:     testAliceName,
+		Email:    testAliceEmail,
+		IsActive: true,
+	}
+	err = ctx.insert(entity)
+	if err != nil {
+		t.Errorf("insert should work with valid entity and database: %v", err)
+	}
+}
+
+// Test EF Context unimplemented methods
+func TestEFContextUnimplementedMethods(t *testing.T) {
+	ctx := NewEFContext(nil) // Don't need DB for error tests
+	entity := &BaseEntity{ID: 1}
+
+	// Test update method (0% coverage) - should return not implemented error
+	err := ctx.update(entity)
+	if err == nil {
+		t.Error("update should return 'not yet implemented' error")
+	}
+	if err.Error() != testUpdateNotImplemented {
+		t.Errorf(testExpectedErrorFormat, testUpdateNotImplemented, err.Error())
+	}
+
+	// Test delete method (0% coverage) - should return not implemented error
+	err = ctx.delete(entity)
+	if err == nil {
+		t.Error("delete should return 'not yet implemented' error")
+	}
+	if err.Error() != testDeleteNotImplemented {
+		t.Errorf(testExpectedErrorFormat, testDeleteNotImplemented, err.Error())
+	}
+
+	// Test findByID method (0% coverage) - should return not implemented error
+	err = ctx.findByID(entity, 1)
+	if err == nil {
+		t.Error("findByID should return 'not yet implemented' error")
+	}
+	if err.Error() != testFindByIDNotImplemented {
+		t.Errorf(testExpectedErrorFormat, testFindByIDNotImplemented, err.Error())
+	}
+}
+
+// Test EF Context helper methods with 0% coverage
+func TestEFContextHelperMethods(t *testing.T) {
+	ctx := NewEFContext(nil) // Don't need DB for these helper methods
+
+	// Test getTableNameFromType (0% coverage)
+	userType := reflect.TypeOf(TestUser{})
+	tableName := ctx.getTableNameFromType(userType)
+	if tableName != testExpectedTableName {
+		t.Errorf("Expected table name '%s', got '%s'", testExpectedTableName, tableName)
+	}
+
+	// Test with a different type
+	baseType := reflect.TypeOf(BaseEntity{})
+	baseTableName := ctx.getTableNameFromType(baseType)
+	if baseTableName != testExpectedBaseTableName {
+		t.Errorf("Expected table name '%s', got '%s'", testExpectedBaseTableName, baseTableName)
+	}
+
+	// Test toSnakeCaseEF (0% coverage)
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{"UserName", "user_name"},
+		{"TestUser", "test_user"},
+		{"BaseEntity", "base_entity"},
+		{"ID", "i_d"},
+		{"HTMLParser", "h_t_m_l_parser"},
+		{"", ""},
+		{"A", "a"},
+	}
+
+	for _, tc := range testCases {
+		result := ctx.toSnakeCaseEF(tc.input)
+		if result != tc.expected {
+			t.Errorf("toSnakeCaseEF(%s): expected %s, got %s", tc.input, tc.expected, result)
+		}
+	}
+}
+
+// Test setTimestamps method (0% coverage)
+func TestEFContextSetTimestamps(t *testing.T) {
+	ctx := NewEFContext(nil)
+
+	// Create entity with timestamp fields
+	entity := &BaseEntity{}
+	v := reflect.ValueOf(entity).Elem()
+
+	// Test setTimestamps for insert (should set both CreatedAt and UpdatedAt)
+	beforeTime := time.Now()
+	ctx.setTimestamps(v, true)
+	afterTime := time.Now()
+
+	if entity.CreatedAt.IsZero() {
+		t.Error("CreatedAt should be set for insert")
+	}
+	if entity.UpdatedAt.IsZero() {
+		t.Error("UpdatedAt should be set for insert")
+	}
+	if entity.CreatedAt.Before(beforeTime) || entity.CreatedAt.After(afterTime) {
+		t.Error("CreatedAt should be within expected time range")
+	}
+	if entity.UpdatedAt.Before(beforeTime) || entity.UpdatedAt.After(afterTime) {
+		t.Error("UpdatedAt should be within expected time range")
+	}
+
+	// Test setTimestamps for update (should only set UpdatedAt)
+	originalCreatedAt := entity.CreatedAt
+	time.Sleep(1 * time.Millisecond) // Ensure time difference
+	beforeUpdateTime := time.Now()
+	ctx.setTimestamps(v, false)
+	afterUpdateTime := time.Now()
+
+	if !entity.CreatedAt.Equal(originalCreatedAt) {
+		t.Error("CreatedAt should not change for update")
+	}
+	if entity.UpdatedAt.Before(beforeUpdateTime) || entity.UpdatedAt.After(afterUpdateTime) {
+		t.Error("UpdatedAt should be updated within expected time range")
+	}
+}
+
+// Test extractFieldsForInsert method (0% coverage)
+func TestEFContextExtractFieldsForInsert(t *testing.T) {
+	ctx := NewEFContext(nil)
+
+	// Create test entity
+	entity := &TestUserEntity{
+		Name:     testAliceName,
+		Email:    testAliceEmail,
+		IsActive: true,
+	}
+	v := reflect.ValueOf(entity).Elem()
+
+	// Test extractFieldsForInsert
+	columns, values, placeholders := ctx.extractFieldsForInsert(v)
+
+	if len(columns) == 0 {
+		t.Error("extractFieldsForInsert should return columns")
+	}
+	if len(values) == 0 {
+		t.Error("extractFieldsForInsert should return values")
+	}
+	if len(placeholders) == 0 {
+		t.Error("extractFieldsForInsert should return placeholders")
+	}
+	if len(columns) != len(values) || len(values) != len(placeholders) {
+		t.Error("columns, values, and placeholders should have same length")
+	}
+
+	// Check that ID is excluded from insert
+	for _, col := range columns {
+		if strings.ToLower(col) == "id" {
+			t.Error("ID column should be excluded from insert")
+		}
+	}
+
+	// Check for expected columns (name, email, is_active should be present)
+	hasName := false
+	hasEmail := false
+	hasIsActive := false
+	for _, col := range columns {
+		switch col {
+		case "name":
+			hasName = true
+		case "email":
+			hasEmail = true
+		case "is_active":
+			hasIsActive = true
+		}
+	}
+	if !hasName {
+		t.Error("Expected 'name' column in insert")
+	}
+	if !hasEmail {
+		t.Error("Expected 'email' column in insert")
+	}
+	if !hasIsActive {
+		t.Error("Expected 'is_active' column in insert")
 	}
 }

@@ -39,6 +39,12 @@ const (
 	// API version context key
 	apiVersionKey = "API-Version"
 
+	// HTTP headers
+	contentTypeHeader = "Content-Type"
+
+	// Test names
+	testCustomPrefix = "Custom prefix"
+
 	// Error messages
 	errExpectedError         = "Expected error but got nil"
 	errExpectedNoError       = "Expected no error but got: %v"
@@ -173,7 +179,7 @@ func TestPathVersionStrategy(t *testing.T) {
 		{"Valid v1 path", pathV1Users, version1, false},
 		{"Valid v2 path", pathV2Users, version2, false},
 		{"No version in path", pathUsers, "", true},
-		{"Custom prefix", "/api-v3/users", "", true},
+		{testCustomPrefix, "/api-v3/users", "", true},
 	}
 
 	for _, tt := range tests {
@@ -304,4 +310,160 @@ func TestGetAPIVersion(t *testing.T) {
 
 	info, exists = GetAPIVersion(c)
 	checkVersionInfo(t, info, exists, true, expectedInfo)
+}
+
+// Test Apply methods that have 0% coverage
+func TestVersionStrategyApplyMethods(t *testing.T) {
+	// Test PathVersionStrategy Apply method (0% coverage)
+	t.Run("PathVersionStrategy Apply", func(t *testing.T) {
+		_, w, c := setupPathRequest(pathV1Users)
+		strategy := &PathVersionStrategy{Prefix: "v"}
+
+		// Apply should do nothing for path versioning (just ensure it doesn't panic)
+		strategy.Apply(c, version1)
+
+		// Verify the response is still valid
+		if w.Code != 0 && w.Code != http.StatusOK {
+			t.Errorf("Apply should not affect response status")
+		}
+	})
+
+	// Test QueryVersionStrategy Apply method (0% coverage)
+	t.Run("QueryVersionStrategy Apply", func(t *testing.T) {
+		_, w, c := setupQueryRequest("?version=1")
+		strategy := &QueryVersionStrategy{ParamName: paramVersion}
+
+		// Apply should do nothing for query versioning (just ensure it doesn't panic)
+		strategy.Apply(c, version1)
+
+		// Verify the response is still valid
+		if w.Code != 0 && w.Code != http.StatusOK {
+			t.Errorf("Apply should not affect response status")
+		}
+	})
+
+	// Test HeaderVersionStrategy Apply method (0% coverage)
+	t.Run("HeaderVersionStrategy Apply", func(t *testing.T) {
+		_, w, c := setupHeaderRequest(headerAcceptVersion, version1)
+		strategy := &HeaderVersionStrategy{HeaderName: headerAcceptVersion}
+
+		// Apply should set the version header
+		strategy.Apply(c, version2)
+
+		// Check that the header was set
+		expectedHeaderValue := version2
+		actualHeaderValue := w.Header().Get(headerAcceptVersion)
+		if actualHeaderValue != expectedHeaderValue {
+			t.Errorf("Expected header value %s, got %s", expectedHeaderValue, actualHeaderValue)
+		}
+	})
+
+	// Test HeaderVersionStrategy Apply with default header name (0% coverage)
+	t.Run("HeaderVersionStrategy Apply Default Header", func(t *testing.T) {
+		_, w, c := setupHeaderRequest("", "")
+		strategy := &HeaderVersionStrategy{} // No header name specified
+
+		// Apply should set the default version header
+		strategy.Apply(c, version1)
+
+		// Check that the default header was set
+		expectedHeaderValue := version1
+		actualHeaderValue := w.Header().Get(DefaultVersionHeader)
+		if actualHeaderValue != expectedHeaderValue {
+			t.Errorf("Expected default header value %s, got %s", expectedHeaderValue, actualHeaderValue)
+		}
+	})
+
+	// Test MediaTypeVersionStrategy Apply method (0% coverage)
+	t.Run("MediaTypeVersionStrategy Apply", func(t *testing.T) {
+		_, w, c := setupMediaTypeRequest(mediaTypeJSON)
+		strategy := &MediaTypeVersionStrategy{MediaTypePrefix: mediaTypeVndPrefix}
+
+		// Apply should set the content type with version
+		strategy.Apply(c, version1)
+
+		// Check that the content type header was set
+		expectedContentType := "application/vnd.API.v1+json"
+		actualContentType := w.Header().Get(contentTypeHeader)
+		if actualContentType != expectedContentType {
+			t.Errorf("Expected content type %s, got %s", expectedContentType, actualContentType)
+		}
+	})
+
+	// Test MediaTypeVersionStrategy Apply with default prefix (0% coverage)
+	t.Run("MediaTypeVersionStrategy Apply Default Prefix", func(t *testing.T) {
+		_, w, c := setupMediaTypeRequest(mediaTypeJSON)
+		strategy := &MediaTypeVersionStrategy{} // No prefix specified
+
+		// Apply should set the content type with default prefix
+		strategy.Apply(c, version2)
+
+		// Check that the content type header was set with default prefix
+		expectedContentType := "application/vnd.API.v2+json"
+		actualContentType := w.Header().Get(contentTypeHeader)
+		if actualContentType != expectedContentType {
+			t.Errorf("Expected content type %s, got %s", expectedContentType, actualContentType)
+		}
+	})
+}
+
+// Test getMediaTypePrefix function (0% coverage)
+func TestGetMediaTypePrefix(t *testing.T) {
+	tests := []struct {
+		name     string
+		prefix   string
+		expected string
+	}{
+		{"Empty prefix", "", "application/vnd."},
+		{testCustomPrefix, "application/custom.", "application/custom."},
+		{"Another custom prefix", "app/v.", "app/v."},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			strategy := &MediaTypeVersionStrategy{MediaTypePrefix: tt.prefix}
+			_, w, c := setupMediaTypeRequest(mediaTypeJSON)
+
+			// This will internally call getMediaTypePrefix
+			strategy.Apply(c, version1)
+
+			// Verify the prefix was used correctly in the content type
+			actualContentType := w.Header().Get(contentTypeHeader)
+			expectedStart := tt.expected + "API.v1+json"
+			if actualContentType != expectedStart {
+				t.Errorf("Expected content type to start with %s, got %s", expectedStart, actualContentType)
+			}
+		})
+	}
+}
+
+// Test getDefaultPrefix function (66.7% coverage, add edge case)
+func TestGetDefaultPrefix(t *testing.T) {
+	tests := []struct {
+		name     string
+		prefix   string
+		expected string
+	}{
+		{"Empty prefix", "", "v"},
+		{testCustomPrefix, "version-", "version-"},
+		{"Single char prefix", "x", "x"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			strategy := &PathVersionStrategy{Prefix: tt.prefix}
+
+			// Test by trying to extract version with the prefix
+			path := "/" + tt.expected + "1/users"
+			_, _, c := setupPathRequest(path)
+
+			version, err := strategy.ExtractVersion(c)
+			if err != nil {
+				t.Errorf("ExtractVersion failed: %v", err)
+			}
+			if version != "1" {
+				t.Errorf("Expected version 1, got %s", version)
+			}
+		})
+	}
 }

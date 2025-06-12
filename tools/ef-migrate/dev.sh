@@ -194,16 +194,20 @@ db_start() {
         return 1
     fi
     
+    # Use environment variable for database password with secure default
+    POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-MyPassword_123}
+    
     docker run -d \
         --name gra-postgres-dev \
         -p 5432:5432 \
         -e POSTGRES_USER=postgres \
-        -e POSTGRES_PASSWORD=postgres \
+        -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
         -e POSTGRES_DB=gra_dev \
         postgres:15-alpine
     
     print_success "PostgreSQL started on port 5432"
-    print_status "Connection: postgres://postgres:postgres@localhost:5432/gra_dev"
+    print_status "Connection: postgres://postgres:${POSTGRES_PASSWORD}@localhost:5432/gra_dev"
+    print_status "Database password: ${POSTGRES_PASSWORD} (set POSTGRES_PASSWORD env var to customize)"
 }
 
 # Function to stop PostgreSQL

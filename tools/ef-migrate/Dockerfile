@@ -7,8 +7,8 @@ ARG VERSION=dev
 ARG BUILD_TIME
 ARG GIT_COMMIT
 
-# Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
+# Install build dependencies (sorted alphabetically)
+RUN apk add --no-cache ca-certificates git tzdata
 
 # Set working directory
 WORKDIR /app
@@ -19,7 +19,7 @@ COPY go.mod go.sum ./
 # Download dependencies
 RUN go mod download && go mod verify
 
-# Copy source code
+# Copy source code (using .dockerignore to exclude sensitive files)
 COPY . .
 
 # Build the EF migration tool
@@ -32,30 +32,26 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
 # Stage 2: Create the final lightweight image
 FROM alpine:3.19
 
-# Install runtime dependencies
+# Install runtime dependencies (sorted alphabetically) and create non-root user
 RUN apk add --no-cache \
     ca-certificates \
-    tzdata \
     postgresql-client \
     sqlite \
-    && rm -rf /var/cache/apk/*
-
-# Create non-root user
-RUN addgroup -g 1001 -S efmigrate && \
-    adduser -u 1001 -S efmigrate -G efmigrate
+    tzdata \
+    && rm -rf /var/cache/apk/* \
+    && addgroup -g 1001 -S efmigrate \
+    && adduser -u 1001 -S efmigrate -G efmigrate
 
 # Set working directory
 WORKDIR /app
 
-# Copy the binary from builder stage
+# Copy the binary from builder stage and set up application structure
 COPY --from=builder /app/tools/ef-migrate/ef-migrate /usr/local/bin/ef-migrate
 
-# Copy example migrations directory structure
-RUN mkdir -p /app/migrations
-
-# Set proper permissions
-RUN chown -R efmigrate:efmigrate /app && \
-    chmod +x /usr/local/bin/ef-migrate
+# Create directories and set permissions in single RUN
+RUN mkdir -p /app/migrations \
+    && chown -R efmigrate:efmigrate /app \
+    && chmod +x /usr/local/bin/ef-migrate
 
 # Switch to non-root user
 USER efmigrate

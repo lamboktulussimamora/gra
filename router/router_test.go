@@ -10,8 +10,19 @@ import (
 
 // Test route paths
 const (
-	userProfilePath = "/users/profile"
-	userIDPath      = "/users/123"
+	userProfilePath  = "/users/profile"
+	userIDPath       = "/users/123"
+	usersPath        = "/users"
+	usersIDPath      = "/users/:id"
+	apiV1Path        = "/api/v1"
+	apiV1UsersPath   = "/api/v1/users"
+	apiV1UsersIDPath = "/api/v1/users/:id"
+	apiPath          = "/api"
+	customPath       = "/custom"
+
+	// Error message templates
+	expectedStatusCodeMsg = "Expected status code %d, got %d"
+	expectedPathMsg       = "Expected path %s, got %s"
 )
 
 func TestNew(t *testing.T) {
@@ -75,6 +86,9 @@ func TestHandleAndHTTPMethods(t *testing.T) {
 		{"POST", r.POST, 3},
 		{"PUT", r.PUT, 4},
 		{"DELETE", r.DELETE, 5},
+		{"PATCH", r.PATCH, 6},
+		{"HEAD", r.HEAD, 7},
+		{"OPTIONS", r.OPTIONS, 8},
 	}
 
 	for _, tc := range testCases {
@@ -381,7 +395,7 @@ func TestServeHTTP(t *testing.T) {
 
 			// Check status code
 			if w.Code != tc.expectedStatus {
-				t.Errorf("Expected status code %d, got %d", tc.expectedStatus, w.Code)
+				t.Errorf(expectedStatusCodeMsg, tc.expectedStatus, w.Code)
 			}
 
 			// Check that the expected handler was executed
@@ -443,7 +457,7 @@ func TestServeHTTPWithMiddleware(t *testing.T) {
 
 	// Check status code
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
+		t.Errorf(expectedStatusCodeMsg, http.StatusOK, w.Code)
 	}
 }
 
@@ -536,5 +550,235 @@ func assertParamsMatch(t *testing.T, expected, actual map[string]string) {
 		if actualValue != expectedValue {
 			t.Errorf("Expected %s='%s', got '%s'", key, expectedValue, actualValue)
 		}
+	}
+}
+
+// TestGroup tests route group functionality
+func TestGroup(t *testing.T) {
+	r := New()
+
+	dummyHandler := func(c *context.Context) {
+		c.Status(http.StatusOK).JSON(http.StatusOK, map[string]string{
+			"status": "ok",
+		})
+	}
+	// Create a group
+	v1 := r.Group(apiV1Path)
+
+	if v1 == nil {
+		t.Fatal("Group() returned nil")
+	}
+
+	if v1.prefix != apiV1Path {
+		t.Errorf("Expected prefix '%s', got '%s'", apiV1Path, v1.prefix)
+	}
+
+	if v1.router != r {
+		t.Error("Group router should reference the original router")
+	}
+
+	// Test adding routes to group
+	v1.GET(usersPath, dummyHandler)
+	v1.POST(usersPath, dummyHandler)
+	v1.PUT(usersIDPath, dummyHandler)
+	v1.DELETE(usersIDPath, dummyHandler)
+	v1.PATCH(usersIDPath, dummyHandler)
+	v1.HEAD(usersIDPath, dummyHandler)
+	v1.OPTIONS(usersPath, dummyHandler)
+
+	// Verify routes were added with correct prefixes
+	expectedRoutes := []struct {
+		method string
+		path   string
+	}{
+		{"GET", apiV1UsersPath},
+		{"POST", apiV1UsersPath},
+		{"PUT", apiV1UsersIDPath},
+		{"DELETE", apiV1UsersIDPath},
+		{"PATCH", apiV1UsersIDPath},
+		{"HEAD", apiV1UsersIDPath},
+		{"OPTIONS", apiV1UsersPath},
+	}
+
+	if len(r.routes) < len(expectedRoutes) {
+		t.Fatalf("Expected at least %d routes, got %d", len(expectedRoutes), len(r.routes))
+	}
+
+	// Check the last few routes added
+	for i, expected := range expectedRoutes {
+		routeIndex := len(r.routes) - len(expectedRoutes) + i
+		route := r.routes[routeIndex]
+		if route.Method != expected.method {
+			t.Errorf("Expected method %s, got %s", expected.method, route.Method)
+		}
+		if route.Path != expected.path {
+			t.Errorf(expectedPathMsg, expected.path, route.Path)
+		}
+	}
+}
+
+// TestGroupNested tests nested route groups
+func TestGroupNested(t *testing.T) {
+	r := New()
+
+	dummyHandler := func(c *context.Context) {
+		c.Status(http.StatusOK).JSON(http.StatusOK, map[string]string{
+			"status": "ok",
+		})
+	}
+
+	// Create nested groups
+	api := r.Group(apiPath)
+	v1 := api.Group("/v1")
+	users := v1.Group(usersPath)
+
+	// Add routes to nested group
+	users.GET("/profile", dummyHandler)
+	users.POST("/avatar", dummyHandler)
+
+	// Verify routes were added with correct nested prefixes
+	expectedPaths := []string{
+		apiV1Path + usersPath + "/profile",
+		apiV1Path + usersPath + "/avatar",
+	}
+
+	if len(r.routes) < len(expectedPaths) {
+		t.Fatalf("Expected at least %d routes, got %d", len(expectedPaths), len(r.routes))
+	}
+
+	// Check the last routes added
+	for i, expectedPath := range expectedPaths {
+		routeIndex := len(r.routes) - len(expectedPaths) + i
+		route := r.routes[routeIndex]
+		if route.Path != expectedPath {
+			t.Errorf(expectedPathMsg, expectedPath, route.Path)
+		}
+	}
+}
+
+// TestGroupMiddleware tests middleware on route groups
+func TestGroupMiddleware(t *testing.T) {
+	r := New()
+
+	middlewareExecuted := false
+	groupMiddleware := func(next HandlerFunc) HandlerFunc {
+		return func(c *context.Context) {
+			middlewareExecuted = true
+			next(c)
+		}
+	}
+
+	handlerExecuted := false
+	testHandler := func(c *context.Context) {
+		handlerExecuted = true
+		c.Status(http.StatusOK).JSON(http.StatusOK, map[string]string{
+			"status": "ok",
+		})
+	}
+
+	// Create group with middleware
+	api := r.Group(apiPath)
+	api.Use(groupMiddleware)
+	api.GET("/test", testHandler)
+
+	// Test middleware execution
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", apiPath+"/test", nil)
+
+	r.ServeHTTP(w, req)
+
+	if !middlewareExecuted {
+		t.Error("Group middleware was not executed")
+	}
+
+	if !handlerExecuted {
+		t.Error("Handler was not executed")
+	}
+
+	if w.Code != http.StatusOK {
+		t.Errorf(expectedStatusCodeMsg, http.StatusOK, w.Code)
+	}
+}
+
+// TestGroupHandle tests the generic Handle method on groups
+func TestGroupHandle(t *testing.T) {
+	r := New()
+
+	dummyHandler := func(c *context.Context) {
+		c.Status(http.StatusOK).JSON(http.StatusOK, map[string]string{
+			"status": "ok",
+		})
+	}
+
+	// Create group and use Handle method
+	api := r.Group(apiPath)
+	api.Handle("CUSTOM", customPath, dummyHandler)
+
+	// Verify route was added
+	if len(r.routes) == 0 {
+		t.Fatal("No routes were added")
+	}
+
+	lastRoute := r.routes[len(r.routes)-1]
+	if lastRoute.Method != "CUSTOM" {
+		t.Errorf("Expected method CUSTOM, got %s", lastRoute.Method)
+	}
+	if lastRoute.Path != apiPath+customPath {
+		t.Errorf("Expected path %s, got %s", apiPath+customPath, lastRoute.Path)
+	}
+}
+
+// TestGroupPrefixNormalization tests prefix normalization in groups
+func TestGroupPrefixNormalization(t *testing.T) {
+	r := New()
+
+	dummyHandler := func(c *context.Context) {
+		c.Status(http.StatusOK)
+	}
+
+	// Test various prefix scenarios
+	testCases := []struct {
+		name         string
+		groupPrefix  string
+		routePath    string
+		expectedPath string
+	}{
+		{
+			name:         "Normal prefix",
+			groupPrefix:  apiPath,
+			routePath:    usersPath,
+			expectedPath: apiPath + usersPath,
+		},
+		{
+			name:         "Empty route path",
+			groupPrefix:  apiPath,
+			routePath:    "",
+			expectedPath: apiPath,
+		},
+		{
+			name:         "Root route",
+			groupPrefix:  apiPath,
+			routePath:    "/",
+			expectedPath: apiPath + "/",
+		},
+		{
+			name:         "Nested paths",
+			groupPrefix:  apiV1Path,
+			routePath:    usersIDPath,
+			expectedPath: apiV1Path + usersIDPath,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			group := r.Group(tc.groupPrefix)
+			group.GET(tc.routePath, dummyHandler)
+
+			// Find the route that was just added
+			lastRoute := r.routes[len(r.routes)-1]
+			if lastRoute.Path != tc.expectedPath {
+				t.Errorf(expectedPathMsg, tc.expectedPath, lastRoute.Path)
+			}
+		})
 	}
 }

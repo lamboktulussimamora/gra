@@ -15,12 +15,18 @@ func main() {
 	}
 
 	v := validator.New()
+
+	// Test valid value
 	s := Simple{Age: 15}
-
-	fmt.Printf("Testing struct: %+v\n", s)
-
+	fmt.Printf("Testing valid struct: %+v\n", s)
 	errors := v.Validate(s)
 	fmt.Printf("Errors: %v\n", errors)
+
+	// Test invalid value
+	s2 := Simple{Age: 25}
+	fmt.Printf("Testing invalid struct: %+v\n", s2)
+	errors2 := v.Validate(s2)
+	fmt.Printf("Errors: %v\n", errors2)
 
 	// Let's also test the basic structure
 	val := reflect.ValueOf(s)

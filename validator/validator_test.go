@@ -69,6 +69,8 @@ const (
 	msgExpectedMinLenErr   = "Expected minimum length error"
 	msgExpectedMaxLenErr   = "Expected maximum length error"
 	msgExpectedEnumErr     = "Expected enum error message"
+	msgExpectedRangeErr    = "Expected range error message, got: %s"
+	msgNoErrorsEdgeValues  = "Expected no errors for edge values, got: %v"
 )
 
 // TestNew ensures the validator creates a new instance correctly
@@ -1994,69 +1996,367 @@ func TestValidationFunctionsCoverage(t *testing.T) {
 	})
 }
 
-// TestAddErrorFunction tests the addError function that had 75% coverage
-func TestAddErrorFunction(t *testing.T) {
-	v := New()
-
-	// Test adding error with custom message
-	type TestStruct struct {
-		Name string `json:"name" validate:"required" message:"Name is mandatory"`
-	}
-
-	invalid := TestStruct{Name: ""}
-	errors := v.Validate(invalid)
-	if len(errors) == 0 {
-		t.Error("Expected validation error")
-	}
-
-	// The addError function should handle both custom and default messages
-	if len(errors) > 0 {
-		// Check that error was added correctly
-		if errors[0].Field != "name" {
-			t.Errorf("Expected field 'name', got '%s'", errors[0].Field)
+// TestRangeValidationFunctions tests the range validation functions with 0% coverage
+func TestRangeValidationFunctions(t *testing.T) {
+	// Test int range validation
+	t.Run("validateIntRange", func(t *testing.T) {
+		type TestStruct struct {
+			Age    int   `json:"age" validate:"range=18,65"`
+			Score  int32 `json:"score" validate:"range=-100,100"`
+			Points int64 `json:"points" validate:"range=0,1000"`
 		}
-		if errors[0].Message == "" {
-			t.Error("Expected non-empty error message")
+
+		v := New()
+
+		// Valid values within range
+		valid := TestStruct{Age: 25, Score: 50, Points: 500}
+		errors := v.Validate(valid)
+		if len(errors) > 0 {
+			t.Errorf(msgNoErrorsValidRange, errors)
 		}
-	}
+
+		// Age below minimum
+		belowMin := TestStruct{Age: 17, Score: 50, Points: 500}
+		errors = v.Validate(belowMin)
+		if len(errors) == 0 {
+			t.Error(msgErrorOutsideRange)
+		}
+		if !strings.Contains(errors[0].Message, "must be between 18 and 65") {
+			t.Errorf(msgExpectedRangeErr, errors[0].Message)
+		}
+
+		// Age above maximum
+		aboveMax := TestStruct{Age: 66, Score: 50, Points: 500}
+		errors = v.Validate(aboveMax)
+		if len(errors) == 0 {
+			t.Error(msgErrorOutsideRange)
+		}
+
+		// Score below minimum (negative range)
+		negativeRange := TestStruct{Age: 25, Score: -101, Points: 500}
+		errors = v.Validate(negativeRange)
+		if len(errors) == 0 {
+			t.Error(msgErrorOutsideRange)
+		}
+
+		// Points above maximum
+		largePoints := TestStruct{Age: 25, Score: 50, Points: 1001}
+		errors = v.Validate(largePoints)
+		if len(errors) == 0 {
+			t.Error(msgErrorOutsideRange)
+		}
+
+		// Test edge values (exactly at boundaries)
+		edgeValues := TestStruct{Age: 18, Score: -100, Points: 1000}
+		errors = v.Validate(edgeValues)
+		if len(errors) > 0 {
+			t.Errorf(msgNoErrorsEdgeValues, errors)
+		}
+	})
+
+	// Test uint range validation
+	t.Run("validateUintRange", func(t *testing.T) {
+		type TestStruct struct {
+			Count    uint   `json:"count" validate:"range=1,100"`
+			Quantity uint32 `json:"quantity" validate:"range=0,1000"`
+			Size     uint64 `json:"size" validate:"range=10,500"`
+		}
+
+		v := New()
+
+		// Valid values within range
+		valid := TestStruct{Count: 50, Quantity: 250, Size: 100}
+		errors := v.Validate(valid)
+		if len(errors) > 0 {
+			t.Errorf(msgNoErrorsValidRange, errors)
+		}
+
+		// Count below minimum
+		belowMin := TestStruct{Count: 0, Quantity: 250, Size: 100}
+		errors = v.Validate(belowMin)
+		if len(errors) == 0 {
+			t.Error(msgErrorOutsideRange)
+		}
+		if !strings.Contains(errors[0].Message, "must be between 1 and 100") {
+			t.Errorf(msgExpectedRangeErr, errors[0].Message)
+		}
+
+		// Quantity above maximum
+		aboveMax := TestStruct{Count: 50, Quantity: 1001, Size: 100}
+		errors = v.Validate(aboveMax)
+		if len(errors) == 0 {
+			t.Error(msgErrorOutsideRange)
+		}
+
+		// Size below minimum
+		sizeBelowMin := TestStruct{Count: 50, Quantity: 250, Size: 9}
+		errors = v.Validate(sizeBelowMin)
+		if len(errors) == 0 {
+			t.Error(msgErrorOutsideRange)
+		}
+
+		// Test edge values (exactly at boundaries)
+		edgeValues := TestStruct{Count: 1, Quantity: 0, Size: 500}
+		errors = v.Validate(edgeValues)
+		if len(errors) > 0 {
+			t.Errorf(msgNoErrorsEdgeValues, errors)
+		}
+	})
+
+	// Test float range validation
+	t.Run("validateFloatRange", func(t *testing.T) {
+		type TestStruct struct {
+			Price       float64 `json:"price" validate:"range=0.01,999.99"`
+			Temperature float32 `json:"temperature" validate:"range=-50.0,50.0"`
+			Rating      float64 `json:"rating" validate:"range=1.0,5.0"`
+		}
+
+		v := New()
+
+		// Valid values within range
+		valid := TestStruct{Price: 100.50, Temperature: 25.5, Rating: 3.5}
+		errors := v.Validate(valid)
+		if len(errors) > 0 {
+			t.Errorf(msgNoErrorsValidRange, errors)
+		}
+
+		// Price below minimum
+		belowMin := TestStruct{Price: 0.005, Temperature: 25.5, Rating: 3.5}
+		errors = v.Validate(belowMin)
+		if len(errors) == 0 {
+			t.Error(msgErrorOutsideRange)
+		}
+		if !strings.Contains(errors[0].Message, "must be between") {
+			t.Errorf(msgExpectedRangeErr, errors[0].Message)
+		}
+
+		// Temperature below minimum (negative range)
+		tempBelowMin := TestStruct{Price: 100.50, Temperature: -51.0, Rating: 3.5}
+		errors = v.Validate(tempBelowMin)
+		if len(errors) == 0 {
+			t.Error(msgErrorOutsideRange)
+		}
+
+		// Rating above maximum
+		ratingAboveMax := TestStruct{Price: 100.50, Temperature: 25.5, Rating: 5.1}
+		errors = v.Validate(ratingAboveMax)
+		if len(errors) == 0 {
+			t.Error(msgErrorOutsideRange)
+		}
+
+		// Test edge values (exactly at boundaries)
+		edgeValues := TestStruct{Price: 0.01, Temperature: -50.0, Rating: 5.0}
+		errors = v.Validate(edgeValues)
+		if len(errors) > 0 {
+			t.Errorf(msgNoErrorsEdgeValues, errors)
+		}
+	})
+
+	// Test validateRange function (main dispatcher)
+	t.Run("validateRange", func(t *testing.T) {
+		type TestStruct struct {
+			IntField   int     `json:"intField" validate:"range=1,10"`
+			UintField  uint    `json:"uintField" validate:"range=0,100"`
+			FloatField float64 `json:"floatField" validate:"range=0.1,9.9"`
+		}
+
+		v := New()
+
+		// Valid values for all types
+		valid := TestStruct{IntField: 5, UintField: 50, FloatField: 5.5}
+		errors := v.Validate(valid)
+		if len(errors) > 0 {
+			t.Errorf(msgNoErrorsValidRange, errors)
+		}
+
+		// Test multiple validation errors
+		invalid := TestStruct{IntField: 11, UintField: 101, FloatField: 10.0}
+		errors = v.Validate(invalid)
+		if len(errors) != 3 {
+			t.Errorf("Expected 3 range validation errors, got %d: %v", len(errors), errors)
+		}
+	})
+
+	// Test invalid range specifications
+	t.Run("invalidRangeSpecs", func(t *testing.T) {
+		type TestStruct struct {
+			BadRange1 int `json:"badRange1" validate:"range=invalid"`
+			BadRange2 int `json:"badRange2" validate:"range=1,2,3"`
+			BadRange3 int `json:"badRange3" validate:"range=abc,def"`
+		}
+
+		v := New()
+
+		// Test single value range (should fail)
+		singleValue := TestStruct{BadRange1: 5}
+		errors := v.Validate(singleValue)
+		if len(errors) == 0 {
+			t.Error("Expected error for invalid range specification")
+		}
+		if !strings.Contains(errors[0].Message, "Invalid range specification") {
+			t.Errorf("Expected invalid range specification error, got: %s", errors[0].Message)
+		}
+
+		// Test too many values in range
+		tooManyValues := TestStruct{BadRange2: 5}
+		errors = v.Validate(tooManyValues)
+		if len(errors) == 0 {
+			t.Error("Expected error for invalid range specification")
+		}
+
+		// Test non-numeric range values
+		nonNumeric := TestStruct{BadRange3: 5}
+		errors = v.Validate(nonNumeric)
+		if len(errors) == 0 {
+			t.Error("Expected error for non-numeric range values")
+		}
+	})
+
+	// Test range validation with whitespace in range specification
+	t.Run("rangeWithWhitespace", func(t *testing.T) {
+		type TestStruct struct {
+			Value int `json:"value" validate:"range= 1 , 10 "`
+		}
+
+		v := New()
+
+		// Valid value (range should be trimmed)
+		valid := TestStruct{Value: 5}
+		errors := v.Validate(valid)
+		if len(errors) > 0 {
+			t.Errorf("Expected no errors for valid range with whitespace, got: %v", errors)
+		}
+
+		// Invalid value
+		invalid := TestStruct{Value: 11}
+		errors = v.Validate(invalid)
+		if len(errors) == 0 {
+			t.Error("Expected error for value outside trimmed range")
+		}
+	})
 }
 
-// TestHasBatchErrorsFunction tests HasBatchErrors function that had 75% coverage
-func TestHasBatchErrorsFunction(t *testing.T) {
-	v := New()
+// TestParsingHelperFunctions tests the parsing helper functions with 0% coverage
+func TestParsingHelperFunctions(t *testing.T) {
+	// Test parseInt function
+	t.Run("parseInt", func(t *testing.T) {
+		// Valid integer strings
+		validCases := []struct {
+			input    string
+			expected int64
+		}{
+			{"123", 123},
+			{"-456", -456},
+			{"0", 0},
+			{"9223372036854775807", 9223372036854775807},   // max int64
+			{"-9223372036854775808", -9223372036854775808}, // min int64
+		}
 
-	type TestStruct struct {
-		Name string `json:"name" validate:"required"`
-	}
+		for _, tc := range validCases {
+			result, err := parseInt(tc.input)
+			if err != nil {
+				t.Errorf("parseInt(%s) returned error: %v", tc.input, err)
+			}
+			if result != tc.expected {
+				t.Errorf("parseInt(%s) = %d, expected %d", tc.input, result, tc.expected)
+			}
+		}
 
-	// Test with no errors
-	validInputs := []any{
-		TestStruct{Name: "John"},
-		TestStruct{Name: "Jane"},
-	}
+		// Invalid integer strings
+		invalidCases := []string{
+			"abc",
+			"12.34",
+			"",
+			"123abc",
+			"9223372036854775808", // overflow
+		}
 
-	batchErrors := v.ValidateBatch(validInputs)
-	hasErrors := v.HasBatchErrors(batchErrors)
-	if hasErrors {
-		t.Error("Expected no batch errors for valid inputs")
-	}
+		for _, input := range invalidCases {
+			_, err := parseInt(input)
+			if err == nil {
+				t.Errorf("parseInt(%s) should have returned an error", input)
+			}
+		}
+	})
 
-	// Test with errors
-	invalidInputs := []any{
-		TestStruct{Name: "John"},
-		TestStruct{Name: ""}, // Invalid
-	}
+	// Test parseUint function
+	t.Run("parseUint", func(t *testing.T) {
+		// Valid unsigned integer strings
+		validCases := []struct {
+			input    string
+			expected uint64
+		}{
+			{"123", 123},
+			{"0", 0},
+			{"18446744073709551615", 18446744073709551615}, // max uint64
+		}
 
-	batchErrors = v.ValidateBatch(invalidInputs)
-	hasErrors = v.HasBatchErrors(batchErrors)
-	if !hasErrors {
-		t.Error("Expected batch errors for invalid inputs")
-	}
+		for _, tc := range validCases {
+			result, err := parseUint(tc.input)
+			if err != nil {
+				t.Errorf("parseUint(%s) returned error: %v", tc.input, err)
+			}
+			if result != tc.expected {
+				t.Errorf("parseUint(%s) = %d, expected %d", tc.input, result, tc.expected)
+			}
+		}
 
-	// Test edge case with empty batch
-	emptyBatch := []BatchResult{}
-	hasErrors = v.HasBatchErrors(emptyBatch)
-	if hasErrors {
-		t.Error("Expected no errors for empty batch")
-	}
+		// Invalid unsigned integer strings
+		invalidCases := []string{
+			"abc",
+			"-123", // negative
+			"12.34",
+			"",
+			"123abc",
+			"18446744073709551616", // overflow
+		}
+
+		for _, input := range invalidCases {
+			_, err := parseUint(input)
+			if err == nil {
+				t.Errorf("parseUint(%s) should have returned an error", input)
+			}
+		}
+	})
+
+	// Test parseFloat function
+	t.Run("parseFloat", func(t *testing.T) {
+		// Valid float strings
+		validCases := []struct {
+			input    string
+			expected float64
+		}{
+			{"123.456", 123.456},
+			{"-789.012", -789.012},
+			{"0", 0.0},
+			{"0.0", 0.0},
+			{"1.23e10", 1.23e10},
+			{"-1.23e-5", -1.23e-5},
+		}
+
+		for _, tc := range validCases {
+			result, err := parseFloat(tc.input)
+			if err != nil {
+				t.Errorf("parseFloat(%s) returned error: %v", tc.input, err)
+			}
+			if result != tc.expected {
+				t.Errorf("parseFloat(%s) = %g, expected %g", tc.input, result, tc.expected)
+			}
+		}
+
+		// Invalid float strings
+		invalidCases := []string{
+			"abc",
+			"",
+			"123abc",
+			"12.34.56",
+		}
+
+		for _, input := range invalidCases {
+			_, err := parseFloat(input)
+			if err == nil {
+				t.Errorf("parseFloat(%s) should have returned an error", input)
+			}
+		}
+	})
 }

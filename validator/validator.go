@@ -199,12 +199,65 @@ func (v *Validator) parseValidationRules(validateTag string) []string {
 	// Special handling for regexp rules which might contain commas
 	if strings.Contains(validateTag, "regexp=") {
 		rules = v.parseRulesWithRegexp(validateTag)
+	} else if strings.Contains(validateTag, "range=") {
+		rules = v.parseRulesWithRange(validateTag)
 	} else {
-		// No regexp rule, just split by comma
+		// No special rules, just split by comma
 		for _, rule := range strings.Split(validateTag, ",") {
 			if rule != "" {
 				rules = append(rules, rule)
 			}
+		}
+	}
+
+	return rules
+}
+
+// parseRulesWithRange handles extracting rules when a range rule is present
+func (v *Validator) parseRulesWithRange(validateTag string) []string {
+	var rules []string
+
+	// Find the range rule
+	rangeIndex := strings.Index(validateTag, "range=")
+	if rangeIndex == -1 {
+		// Fallback to normal parsing
+		return strings.Split(validateTag, ",")
+	}
+
+	// Add rules before range
+	if rangeIndex > 0 {
+		beforeRules := strings.TrimSuffix(validateTag[:rangeIndex], ",")
+		if beforeRules != "" {
+			rules = append(rules, strings.Split(beforeRules, ",")...)
+		}
+	}
+
+	// Extract the range rule (format: range=min,max)
+	rangeValueStart := rangeIndex + 6 // length of "range="
+
+	// Find the end of range rule by looking for the next rule pattern
+	rangeEnd := len(validateTag)
+	commaCount := 0
+	for i := rangeValueStart; i < len(validateTag); i++ {
+		if validateTag[i] == ',' {
+			commaCount++
+			if commaCount == 2 {
+				// Found the comma that separates range rule from next rule
+				rangeEnd = i
+				break
+			}
+		}
+	}
+
+	// Add the complete range rule
+	rangeRule := validateTag[rangeIndex:rangeEnd]
+	rules = append(rules, rangeRule)
+
+	// Add rules after range
+	if rangeEnd < len(validateTag) {
+		afterRules := validateTag[rangeEnd+1:]
+		if afterRules != "" {
+			rules = append(rules, strings.Split(afterRules, ",")...)
 		}
 	}
 

@@ -1,0 +1,19 @@
+# Ignore sensitive and unnecessary files during Docker build
+.git
+.github
+*.md
+*.html
+*.out
+debug*/
+test_*/
+coverage*
+node_modules/
+.vscode/
+.scannerwork/
+*.log
+*.tmp
+*.swp
+*.bak
+.env*
+.DS_Store
+Thumbs.db
