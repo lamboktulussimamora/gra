@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lamboktulussimamora/gra/context"
 	"github.com/lamboktulussimamora/gra/router"
@@ -714,4 +715,336 @@ func TestCSPMiddleware(t *testing.T) {
 	if !strings.Contains(cspHeader, "default-src "+selfDirective) {
 		t.Error("Expected CSP header to contain default-src directive")
 	}
+}
+
+// TestRateLimitingAdvanced tests advanced rate limiting scenarios
+func TestRateLimitingAdvanced(t *testing.T) {
+	t.Run("concurrent requests within rate limit", func(t *testing.T) {
+		rateLimit := 10
+		timeWindowSeconds := 1
+		middleware := RateLimit(rateLimit, timeWindowSeconds)
+
+		// Create a test handler
+		handlerCalled := 0
+		handler := func(c *context.Context) {
+			handlerCalled++
+			c.JSON(http.StatusOK, map[string]string{"message": "success"})
+		}
+
+		wrappedHandler := middleware(handler)
+
+		// Make concurrent requests within the rate limit
+		numRequests := 5
+		done := make(chan bool, numRequests)
+
+		for i := 0; i < numRequests; i++ {
+			go func() {
+				req := httptest.NewRequest(http.MethodGet, "/test", nil)
+				req.RemoteAddr = "192.168.1.1:8080"
+				rr := httptest.NewRecorder()
+				c := &context.Context{
+					Request: req,
+					Writer:  rr,
+				}
+
+				wrappedHandler(c)
+				done <- true
+			}()
+		}
+
+		// Wait for all requests to complete
+		for i := 0; i < numRequests; i++ {
+			<-done
+		}
+
+		// All requests should have been allowed
+		if handlerCalled != numRequests {
+			t.Errorf("Expected %d handler calls, got %d", numRequests, handlerCalled)
+		}
+	})
+
+	t.Run("different IP addresses have separate rate limits", func(t *testing.T) {
+		rateLimit := 2
+		timeWindowSeconds := 1
+		middleware := RateLimit(rateLimit, timeWindowSeconds)
+
+		handler := func(c *context.Context) {
+			c.JSON(http.StatusOK, map[string]string{"message": "success"})
+		}
+
+		wrappedHandler := middleware(handler)
+
+		// Test with two different IP addresses
+		ips := []string{"192.168.1.1:8080", "192.168.1.2:8080"}
+
+		for _, ip := range ips {
+			// Each IP should be able to make rate limit number of requests
+			for i := 0; i < rateLimit; i++ {
+				req := httptest.NewRequest(http.MethodGet, "/test", nil)
+				req.RemoteAddr = ip
+				rr := httptest.NewRecorder()
+				c := &context.Context{
+					Request: req,
+					Writer:  rr,
+				}
+
+				wrappedHandler(c)
+
+				if rr.Code != http.StatusOK {
+					t.Errorf("Request %d from IP %s should have been allowed, got status %d", i+1, ip, rr.Code)
+				}
+			}
+
+			// The next request should be rate limited
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			req.RemoteAddr = ip
+			rr := httptest.NewRecorder()
+			c := &context.Context{
+				Request: req,
+				Writer:  rr,
+			}
+
+			wrappedHandler(c)
+
+			if rr.Code != http.StatusTooManyRequests {
+				t.Errorf("Request from IP %s should have been rate limited, got status %d", ip, rr.Code)
+			}
+		}
+	})
+
+	t.Run("rate limit resets after time window", func(t *testing.T) {
+		rateLimit := 1
+		timeWindowSeconds := 1 // 1 second window
+		middleware := RateLimit(rateLimit, timeWindowSeconds)
+
+		handler := func(c *context.Context) {
+			c.JSON(http.StatusOK, map[string]string{"message": "success"})
+		}
+
+		wrappedHandler := middleware(handler)
+
+		// Make first request - should succeed
+		req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req1.RemoteAddr = "192.168.1.1:8080"
+		rr1 := httptest.NewRecorder()
+		c1 := &context.Context{
+			Request: req1,
+			Writer:  rr1,
+		}
+
+		wrappedHandler(c1)
+
+		if rr1.Code != http.StatusOK {
+			t.Errorf("First request should have been allowed, got status %d", rr1.Code)
+		}
+
+		// Make second request immediately - should be rate limited
+		req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req2.RemoteAddr = "192.168.1.1:8080"
+		rr2 := httptest.NewRecorder()
+		c2 := &context.Context{
+			Request: req2,
+			Writer:  rr2,
+		}
+
+		wrappedHandler(c2)
+
+		if rr2.Code != http.StatusTooManyRequests {
+			t.Errorf("Second request should have been rate limited, got status %d", rr2.Code)
+		}
+
+		// Wait for time window to reset
+		time.Sleep(1100 * time.Millisecond) // Wait slightly longer than 1 second
+
+		// Make third request - should succeed after reset
+		req3 := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req3.RemoteAddr = "192.168.1.1:8080"
+		rr3 := httptest.NewRecorder()
+		c3 := &context.Context{
+			Request: req3,
+			Writer:  rr3,
+		}
+
+		wrappedHandler(c3)
+
+		if rr3.Code != http.StatusOK {
+			t.Errorf("Third request after reset should have been allowed, got status %d", rr3.Code)
+		}
+	})
+}
+
+// TestCORSAdvanced tests advanced CORS scenarios
+func TestCORSAdvanced(t *testing.T) {
+	t.Run("preflight request with custom headers", func(t *testing.T) {
+		corsConfig := CORSConfig{
+			AllowOrigins:  []string{"https://example.com", "https://test.com"},
+			AllowMethods:  []string{http.MethodGet, http.MethodPost, http.MethodPut},
+			AllowHeaders:  []string{"Authorization", "Content-Type", "X-Custom-Header"},
+			ExposeHeaders: []string{"X-Total-Count", "X-Page-Count"},
+			MaxAge:        3600,
+		}
+
+		middleware := CORSWithConfig(corsConfig)
+
+		handler := func(c *context.Context) {
+			c.JSON(http.StatusOK, map[string]string{"message": "success"})
+		}
+
+		wrappedHandler := middleware(handler)
+
+		// Create preflight request
+		req := httptest.NewRequest(http.MethodOptions, "/test", nil)
+		req.Header.Set("Origin", "https://example.com")
+		req.Header.Set("Access-Control-Request-Method", http.MethodPost)
+		req.Header.Set("Access-Control-Request-Headers", "Authorization, X-Custom-Header")
+
+		rr := httptest.NewRecorder()
+		c := &context.Context{
+			Request: req,
+			Writer:  rr,
+		}
+
+		wrappedHandler(c)
+
+		// Check preflight response
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status %d for preflight, got %d", http.StatusOK, rr.Code)
+		}
+
+		// Verify CORS headers
+		headers := map[string]string{
+			"Access-Control-Allow-Origin":  "https://example.com",
+			"Access-Control-Allow-Methods": strings.Join(corsConfig.AllowMethods, ", "),
+			"Access-Control-Allow-Headers": strings.Join(corsConfig.AllowHeaders, ", "),
+			"Access-Control-Max-Age":       "3600",
+		}
+
+		for header, expectedValue := range headers {
+			actualValue := rr.Header().Get(header)
+			if actualValue != expectedValue {
+				t.Errorf("Expected %s to be '%s', got '%s'", header, expectedValue, actualValue)
+			}
+		}
+	})
+
+	t.Run("actual request with credentials", func(t *testing.T) {
+		corsConfig := CORSConfig{
+			AllowOrigins:     []string{"https://example.com"},
+			AllowMethods:     []string{http.MethodGet, http.MethodPost},
+			AllowHeaders:     []string{"Authorization", "Content-Type"},
+			ExposeHeaders:    []string{"X-Total-Count"},
+			AllowCredentials: true,
+		}
+
+		middleware := CORSWithConfig(corsConfig)
+
+		handler := func(c *context.Context) {
+			c.SetHeader("X-Total-Count", "100")
+			c.JSON(http.StatusOK, map[string]string{"message": "success"})
+		}
+
+		wrappedHandler := middleware(handler)
+
+		// Create actual request
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Origin", "https://example.com")
+		req.Header.Set("Authorization", "Bearer token")
+
+		rr := httptest.NewRecorder()
+		c := &context.Context{
+			Request: req,
+			Writer:  rr,
+		}
+
+		wrappedHandler(c)
+
+		// Check response
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status %d, got %d", http.StatusOK, rr.Code)
+		}
+
+		// Verify CORS headers for actual request
+		expectedHeaders := map[string]string{
+			"Access-Control-Allow-Origin":      "https://example.com",
+			"Access-Control-Allow-Credentials": "true",
+			"Access-Control-Expose-Headers":    "X-Total-Count",
+		}
+
+		for header, expectedValue := range expectedHeaders {
+			actualValue := rr.Header().Get(header)
+			if actualValue != expectedValue {
+				t.Errorf("Expected %s to be '%s', got '%s'", header, expectedValue, actualValue)
+			}
+		}
+	})
+
+	t.Run("rejected origin", func(t *testing.T) {
+		corsConfig := CORSConfig{
+			AllowOrigins: []string{"https://allowed.com"},
+			AllowMethods: []string{http.MethodGet},
+		}
+
+		middleware := CORSWithConfig(corsConfig)
+
+		handler := func(c *context.Context) {
+			c.JSON(http.StatusOK, map[string]string{"message": "success"})
+		}
+
+		wrappedHandler := middleware(handler)
+
+		// Create request from non-allowed origin
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Origin", "https://malicious.com")
+
+		rr := httptest.NewRecorder()
+		c := &context.Context{
+			Request: req,
+			Writer:  rr,
+		}
+
+		wrappedHandler(c)
+
+		// Should still process the request but without CORS headers
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status %d, got %d", http.StatusOK, rr.Code)
+		}
+
+		// Should not have CORS headers
+		if origin := rr.Header().Get("Access-Control-Allow-Origin"); origin != "" {
+			t.Errorf("Expected no Access-Control-Allow-Origin header, got '%s'", origin)
+		}
+	})
+
+	t.Run("wildcard origin with credentials should fail", func(t *testing.T) {
+		corsConfig := CORSConfig{
+			AllowOrigins:     []string{"*"},
+			AllowCredentials: true,
+		}
+
+		middleware := CORSWithConfig(corsConfig)
+
+		handler := func(c *context.Context) {
+			c.JSON(http.StatusOK, map[string]string{"message": "success"})
+		}
+
+		wrappedHandler := middleware(handler)
+
+		// Create request
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Origin", "https://example.com")
+
+		rr := httptest.NewRecorder()
+		c := &context.Context{
+			Request: req,
+			Writer:  rr,
+		}
+
+		wrappedHandler(c)
+
+		// Should not allow credentials with wildcard origin
+		credentials := rr.Header().Get("Access-Control-Allow-Credentials")
+		if credentials == "true" {
+			t.Error("Should not allow credentials with wildcard origin")
+		}
+	})
 }

@@ -150,11 +150,11 @@ func setCORSHeaders(c *context.Context, config CORSConfig) {
 	}
 
 	// Set standard CORS headers
-	setStandardCORSHeaders(c, config)
+	setStandardCORSHeaders(c, config, allowedOrigin, contains(config.AllowOrigins, "*"))
 }
 
 // setStandardCORSHeaders sets the standard CORS headers based on configuration
-func setStandardCORSHeaders(c *context.Context, config CORSConfig) {
+func setStandardCORSHeaders(c *context.Context, config CORSConfig, allowedOrigin string, hasWildcard bool) {
 	headers := c.Writer.Header()
 
 	// Set allowed methods
@@ -173,14 +173,17 @@ func setStandardCORSHeaders(c *context.Context, config CORSConfig) {
 	}
 
 	// Set remaining CORS headers
-	setExtendedCORSHeaders(headers, config)
+	setExtendedCORSHeaders(headers, config, allowedOrigin, hasWildcard)
 }
 
 // setExtendedCORSHeaders sets the additional CORS headers
-func setExtendedCORSHeaders(headers http.Header, config CORSConfig) {
-	// Set allow credentials
+func setExtendedCORSHeaders(headers http.Header, config CORSConfig, allowedOrigin string, hasWildcard bool) {
+	// Set allow credentials, but not if using wildcard origin
 	if config.AllowCredentials {
-		headers.Set("Access-Control-Allow-Credentials", "true")
+		// Don't allow credentials with wildcard origin for security reasons
+		if !hasWildcard && allowedOrigin != "" {
+			headers.Set("Access-Control-Allow-Credentials", "true")
+		}
 	}
 
 	// Set max age
@@ -250,9 +253,9 @@ func (s *InMemoryStore) Increment(key string, limit int, windowSeconds int) (int
 		s.data[key] = make(map[int64]int)
 	}
 
-	// Clean up old entries
+	// Clean up old entries - use <= to ensure entries exactly at window boundary are removed
 	for timestamp := range s.data[key] {
-		if timestamp < windowStart {
+		if timestamp <= windowStart {
 			delete(s.data[key], timestamp)
 		}
 	}
@@ -263,7 +266,7 @@ func (s *InMemoryStore) Increment(key string, limit int, windowSeconds int) (int
 		totalRequests += count
 	}
 
-	// Check if limit is exceeded
+	// Check if limit would be exceeded after incrementing
 	exceeded := totalRequests >= limit
 
 	// Only increment if not exceeded

@@ -1,6 +1,7 @@
 package jwt
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -254,5 +255,66 @@ func TestRefreshToken(t *testing.T) {
 		// This is a bit tricky to test properly without modifying the code
 		// For a real implementation, you'd want to make the jwt.Parse function mockable
 		// For now, this is left as a placeholder for this test case
+	})
+}
+
+// TestJWTServiceEdgeCases tests edge cases and error conditions
+func TestJWTServiceEdgeCases(t *testing.T) {
+	t.Run("generate token with empty subject", func(t *testing.T) {
+		config := DefaultConfig()
+		config.SigningKey = []byte(testSecretKey)
+
+		service, err := NewService(config)
+		if err != nil {
+			t.Fatalf(errMsgNoError, err)
+		}
+
+		// Should handle empty subject gracefully
+		emptyClaims := StandardClaims{} // Empty claims
+		_, err = service.GenerateToken(emptyClaims)
+		if err != ErrMissingSubject {
+			t.Errorf("Expected ErrMissingSubject for empty subject, got %v", err)
+		}
+	})
+
+	t.Run("concurrent token operations", func(t *testing.T) {
+		config := DefaultConfig()
+		config.SigningKey = []byte(testSecretKey)
+
+		service, err := NewService(config)
+		if err != nil {
+			t.Fatalf(errMsgNoError, err)
+		}
+
+		// Run concurrent generation and validation
+		done := make(chan bool, 10)
+
+		// 10 generators and validators
+		for i := 0; i < 10; i++ {
+			go func(id int) {
+				defer func() { done <- true }()
+				claims := StandardClaims{
+					Subject: fmt.Sprintf("user-%d", id),
+					Custom:  map[string]interface{}{"role": testRoleAdmin},
+				}
+
+				token, err := service.GenerateToken(claims)
+				if err != nil {
+					t.Errorf("Failed to generate token in goroutine %d: %v", id, err)
+					return
+				}
+
+				// Validate the generated token
+				_, err = service.ValidateToken(token)
+				if err != nil {
+					t.Errorf("Failed to validate token in goroutine %d: %v", id, err)
+				}
+			}(i)
+		}
+
+		// Wait for all goroutines
+		for i := 0; i < 10; i++ {
+			<-done
+		}
 	})
 }

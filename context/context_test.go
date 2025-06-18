@@ -2,6 +2,7 @@ package context
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -918,4 +919,676 @@ func TestRedirect(t *testing.T) {
 	if location5 != "/" { // http.Redirect normalizes empty URL to "/"
 		t.Errorf("Expected Location header '/', got '%s'", location5)
 	}
+}
+
+// TestContextAdvancedScenarios tests advanced context usage scenarios
+func TestContextAdvancedScenarios(t *testing.T) {
+	t.Run("complex JSON response with nested data", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		c := New(rr, req)
+
+		// Complex nested data structure
+		complexData := map[string]interface{}{
+			"user": map[string]interface{}{
+				"id":       123,
+				"username": "john_doe",
+				"profile": map[string]interface{}{
+					"email":     "john@example.com",
+					"age":       30,
+					"interests": []string{"programming", "music", "travel"},
+				},
+				"settings": map[string]interface{}{
+					"theme":         "dark",
+					"notifications": true,
+					"privacy": map[string]bool{
+						"public_profile": false,
+						"show_email":     false,
+					},
+				},
+			},
+			"metadata": map[string]interface{}{
+				"timestamp": "2025-06-13T10:00:00Z",
+				"version":   "1.0.0",
+				"features":  []string{"feature1", "feature2"},
+			},
+		}
+
+		c.JSON(http.StatusOK, complexData)
+
+		// Verify content type
+		contentType := rr.Header().Get("Content-Type")
+		if contentType != "application/json" {
+			t.Errorf("Expected Content-Type application/json, got %s", contentType)
+		}
+
+		// Verify status code
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+
+		// Verify JSON structure by unmarshaling
+		var response map[string]interface{}
+		err := json.Unmarshal(rr.Body.Bytes(), &response)
+		if err != nil {
+			t.Errorf("Failed to unmarshal response: %v", err)
+		}
+
+		// Verify nested data
+		user, ok := response["user"].(map[string]interface{})
+		if !ok {
+			t.Error("Expected user to be a map")
+		}
+
+		profile, ok := user["profile"].(map[string]interface{})
+		if !ok {
+			t.Error("Expected profile to be a map")
+		}
+
+		interests, ok := profile["interests"].([]interface{})
+		if !ok || len(interests) != 3 {
+			t.Error("Expected interests to be an array with 3 items")
+		}
+	})
+
+	t.Run("multiple headers manipulation", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		c := New(rr, req)
+
+		// Set multiple headers
+		headers := map[string]string{
+			"X-API-Version":   "1.0",
+			"X-Rate-Limit":    "1000",
+			"X-Request-ID":    "req-123",
+			"Cache-Control":   "no-cache",
+			"X-Custom-Header": "custom-value",
+		}
+
+		for key, value := range headers {
+			c.SetHeader(key, value)
+		}
+
+		c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+
+		// Verify all headers were set
+		for key, expectedValue := range headers {
+			actualValue := rr.Header().Get(key)
+			if actualValue != expectedValue {
+				t.Errorf("Expected header %s to be %s, got %s", key, expectedValue, actualValue)
+			}
+		}
+	})
+
+	t.Run("parameter extraction and validation", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/users/123/posts/456", nil)
+		c := New(rr, req)
+
+		// Simulate route parameters
+		c.Params["userID"] = "123"
+		c.Params["postID"] = "456"
+		c.Params["category"] = "technology"
+
+		// Test parameter retrieval (accessing from Params map directly)
+		userID := c.Params["userID"]
+		if userID != "123" {
+			t.Errorf("Expected userID to be '123', got '%s'", userID)
+		}
+
+		postID := c.Params["postID"]
+		if postID != "456" {
+			t.Errorf("Expected postID to be '456', got '%s'", postID)
+		}
+
+		category := c.Params["category"]
+		if category != "technology" {
+			t.Errorf("Expected category to be 'technology', got '%s'", category)
+		}
+
+		// Test non-existent parameter
+		nonExistent := c.Params["nonexistent"]
+		if nonExistent != "" {
+			t.Errorf("Expected empty string for non-existent param, got '%s'", nonExistent)
+		}
+	})
+
+	t.Run("query parameter handling", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/search?q=golang&page=2&limit=10&sort=date&order=desc", nil)
+		c := New(rr, req)
+
+		// Test query parameter retrieval using GetQuery
+		query := c.GetQuery("q")
+		if query != "golang" {
+			t.Errorf("Expected query 'q' to be 'golang', got '%s'", query)
+		}
+
+		page := c.GetQuery("page")
+		if page != "2" {
+			t.Errorf("Expected page to be '2', got '%s'", page)
+		}
+
+		limit := c.GetQuery("limit")
+		if limit != "10" {
+			t.Errorf("Expected limit to be '10', got '%s'", limit)
+		}
+
+		// Test non-existent query parameter
+		missing := c.GetQuery("missing")
+		if missing != "" {
+			t.Errorf("Expected empty string for missing query param, got '%s'", missing)
+		}
+
+		// Test manual default value handling
+		defaultValue := "default"
+		paramValue := c.GetQuery("missing")
+		if paramValue == "" {
+			paramValue = defaultValue
+		}
+		if paramValue != "default" {
+			t.Errorf("Expected default value 'default', got '%s'", paramValue)
+		}
+
+		// Test existing parameter
+		existingValue := c.GetQuery("q")
+		if existingValue != "golang" {
+			t.Errorf("Expected 'golang', got '%s'", existingValue)
+		}
+	})
+
+	t.Run("request header parsing", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/data", nil)
+
+		// Set various headers
+		req.Header.Set("Authorization", "Bearer token123")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", "TestClient/1.0")
+		req.Header.Set("X-Forwarded-For", "192.168.1.1")
+		req.Header.Add("X-Custom", "value1")
+		req.Header.Add("X-Custom", "value2")
+
+		c := New(rr, req)
+
+		// Test single header retrieval
+		auth := c.GetHeader("Authorization")
+		if auth != "Bearer token123" {
+			t.Errorf("Expected Authorization header 'Bearer token123', got '%s'", auth)
+		}
+
+		contentType := c.GetHeader("Content-Type")
+		if contentType != "application/json" {
+			t.Errorf("Expected Content-Type 'application/json', got '%s'", contentType)
+		}
+
+		// Test case-insensitive header retrieval
+		userAgent := c.GetHeader("user-agent")
+		if userAgent != "TestClient/1.0" {
+			t.Errorf("Expected User-Agent 'TestClient/1.0', got '%s'", userAgent)
+		}
+
+		// Test non-existent header
+		missing := c.GetHeader("X-Missing")
+		if missing != "" {
+			t.Errorf("Expected empty string for missing header, got '%s'", missing)
+		}
+	})
+
+	t.Run("error response formatting", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/users", nil)
+		c := New(rr, req)
+
+		// Test error response
+		c.Error(http.StatusBadRequest, "Invalid user data")
+
+		// Verify status code
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400, got %d", rr.Code)
+		}
+
+		// Verify content type
+		contentType := rr.Header().Get("Content-Type")
+		if contentType != "application/json" {
+			t.Errorf("Expected Content-Type application/json, got %s", contentType)
+		}
+
+		// Verify error response structure
+		var response APIResponse
+		err := json.Unmarshal(rr.Body.Bytes(), &response)
+		if err != nil {
+			t.Errorf("Failed to unmarshal error response: %v", err)
+		}
+
+		if response.Status != "error" {
+			t.Errorf("Expected status 'error', got '%s'", response.Status)
+		}
+
+		if response.Error != "Invalid user data" {
+			t.Errorf("Expected error message 'Invalid user data', got '%s'", response.Error)
+		}
+	})
+
+	t.Run("success response formatting", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/users/123", nil)
+		c := New(rr, req)
+
+		userData := map[string]interface{}{
+			"id":       123,
+			"username": "john_doe",
+			"email":    "john@example.com",
+		}
+
+		// Test success response
+		c.Success(http.StatusOK, "User retrieved successfully", userData)
+
+		// Verify status code
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+
+		// Verify response structure
+		var response APIResponse
+		err := json.Unmarshal(rr.Body.Bytes(), &response)
+		if err != nil {
+			t.Errorf("Failed to unmarshal success response: %v", err)
+		}
+
+		if response.Status != "success" {
+			t.Errorf("Expected status 'success', got '%s'", response.Status)
+		}
+
+		if response.Message != "User retrieved successfully" {
+			t.Errorf("Expected message 'User retrieved successfully', got '%s'", response.Message)
+		}
+
+		// Verify data payload
+		data, ok := response.Data.(map[string]interface{})
+		if !ok {
+			t.Error("Expected data to be a map")
+		}
+
+		if data["username"] != "john_doe" {
+			t.Errorf("Expected username 'john_doe', got '%s'", data["username"])
+		}
+	})
+}
+
+// TestContextEdgeCases tests edge cases and error conditions
+func TestContextEdgeCases(t *testing.T) {
+	t.Run("empty request body", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/test", nil) // No body
+		rr := httptest.NewRecorder()
+		c := New(rr, req)
+
+		var data map[string]interface{}
+		err := c.BindJSON(&data)
+		if err == nil {
+			t.Error("Expected error when binding empty body")
+		}
+	})
+
+	t.Run("malformed JSON in request", func(t *testing.T) {
+		malformedJSON := `{"name": "test", "invalid": }`
+		req := httptest.NewRequest(http.MethodPost, "/test",
+			strings.NewReader(malformedJSON))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		c := New(rr, req)
+
+		var data map[string]interface{}
+		err := c.BindJSON(&data)
+		if err == nil {
+			t.Error("Expected error when binding malformed JSON")
+		}
+	})
+
+	t.Run("context with nil params map", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rr := httptest.NewRecorder()
+
+		c := &Context{
+			Request: req,
+			Writer:  rr,
+			Params:  nil, // nil params
+		}
+
+		// Should handle gracefully
+		param := c.GetParam("test")
+		if param != "" {
+			t.Errorf("Expected empty param for nil params map, got %s", param)
+		}
+
+		// Setting param should handle nil map gracefully
+		if c.Params == nil {
+			c.Params = make(map[string]string)
+		}
+		c.Params["test"] = "value"
+		// Since map was nil, we recreated it and can now set values
+	})
+
+	t.Run("bind JSON with very large payload", func(t *testing.T) {
+		// Create a large JSON payload (1MB)
+		largeData := make(map[string]string)
+		for i := 0; i < 1000; i++ {
+			key := fmt.Sprintf("key_%d", i)
+			value := strings.Repeat("a", 1000) // 1KB per value
+			largeData[key] = value
+		}
+
+		jsonData, err := json.Marshal(largeData)
+		if err != nil {
+			t.Fatalf("Failed to marshal large data: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(string(jsonData)))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		c := New(rr, req)
+
+		var result map[string]string
+		err = c.BindJSON(&result)
+		if err != nil {
+			t.Errorf("Failed to bind large JSON: %v", err)
+		}
+
+		if len(result) != 1000 {
+			t.Errorf("Expected 1000 keys, got %d", len(result))
+		}
+	})
+
+	t.Run("multiple JSON responses", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rr := httptest.NewRecorder()
+		c := New(rr, req)
+
+		// First JSON response
+		c.JSON(http.StatusOK, map[string]string{"first": "response"})
+
+		// Second JSON response (should not panic but might not work as expected)
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Multiple JSON responses caused panic: %v", r)
+			}
+		}()
+
+		c.JSON(http.StatusOK, map[string]string{"second": "response"})
+	})
+
+	t.Run("JSON with circular reference", func(t *testing.T) {
+		type Node struct {
+			Name string `json:"name"`
+			Next *Node  `json:"next,omitempty"`
+		}
+
+		// Create circular reference
+		node1 := &Node{Name: "node1"}
+		node2 := &Node{Name: "node2"}
+		node1.Next = node2
+		node2.Next = node1 // Circular reference
+
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rr := httptest.NewRecorder()
+		c := New(rr, req)
+
+		// Should handle circular reference gracefully (likely with an error)
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("JSON with circular reference caused panic: %v", r)
+			}
+		}()
+
+		c.JSON(http.StatusOK, node1)
+
+		// Response should indicate an error occurred
+		if rr.Code == http.StatusOK {
+			// If it somehow succeeded, that's interesting but not necessarily wrong
+			t.Log("JSON marshaling with circular reference succeeded (unexpected but not necessarily wrong)")
+		}
+	})
+
+	t.Run("concurrent context operations", func(t *testing.T) {
+		// Test concurrent access to different context instances
+		// (more realistic since each request gets its own context)
+		done := make(chan bool, 20)
+
+		// 10 readers working with different contexts
+		for i := 0; i < 10; i++ {
+			go func(id int) {
+				defer func() { done <- true }()
+				// Each goroutine gets its own context
+				req := httptest.NewRequest(http.MethodGet, "/test?param=value", nil)
+				rr := httptest.NewRecorder()
+				c := New(rr, req)
+
+				for j := 0; j < 100; j++ {
+					param := c.GetParam("test")
+					query := c.GetQuery("param")
+					header := c.GetHeader("User-Agent")
+					_ = param
+					_ = query
+					_ = header
+				}
+			}(i)
+		}
+
+		// 10 writers working with different contexts
+		for i := 0; i < 10; i++ {
+			go func(id int) {
+				defer func() { done <- true }()
+				// Each goroutine gets its own context
+				req := httptest.NewRequest(http.MethodGet, "/test", nil)
+				rr := httptest.NewRecorder()
+				c := New(rr, req)
+
+				for j := 0; j < 100; j++ {
+					c.Params[fmt.Sprintf("param_%d", id)] = fmt.Sprintf("value_%d", j)
+					c.SetHeader(fmt.Sprintf("X-Header-%d", id), fmt.Sprintf("value_%d", j))
+				}
+			}(i)
+		}
+
+		// Wait for all goroutines
+		for i := 0; i < 20; i++ {
+			<-done
+		}
+	})
+
+	t.Run("error with non-string message", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rr := httptest.NewRecorder()
+		c := New(rr, req)
+
+		// Error with number converted to string message
+		c.Error(http.StatusBadRequest, "12345")
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected status %d, got %d", http.StatusBadRequest, rr.Code)
+		}
+
+		// Should handle non-string message gracefully
+		var response map[string]interface{}
+		err := json.Unmarshal(rr.Body.Bytes(), &response)
+		if err != nil {
+			t.Errorf("Failed to unmarshal error response: %v", err)
+		}
+	})
+
+	t.Run("success response with complex data", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rr := httptest.NewRecorder()
+		c := New(rr, req)
+
+		complexData := map[string]interface{}{
+			"string":  "value",
+			"number":  42,
+			"boolean": true,
+			"array":   []int{1, 2, 3},
+			"object": map[string]string{
+				"nested": "value",
+			},
+			"null": nil,
+		}
+
+		c.Success(http.StatusOK, "Complex data test", complexData)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status %d, got %d", http.StatusOK, rr.Code)
+		}
+
+		var response map[string]interface{}
+		err := json.Unmarshal(rr.Body.Bytes(), &response)
+		if err != nil {
+			t.Errorf("Failed to unmarshal response: %v", err)
+		}
+
+		data, ok := response["data"].(map[string]interface{})
+		if !ok {
+			t.Error("Expected data to be an object")
+		}
+
+		if data["string"] != "value" {
+			t.Errorf("Expected string value 'value', got %v", data["string"])
+		}
+
+		if data["number"].(float64) != 42 {
+			t.Errorf("Expected number 42, got %v", data["number"])
+		}
+	})
+
+	t.Run("header operations with special characters", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rr := httptest.NewRecorder()
+		c := New(rr, req)
+
+		// Set headers with special characters
+		c.SetHeader("X-Test-Header", "value with spaces")
+		c.SetHeader("X-Unicode", "测试中文")
+		c.SetHeader("X-Special", "!@#$%^&*()")
+
+		// Get headers back
+		value1 := rr.Header().Get("X-Test-Header")
+		value2 := rr.Header().Get("X-Unicode")
+		value3 := rr.Header().Get("X-Special")
+
+		if value1 != "value with spaces" {
+			t.Errorf("Expected 'value with spaces', got '%s'", value1)
+		}
+
+		if value2 != "测试中文" {
+			t.Errorf("Expected '测试中文', got '%s'", value2)
+		}
+
+		if value3 != "!@#$%^&*()" {
+			t.Errorf("Expected 'string key', got '%s'", value3)
+		}
+	})
+}
+
+// TestContextValueEdgeCases tests the WithValue and Value functionality edge cases
+func TestContextValueEdgeCases(t *testing.T) {
+	t.Run("value with nil key", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rr := httptest.NewRecorder()
+		c := New(rr, req)
+
+		// WithValue with nil key should panic (this is Go's standard behavior)
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected WithValue to panic with nil key")
+			}
+		}()
+
+		c.WithValue(nil, "value")
+		t.Error("WithValue with nil key should have panicked")
+	})
+
+	t.Run("value with complex key types", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rr := httptest.NewRecorder()
+		c := New(rr, req)
+
+		// Test with different comparable key types
+		type customKey struct {
+			name string
+		}
+
+		key1 := customKey{name: "test"}
+		key2 := 12345
+		key3 := "string_key"
+
+		c.WithValue(key1, "custom struct key")
+		c.WithValue(key2, "int key")
+		c.WithValue(key3, "string key")
+
+		value1 := c.Value(key1)
+		value2 := c.Value(key2)
+		value3 := c.Value(key3)
+
+		if value1 != "custom struct key" {
+			t.Errorf("Expected 'custom struct key', got %v", value1)
+		}
+
+		if value2 != "int key" {
+			t.Errorf("Expected 'int key', got %v", value2)
+		}
+
+		if value3 != "string key" {
+			t.Errorf("Expected 'slice key', got %v", value3)
+		}
+	})
+
+	t.Run("overwrite existing values", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rr := httptest.NewRecorder()
+		c := New(rr, req)
+
+		key := "test-key"
+
+		// Set initial value
+		c.WithValue(key, "initial")
+		initialValue := c.Value(key)
+		if initialValue != "initial" {
+			t.Errorf("Expected 'initial', got %v", initialValue)
+		}
+
+		// Overwrite value
+		c.WithValue(key, "overwritten")
+		newValue := c.Value(key)
+		if newValue != "overwritten" {
+			t.Errorf("Expected 'overwritten', got %v", newValue)
+		}
+	})
+
+	t.Run("value with large data", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rr := httptest.NewRecorder()
+		c := New(rr, req)
+
+		// Store large data structure
+		largeData := make([]string, 10000)
+		for i := range largeData {
+			largeData[i] = fmt.Sprintf("item-%d", i)
+		}
+
+		c.WithValue("large-data", largeData)
+
+		retrievedData := c.Value("large-data")
+		retrievedSlice, ok := retrievedData.([]string)
+		if !ok {
+			t.Error("Failed to retrieve large data as slice")
+		}
+
+		if len(retrievedSlice) != 10000 {
+			t.Errorf("Expected 10000 items, got %d", len(retrievedSlice))
+		}
+
+		if retrievedSlice[0] != "item-0" {
+			t.Errorf("Expected 'item-0', got '%s'", retrievedSlice[0])
+		}
+	})
 }

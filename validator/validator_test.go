@@ -3,6 +3,7 @@ package validator
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -2359,4 +2360,308 @@ func TestParsingHelperFunctions(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestComplexValidationScenarios tests complex validation scenarios with nested structs, arrays, and custom rules
+func TestComplexValidationScenarios(t *testing.T) {
+	validator := New()
+
+	// Define nested struct types for testing
+	type Address struct {
+		Street     string `json:"street" validate:"required,min=5,max=100"`
+		City       string `json:"city" validate:"required,min=2,max=50"`
+		PostalCode string `json:"postal_code" validate:"required,regexp=^[0-9]{5}$"`
+		Country    string `json:"country" validate:"required,enum=US,CA,UK,FR,DE"`
+	}
+
+	type Contact struct {
+		Email string `json:"email" validate:"required,email"`
+		Phone string `json:"phone" validate:"required,regexp=^[0-9]{10}$"`
+	}
+
+	type User struct {
+		ID        int       `json:"id" validate:"required,min=1"`
+		Username  string    `json:"username" validate:"required,min=3,max=20,regexp=^[a-zA-Z0-9_]+$"`
+		Age       int       `json:"age" validate:"required,range=18,120"`
+		Addresses []Address `json:"addresses" validate:"required"`
+		Contact   Contact   `json:"contact"`
+		Tags      []string  `json:"tags" validate:"required"`
+		IsActive  bool      `json:"is_active"`
+		Score     float64   `json:"score" validate:"range=0.0,100.0"`
+	}
+
+	t.Run("valid complex nested structure", func(t *testing.T) {
+		user := User{
+			ID:       1,
+			Username: "john_doe",
+			Age:      25,
+			Addresses: []Address{
+				{
+					Street:     "123 Main Street",
+					City:       "New York",
+					PostalCode: "12345",
+					Country:    "US",
+				},
+				{
+					Street:     "456 Oak Avenue",
+					City:       "Toronto",
+					PostalCode: "54321",
+					Country:    "US",
+				},
+			},
+			Contact: Contact{
+				Email: "john.doe@example.com",
+				Phone: "1234567890",
+			},
+			Tags:     []string{"developer", "golang", "backend"},
+			IsActive: true,
+			Score:    85.5,
+		}
+
+		errors := validator.Validate(user)
+		if len(errors) != 0 {
+			t.Errorf("Expected no validation errors for valid complex structure, got: %v", errors)
+		}
+	})
+
+	t.Run("invalid nested address validation", func(t *testing.T) {
+		user := User{
+			ID:       1,
+			Username: "john_doe",
+			Age:      25,
+			Addresses: []Address{
+				{
+					Street:     "123",     // Too short
+					City:       "NY",      // Too short
+					PostalCode: "invalid", // Invalid format
+					Country:    "INVALID", // Not in enum
+				},
+			},
+			Contact: Contact{
+				Email: "invalid-email", // Invalid email
+				Phone: "123",           // Invalid phone
+			},
+			Tags:     []string{}, // Empty array
+			IsActive: true,
+			Score:    150.0, // Out of range
+		}
+
+		errors := validator.Validate(user)
+		if len(errors) == 0 {
+			t.Error("Expected validation errors for invalid nested structure")
+		}
+
+		// Check for specific error types
+		errorFields := make(map[string]bool)
+		for _, err := range errors {
+			errorFields[err.Field] = true
+		}
+
+		expectedErrors := []string{"addresses[0].street", "addresses[0].postal_code", "addresses[0].country", "score"}
+		for _, field := range expectedErrors {
+			if !errorFields[field] {
+				t.Errorf("Expected validation error for field '%s'", field)
+			}
+		}
+	})
+
+	t.Run("empty required fields", func(t *testing.T) {
+		user := User{
+			// Missing required fields
+			Addresses: []Address{},
+			Contact:   Contact{},
+			Tags:      []string{},
+		}
+
+		errors := validator.Validate(user)
+		if len(errors) == 0 {
+			t.Error("Expected validation errors for missing required fields")
+		}
+
+		// Should have errors for id, username, age, addresses, email, phone, tags
+		if len(errors) < 6 {
+			t.Errorf("Expected at least 6 validation errors, got %d", len(errors))
+		}
+	})
+}
+
+// TestValidationWithCustomMessages tests validation with custom error messages
+func TestValidationWithCustomMessages(t *testing.T) {
+	validator := New()
+
+	type Product struct {
+		Name        string  `json:"name" validate:"required,min=3,max=50" message:"Product name must be between 3 and 50 characters"`
+		Price       float64 `json:"price" validate:"required,min=0.01" message:"Price must be greater than 0"`
+		Category    string  `json:"category" validate:"required,enum=electronics,books,clothing" message:"Category must be one of: electronics, books, clothing"`
+		Description string  `json:"description" validate:"max=500" message:"Description cannot exceed 500 characters"`
+	}
+
+	t.Run("custom error messages", func(t *testing.T) {
+		product := Product{
+			Name:        "AB",                     // Too short
+			Price:       -10.0,                    // Negative
+			Category:    "invalid",                // Not in enum
+			Description: strings.Repeat("A", 501), // Too long
+		}
+
+		errors := validator.Validate(product)
+		if len(errors) == 0 {
+			t.Error("Expected validation errors")
+		}
+
+		// Verify that custom messages are used (implementation would need to support this)
+		for _, err := range errors {
+			if err.Message == "" {
+				t.Errorf("Expected custom error message for field %s", err.Field)
+			}
+		}
+	})
+}
+
+// TestRegexPatternValidation tests various regex patterns for validation
+func TestRegexPatternValidation(t *testing.T) {
+	validator := New()
+
+	type RegexTestStruct struct {
+		Username    string `json:"username" validate:"regexp=^[a-zA-Z0-9_]{3,20}$"`
+		Email       string `json:"email" validate:"email"`
+		PhoneNumber string `json:"phone" validate:"regexp=^[0-9]{10}$"`
+		PostalCode  string `json:"postal" validate:"regexp=^[0-9]{5}$"`
+		IPAddress   string `json:"ip" validate:"regexp=^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"`
+		HexColor    string `json:"color" validate:"regexp=^#[A-Fa-f0-9]{6}$"`
+	}
+
+	testCases := []struct {
+		name      string
+		data      RegexTestStruct
+		shouldErr bool
+	}{
+		{
+			name: "valid regex patterns",
+			data: RegexTestStruct{
+				Username:    "john_doe123",
+				Email:       "john.doe@example.com",
+				PhoneNumber: "1234567890",
+				PostalCode:  "12345",
+				IPAddress:   "192.168.1.1",
+				HexColor:    "#FF5733",
+			},
+			shouldErr: false,
+		},
+		{
+			name: "invalid username pattern",
+			data: RegexTestStruct{
+				Username:    "jo", // Too short
+				Email:       "john.doe@example.com",
+				PhoneNumber: "1234567890",
+				PostalCode:  "12345",
+				IPAddress:   "192.168.1.1",
+				HexColor:    "#FF5733",
+			},
+			shouldErr: true,
+		},
+		{
+			name: "invalid email pattern",
+			data: RegexTestStruct{
+				Username:    "john_doe",
+				Email:       "invalid-email", // Missing @ and domain
+				PhoneNumber: "+1234567890",
+				PostalCode:  "12345",
+				IPAddress:   "192.168.1.1",
+				HexColor:    "#FF5733",
+			},
+			shouldErr: true,
+		},
+		{
+			name: "invalid IP address",
+			data: RegexTestStruct{
+				Username:    "john_doe",
+				Email:       "john.doe@example.com",
+				PhoneNumber: "+1234567890",
+				PostalCode:  "12345",
+				IPAddress:   "999.999.999.999", // Invalid IP
+				HexColor:    "#FF5733",
+			},
+			shouldErr: true,
+		},
+		{
+			name: "invalid hex color",
+			data: RegexTestStruct{
+				Username:    "john_doe",
+				Email:       "john.doe@example.com",
+				PhoneNumber: "+1234567890",
+				PostalCode:  "12345",
+				IPAddress:   "192.168.1.1",
+				HexColor:    "FF5733", // Missing #
+			},
+			shouldErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			errors := validator.Validate(tc.data)
+			hasErrors := len(errors) > 0
+
+			if tc.shouldErr && !hasErrors {
+				t.Errorf("Expected validation errors for %s", tc.name)
+			}
+			if !tc.shouldErr && hasErrors {
+				t.Errorf("Expected no validation errors for %s, got: %v", tc.name, errors)
+			}
+		})
+	}
+}
+
+// TestValidationPerformance tests validation performance with large datasets
+func TestValidationPerformance(t *testing.T) {
+	validator := New()
+
+	type LargeStruct struct {
+		Field1  string  `json:"field1" validate:"required,min=5,max=50"`
+		Field2  string  `json:"field2" validate:"required,email"`
+		Field3  int     `json:"field3" validate:"required,range=1,1000"`
+		Field4  string  `json:"field4" validate:"required,regexp=^[a-zA-Z0-9_]+$"`
+		Field5  string  `json:"field5" validate:"required,enum=option1,option2,option3"`
+		Field6  float64 `json:"field6" validate:"required,range=0.0,100.0"`
+		Field7  string  `json:"field7" validate:"required,min=10,max=100"`
+		Field8  string  `json:"field8" validate:"required,email"`
+		Field9  int     `json:"field9" validate:"required,min=1,max=999"`
+		Field10 string  `json:"field10" validate:"required,regexp=^\\d{5}$"`
+	}
+
+	// Create a valid struct for performance testing
+	validStruct := LargeStruct{
+		Field1:  "valid_field_1",
+		Field2:  "test@example.com",
+		Field3:  500,
+		Field4:  "valid_field_4",
+		Field5:  "option1",
+		Field6:  50.5,
+		Field7:  "valid_field_seven",
+		Field8:  "another@example.com",
+		Field9:  100,
+		Field10: "12345",
+	}
+
+	// Benchmark validation performance
+	iterations := 1000
+	start := time.Now()
+
+	for i := 0; i < iterations; i++ {
+		errors := validator.Validate(validStruct)
+		if len(errors) != 0 {
+			t.Errorf("Unexpected validation errors: %v", errors)
+		}
+	}
+
+	duration := time.Since(start)
+	avgDuration := duration / time.Duration(iterations)
+
+	t.Logf("Validated %d structs in %v (avg: %v per validation)", iterations, duration, avgDuration)
+
+	// Performance should be reasonable (less than 1ms per validation for this simple case)
+	if avgDuration > time.Millisecond {
+		t.Errorf("Validation performance is too slow: %v per validation", avgDuration)
+	}
 }
