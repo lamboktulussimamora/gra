@@ -265,27 +265,49 @@ func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error {
 	tableName := getTableName(entity)
 	columns, values, placeholders := getInsertData(entity, ctx.driver)
 
-	// Safe: table/column names are trusted, user data is parameterized (see values...)
-	//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
-	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		tableName, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
-
+	var query string
 	var err error
 	var result sql.Result
 
-	if ctx.tx != nil {
-		result, err = ctx.tx.Exec(query, values...)
-	} else {
-		result, err = ctx.db.Exec(query, values...)
-	}
+	// Handle PostgreSQL RETURNING clause for auto-increment ID
+	if ctx.driver == driverPostgres {
+		// Safe: table/column names are trusted, user data is parameterized (see values...)
+		//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
+		query = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING id",
+			tableName, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
 
-	if err != nil {
-		return err
-	}
+		var id int64
+		if ctx.tx != nil {
+			err = ctx.tx.QueryRow(query, values...).Scan(&id)
+		} else {
+			err = ctx.db.QueryRow(query, values...).Scan(&id)
+		}
 
-	// Set the ID if it's an auto-increment field
-	if id, err := result.LastInsertId(); err == nil && id > 0 {
+		if err != nil {
+			return err
+		}
+
 		setIDField(entity, id)
+	} else {
+		// Safe: table/column names are trusted, user data is parameterized (see values...)
+		//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
+		query = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+			tableName, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
+
+		if ctx.tx != nil {
+			result, err = ctx.tx.Exec(query, values...)
+		} else {
+			result, err = ctx.db.Exec(query, values...)
+		}
+
+		if err != nil {
+			return err
+		}
+
+		// Set the ID if it's an auto-increment field
+		if id, err := result.LastInsertId(); err == nil && id > 0 {
+			setIDField(entity, id)
+		}
 	}
 
 	return nil
@@ -299,13 +321,18 @@ func (ctx *EnhancedDbContext) updateEntity(entity interface{}) error {
 	tableName := getTableName(entity)
 	setPairs, values, idValue := getUpdateData(entity, ctx.driver)
 
-	// Safe: table/column names are trusted, user data is parameterized (see values...)
-	//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
-	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?",
-		tableName, strings.Join(setPairs, ", "))
-
-	// Convert placeholders for PostgreSQL
-	query = convertQueryPlaceholders(query, ctx.driver)
+	var query string
+	if ctx.driver == driverPostgres {
+		// Safe: table/column names are trusted, user data is parameterized (see values...)
+		//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
+		query = fmt.Sprintf("UPDATE %s SET %s WHERE id = $%d",
+			tableName, strings.Join(setPairs, ", "), len(values)+1)
+	} else {
+		// Safe: table/column names are trusted, user data is parameterized (see values...)
+		//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
+		query = fmt.Sprintf("UPDATE %s SET %s WHERE id = ?",
+			tableName, strings.Join(setPairs, ", "))
+	}
 
 	values = append(values, idValue)
 
@@ -884,6 +911,12 @@ func scanEntity(rows *sql.Rows, entity interface{}) error {
 	// Map columns to struct fields
 	for i, column := range columns {
 		fieldName := toCamelCase(column)
+		
+		// Special case for common fields that use all caps
+		if fieldName == "Id" {
+			fieldName = "ID"
+		}
+		
 		field := v.FieldByName(fieldName)
 
 		if !field.IsValid() || !field.CanSet() {
@@ -941,6 +974,11 @@ func setFloatField(field reflect.Value, value interface{}) {
 		field.SetFloat(num)
 	} else if str, ok := value.(string); ok {
 		if num, err := strconv.ParseFloat(str, 64); err == nil {
+			field.SetFloat(num)
+		}
+	} else if bytes, ok := value.([]byte); ok {
+		// Handle PostgreSQL DECIMAL/NUMERIC types returned as []byte
+		if num, err := strconv.ParseFloat(string(bytes), 64); err == nil {
 			field.SetFloat(num)
 		}
 	}
