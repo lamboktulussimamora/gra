@@ -17,7 +17,7 @@ const (
 	postgresUser     = "gra_user"
 	postgresPassword = "gra_password"
 	postgresDBName   = "gra_test"
-	
+
 	pgTestTable = `
 		CREATE TABLE IF NOT EXISTS test_users_pg (
 			id SERIAL PRIMARY KEY,
@@ -29,7 +29,7 @@ const (
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 	`
-	
+
 	pgTestTableUsers = `
 		CREATE TABLE IF NOT EXISTS users_pg (
 			id SERIAL PRIMARY KEY,
@@ -151,7 +151,7 @@ func TestPostgreSQLIntegration(t *testing.T) {
 	})
 
 	t.Run("INSERT with PostgreSQL", func(t *testing.T) {
-		cleanupPostgresDB(t, db) // Clean before each subtest
+		cleanupPostgresDB(t, db)              // Clean before each subtest
 		ctx := NewEnhancedDbContextWithDB(db) // Fresh context for each test
 		user := TestUserPG{
 			Name:     "John PostgreSQL",
@@ -192,7 +192,7 @@ func TestPostgreSQLIntegration(t *testing.T) {
 	})
 
 	t.Run("UPDATE with PostgreSQL", func(t *testing.T) {
-		cleanupPostgresDB(t, db) // Clean before each subtest
+		cleanupPostgresDB(t, db)              // Clean before each subtest
 		ctx := NewEnhancedDbContextWithDB(db) // Fresh context for each test
 		// First insert a user
 		user := TestUserPG{
@@ -243,7 +243,7 @@ func TestPostgreSQLIntegration(t *testing.T) {
 	})
 
 	t.Run("DELETE with PostgreSQL", func(t *testing.T) {
-		cleanupPostgresDB(t, db) // Clean before each subtest
+		cleanupPostgresDB(t, db)              // Clean before each subtest
 		ctx := NewEnhancedDbContextWithDB(db) // Fresh context for each test
 		// First insert a user
 		user := TestUserPG{
@@ -285,7 +285,7 @@ func TestPostgreSQLIntegration(t *testing.T) {
 	})
 
 	t.Run("complex query operations with PostgreSQL", func(t *testing.T) {
-		cleanupPostgresDB(t, db) // Clean before each subtest
+		cleanupPostgresDB(t, db)              // Clean before each subtest
 		ctx := NewEnhancedDbContextWithDB(db) // Fresh context for each test
 		// Insert multiple test users
 		users := []TestUserPG{
@@ -554,7 +554,7 @@ func TestComplexPostgreSQLDataTypes(t *testing.T) {
 	}()
 
 	t.Run("decimal and json data types", func(t *testing.T) {
-		cleanupPostgresDB(t, db) // Clean before test
+		cleanupPostgresDB(t, db)              // Clean before test
 		ctx := NewEnhancedDbContextWithDB(db) // Fresh context
 		user := UserPG{
 			Username:   "complexuser",
@@ -596,8 +596,8 @@ func TestComplexPostgreSQLDataTypes(t *testing.T) {
 			t.Errorf("Expected salary 75000.50, got %f", fetchedUser.Salary)
 		}
 
-		if fetchedUser.Metadata != `{"department": "engineering", "level": "senior"}` && 
-		   fetchedUser.Metadata != `{"level": "senior", "department": "engineering"}` {
+		if fetchedUser.Metadata != `{"department": "engineering", "level": "senior"}` &&
+			fetchedUser.Metadata != `{"level": "senior", "department": "engineering"}` {
 			t.Errorf("Expected metadata to match JSON content, got '%s'", fetchedUser.Metadata)
 		}
 	})

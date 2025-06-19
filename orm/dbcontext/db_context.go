@@ -911,12 +911,12 @@ func scanEntity(rows *sql.Rows, entity interface{}) error {
 	// Map columns to struct fields
 	for i, column := range columns {
 		fieldName := toCamelCase(column)
-		
+
 		// Special case for common fields that use all caps
 		if fieldName == "Id" {
 			fieldName = "ID"
 		}
-		
+
 		field := v.FieldByName(fieldName)
 
 		if !field.IsValid() || !field.CanSet() {
