@@ -51,3 +51,4 @@ go.work
 .scannerwork/
 .sonar/
 sonar-project.properties.bak
+.DS_Store
