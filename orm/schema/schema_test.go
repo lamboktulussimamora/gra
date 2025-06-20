@@ -363,3 +363,199 @@ func TestDatabaseDriverConstants(t *testing.T) {
 		t.Errorf("MySQL constant should be 'mysql', got '%s'", MySQL)
 	}
 }
+
+// Additional tests to improve coverage
+
+func TestHandleAutoIncrementPostgres(t *testing.T) {
+	// Test PostgreSQL auto increment handling
+	parts := []string{"id"}
+	result := handleAutoIncrementPostgres(parts, "INTEGER")
+	if len(result) == 0 {
+		t.Error("Should return non-empty result")
+	}
+
+	// Test with BIGINT
+	parts = []string{"user_id"}
+	result = handleAutoIncrementPostgres(parts, "BIGINT")
+	if len(result) == 0 {
+		t.Error("Should return non-empty result for BIGINT")
+	}
+}
+
+func TestExtractDefaultValueEdgeCases(t *testing.T) {
+	tests := []struct {
+		name         string
+		sqlTag       string
+		migrationTag string
+		expected     string
+	}{
+		{"no default", "not_null,unique", "", ""},
+		{"empty default", "default:,not_null", "", ""},
+		{"complex default", "default:CURRENT_TIMESTAMP,not_null", "", "CURRENT_TIMESTAMP"},
+		{"boolean default", "default:true,not_null", "", "true"},
+		{"numeric default", "default:0,not_null", "", "0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractDefaultValue(tt.sqlTag, tt.migrationTag)
+			if result != tt.expected {
+				t.Errorf("Expected '%s', got '%s'", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestGoTypeToPostgreSQLTypeExtended(t *testing.T) {
+	tests := []struct {
+		name     string
+		goType   reflect.Type
+		expected string
+	}{
+		{"int32", reflect.TypeOf(int32(0)), "INTEGER"},
+		{"int64", reflect.TypeOf(int64(0)), "BIGINT"},
+		{"time.Time", reflect.TypeOf(time.Time{}), "TIMESTAMP"},
+		{"bool", reflect.TypeOf(true), "BOOLEAN"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := goTypeToPostgreSQLType(tt.goType)
+			if result != tt.expected {
+				t.Errorf("Expected '%s', got '%s'", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestGoTypeToSQLiteTypeExtended(t *testing.T) {
+	tests := []struct {
+		name     string
+		goType   reflect.Type
+		expected string
+	}{
+		{"int32", reflect.TypeOf(int32(0)), "INTEGER"},
+		{"bool", reflect.TypeOf(true), "INTEGER"},
+		{"time.Time", reflect.TypeOf(time.Time{}), "DATETIME"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := goTypeToSQLiteType(tt.goType)
+			if result != tt.expected {
+				t.Errorf("Expected '%s', got '%s'", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestGoTypeToMySQLTypeExtended(t *testing.T) {
+	tests := []struct {
+		name     string
+		goType   reflect.Type
+		expected string
+	}{
+		{"int32", reflect.TypeOf(int32(0)), "INT"},
+		{"int64", reflect.TypeOf(int64(0)), "BIGINT"},
+		{"bool", reflect.TypeOf(true), "BOOLEAN"},
+		{"time.Time", reflect.TypeOf(time.Time{}), "DATETIME"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := goTypeToMySQLType(tt.goType)
+			if result != tt.expected {
+				t.Errorf("Expected '%s', got '%s'", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestIsNavigationPropertyExtended(t *testing.T) {
+	type User struct {
+		ID       int64    `db:"id"`
+		Posts    []string `db:"-"`       // Ignored field
+		Profile  string   `db:"profile"` // Regular field
+		Comments []string // No db tag
+	}
+
+	userType := reflect.TypeOf(User{})
+
+	// Test ignored field
+	postsField, _ := userType.FieldByName("Posts")
+	if !isNavigationProperty(postsField) {
+		t.Error("Posts field should be considered navigation property (ignored)")
+	}
+
+	// Test regular field
+	profileField, _ := userType.FieldByName("Profile")
+	if isNavigationProperty(profileField) {
+		t.Error("Profile field should not be considered navigation property")
+	}
+
+	// Test field without db tag
+	commentsField, _ := userType.FieldByName("Comments")
+	if !isNavigationProperty(commentsField) {
+		t.Error("Comments field should be considered navigation property (no db tag)")
+	}
+}
+
+func TestDetectDatabaseDriverEdgeCases(t *testing.T) {
+	// Test with closed database
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open SQLite database: %v", err)
+	}
+	db.Close()
+
+	driver := DetectDatabaseDriver(db)
+	// Should return default when db is closed
+	if driver != PostgreSQL {
+		t.Errorf("Expected PostgreSQL as default for closed db, got %v", driver)
+	}
+}
+
+type TestEmbeddedStruct struct {
+	BaseField string `db:"base_field"`
+}
+
+type TestWithEmbedded struct {
+	ID int64 `db:"id"`
+	TestEmbeddedStruct
+	Name string `db:"name"`
+}
+
+func TestProcessFieldForDriverWithEmbedded(t *testing.T) {
+	testType := reflect.TypeOf(TestWithEmbedded{})
+
+	for i := 0; i < testType.NumField(); i++ {
+		field := testType.Field(i)
+		columns := processFieldForDriver(field, PostgreSQL)
+
+		// Each field should produce at least one column
+		if field.Name != "TestEmbeddedStruct" && len(columns) == 0 {
+			t.Errorf("Field %s should produce at least one column", field.Name)
+		}
+	}
+}
+
+func TestGoTypeToSQLTypeForDriverSimple(t *testing.T) {
+	// Test basic type conversion
+	stringType := reflect.TypeOf("")
+	result := goTypeToSQLTypeForDriver(stringType, PostgreSQL)
+	if result == "" {
+		t.Error("Should return non-empty result for string type")
+	}
+
+	intType := reflect.TypeOf(int(0))
+	result = goTypeToSQLTypeForDriver(intType, SQLite)
+	if result != "INTEGER" {
+		t.Errorf("Expected 'INTEGER', got '%s'", result)
+	}
+
+	float64Type := reflect.TypeOf(float64(0))
+	result = goTypeToSQLTypeForDriver(float64Type, MySQL)
+	if result != "DOUBLE" {
+		t.Errorf("Expected 'DOUBLE', got '%s'", result)
+	}
+}
