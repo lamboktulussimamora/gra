@@ -965,6 +965,7 @@ Before submitting your code, please:
 
 - Go 1.24 or later
 - Make
+- Docker and Docker Compose (for database-dependent tests)
 
 > **Note:** As of v1.0.6 (May 2025), GRA framework requires Go 1.24 or later. Previous versions required Go 1.21+. The framework takes advantage of the latest Go features and improvements for better performance and security.
 
@@ -989,6 +990,40 @@ make race
 # Generate coverage report
 make coverage
 ```
+
+#### Database-Dependent Tests
+
+Some examples and tests require a PostgreSQL database connection. For these tests, use Docker Compose to set up a test database:
+
+```bash
+# Start the test database
+docker-compose -f docker-compose.test.yml up -d
+
+# Verify the database is running
+docker ps
+
+# Run tests with database support
+make test
+
+# Run SonarQube analysis (includes all tests and coverage)
+make sonar-analyze
+
+# Stop the test database when done
+docker-compose -f docker-compose.test.yml down
+```
+
+The test database configuration:
+- **Host:** localhost:5433
+- **Database:** gra_test
+- **Username:** gra_user
+- **Password:** gra_password
+- **Connection String:** `postgres://gra_user:gra_password@localhost:5433/gra_test?sslmode=disable`
+
+This is particularly important for:
+- Migration examples (`examples/migrations/`)
+- Hybrid migration demo (`examples/hybrid-migration-demo/`)
+- Versioning and cache examples with database features
+- Full SonarQube analysis and coverage reporting
 
 ### Project Cleanup
 
