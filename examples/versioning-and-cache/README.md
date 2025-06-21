@@ -4,7 +4,7 @@ This example demonstrates how to use GRA framework's API versioning and response
 
 ## Features
 
-- API versioning with URL path strategy (e.g., /v1/products, /v2/products)
+- API versioning with header strategy using `API-Version` header
 - Response caching for improved performance
 - Different response schemas based on API version
 - Secure headers middleware
@@ -20,21 +20,25 @@ go run main.go
 ### API Version 1
 
 ```bash
-# Get all products (v1)
-curl http://localhost:8080/api/v1/products
+# Get all products (v1) - default version
+curl http://localhost:8080/api/products
+
+# Get all products (v1) - explicit header
+curl -H "API-Version: 1" http://localhost:8080/api/products
 
 # Get a specific product (v1)
-curl http://localhost:8080/api/v1/products/1
+curl http://localhost:8080/api/products/1
+curl -H "API-Version: 1" http://localhost:8080/api/products/1
 ```
 
 ### API Version 2
 
 ```bash
 # Get all products (v2)
-curl http://localhost:8080/api/v2/products
+curl -H "API-Version: 2" http://localhost:8080/api/products
 
 # Get a specific product (v2)
-curl http://localhost:8080/api/v2/products/1
+curl -H "API-Version: 2" http://localhost:8080/api/products/1
 ```
 
 ### Default Version
@@ -52,10 +56,10 @@ The responses are cached for 30 seconds. Make the same request multiple times an
 
 ```bash
 # First call should show "X-Cache: MISS"
-curl -v http://localhost:8080/api/v1/products
+curl -v http://localhost:8080/api/products
 
 # Second call (within 30 seconds) should show "X-Cache: HIT"
-curl -v http://localhost:8080/api/v1/products
+curl -v http://localhost:8080/api/products
 ```
 
 ### Health Check
