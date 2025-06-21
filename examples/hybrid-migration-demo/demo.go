@@ -12,7 +12,7 @@ import (
 
 // IntegrationDemo demonstrates the complete migration workflow
 func main() {
-	fmt.Println("=== GRA Hybrid Migration Integration Demo ===\n")
+	fmt.Println("=== GRA Hybrid Migration Integration Demo ===")
 
 	// 1. Setup test database
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -33,7 +33,7 @@ func main() {
 	migrator.DbSet(&models.User{})
 	migrator.DbSet(&models.Product{})
 	migrator.DbSet(&models.Category{})
-	fmt.Println("   ✓ Core models registered\n")
+	fmt.Println("   ✓ Core models registered")
 
 	// 4. Initialize migration system (happens automatically when checking status)
 	fmt.Println("2. Initializing migration system...")

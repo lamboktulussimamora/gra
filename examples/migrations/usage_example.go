@@ -44,7 +44,7 @@ type Comment struct {
 
 // initializeDatabase establishes and tests the database connection.
 func initializeDatabase() (*sql.DB, error) {
-	db, err := sql.Open("postgres", "postgres://user:password@localhost/testdb?sslmode=disable")
+	db, err := sql.Open("postgres", "postgres://gra_user:gra_password@localhost:5433/gra_test?sslmode=disable")
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
