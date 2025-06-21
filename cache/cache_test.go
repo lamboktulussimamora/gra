@@ -799,3 +799,57 @@ func TestCacheInvalidationEdgeCases(t *testing.T) {
 		}
 	})
 }
+
+// TestNew tests the New function that creates cache middleware with default config
+func TestNew(t *testing.T) {
+	// Create middleware using New function
+	middleware := New()
+
+	// Verify middleware is not nil
+	if middleware == nil {
+		t.Fatal("Expected middleware to be created, got nil")
+	}
+
+	// Test that the middleware works correctly with default config
+	handler := func(c *context.Context) {
+		c.JSON(http.StatusOK, map[string]string{"message": testMessage})
+	}
+
+	// Create a test router and apply the middleware
+	r := router.New()
+	r.Use(middleware)
+	r.GET("/test", handler)
+
+	// Create test request
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+
+	// First request - should be cached
+	r.ServeHTTP(w, req)
+
+	// Verify response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	// Verify the cache header indicates miss on first request
+	cacheHeader := w.Header().Get(headerXCache)
+	if cacheHeader != valCacheMiss {
+		t.Errorf("Expected cache header to be %s, got %s", valCacheMiss, cacheHeader)
+	}
+
+	// Second request - should be served from cache
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req)
+
+	// Verify the cache header indicates hit on second request
+	cacheHeader2 := w2.Header().Get(headerXCache)
+	if cacheHeader2 != valCacheHit {
+		t.Errorf("Expected cache header to be %s, got %s", valCacheHit, cacheHeader2)
+	}
+
+	// Verify both responses have the same body
+	if w.Body.String() != w2.Body.String() {
+		t.Error("Expected same response body from cached response")
+	}
+}
