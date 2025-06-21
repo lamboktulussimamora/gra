@@ -417,12 +417,19 @@ func TestSetupDatabaseConnectionFull(t *testing.T) {
 			config: CLIConfig{
 				ConnectionString: "",
 			},
-			expectError: true,
+			expectError: true, // Should error when connection string is empty
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// For the empty connection string test, temporarily clear DATABASE_URL
+			if tt.config.ConnectionString == "" {
+				originalDatabaseURL := os.Getenv("DATABASE_URL")
+				os.Setenv("DATABASE_URL", "")
+				defer os.Setenv("DATABASE_URL", originalDatabaseURL)
+			}
+			
 			db, err := setupDatabaseConnection(tt.config)
 			if tt.expectError {
 				if err == nil {

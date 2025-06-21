@@ -11,10 +11,18 @@ examples/*/comprehensive-demo
 examples/*/enhanced-demo
 examples/*/auth-and-security
 examples/*/versioning-and-cache
+examples/ef_migrations/ef_migrations_example
+examples/hybrid-migration-demo/hybrid_demo
+examples/migration-example/migration_example
 
 # Migration tool binaries
 tools/migration/direct_runner
 tools/migration/test_runner
+tools/ef-migrate/ef-migrate
+
+# Example migration files (generated during tests)
+examples/*/test_migrations/
+examples/**/test_migrations/
 
 # Database files
 *.db
