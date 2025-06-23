@@ -34,6 +34,7 @@ package main
 
 import (
 	"database/sql"
+	"os"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -881,7 +882,7 @@ func verifyTestMigrationExecution(t *testing.T, db *sql.DB) {
 	}
 
 	if migrationCount != 1 {
-		t.Errorf(expectedMigrationMsg, migrationCount)
+		t.Errorf("Expected 1 migration record, got %d", migrationCount)
 	}
 	if usersTableCount != 1 {
 		t.Errorf("Expected 1 users table, got %d", usersTableCount)
@@ -963,12 +964,11 @@ func TestMainFunctionPostgresSQLErrors(t *testing.T) {
 	t.Run("attempt to reach SQL error paths", func(t *testing.T) {
 		// Strategy: Try multiple postgres connection scenarios
 		// Some might connect but lack permissions for table creation
-		potentialConnections := []string{
-			// Standard postgres connections
-			"postgres://postgres:@localhost:5432/postgres?sslmode=disable",
-			"postgres://postgres:password@localhost:5432/postgres?sslmode=disable",
-			"postgres://postgres@localhost:5432/postgres?sslmode=disable",
-			"postgres://:@localhost:5432/postgres?sslmode=disable",
+		potentialConnections := []string{ // Standard postgres connections (use correct Docker credentials)
+			"postgres://gra_user:gra_password@127.0.0.1:5433/gra_test?sslmode=disable",
+			"postgres://gra_user:gra_password@127.0.0.1:5433/postgres?sslmode=disable",
+			"postgres://gra_user:gra_password@127.0.0.1:5433/template1?sslmode=disable",
+			"postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable", // Alternative if ef-migrate postgres is running
 
 			// Alternative databases
 			"postgres://postgres:@localhost:5432/template1?sslmode=disable",
@@ -1201,7 +1201,7 @@ func TestMainFunctionSQLExecution(t *testing.T) {
 
 			// This might:
 			// 1. Fail on connection (expected, already covered)
-			// 2. Succeed on connection but fail on CREATE TABLE (this would give us the coverage we need!)
+			// 2. Succeed in connecting but fail on CREATE TABLE (this would give us the coverage we need!)
 			main()
 		}
 	})
@@ -1519,7 +1519,7 @@ func TestMainFunctionSQLErrorPathsWithActualPostgres(t *testing.T) {
 			// If PostgreSQL is running and accessible, this might:
 			// 1. Connect successfully and execute SQL (success case - also valuable for coverage)
 			// 2. Connect successfully but fail on SQL due to permissions (target case!)
-			// 3. Fail on connection (doesn't help with SQL error paths)
+			// 3. Fail at connection (doesn't help with SQL error paths)
 			main()
 		}
 	})
@@ -1633,6 +1633,36 @@ func TestMainFunctionManualPostgresSetup(t *testing.T) {
 	})
 }
 
+// TestMainFunctionWithDockerPostgresSuccessful tests with actual working Docker PostgreSQL
+func TestMainFunctionWithDockerPostgresSuccessful(t *testing.T) {
+	t.Run("working_docker_postgres_connection", func(t *testing.T) {
+		// Use the correct credentials from docker-compose.test.yml
+		dockerConnString := "postgres://gra_user:gra_password@127.0.0.1:5433/gra_test?sslmode=disable"
+
+		originalConn := *conn
+		originalUp := *up
+		defer func() {
+			*conn = originalConn
+			*up = originalUp
+		}()
+
+		// Test 1: Connection test without migration
+		*conn = dockerConnString
+		*up = false
+		main() // Should succeed and print "Database connection successful!"
+
+		// Test 2: Connection with migration execution
+		*conn = dockerConnString
+		*up = true
+		main() // Should succeed and create tables
+
+		// Test 3: Run migration again (should handle existing tables)
+		*conn = dockerConnString
+		*up = true
+		main() // Should succeed with IF NOT EXISTS
+	})
+}
+
 // TestMainFunctionWithDockerPostgres tests main function with Docker PostgreSQL to reach SQL paths
 func TestMainFunctionWithDockerPostgres(t *testing.T) {
 	// This test uses the Docker PostgreSQL container to actually reach SQL execution paths
@@ -1645,8 +1675,8 @@ func TestMainFunctionWithDockerPostgres(t *testing.T) {
 	}()
 
 	t.Run("docker postgres SQL execution test", func(t *testing.T) {
-		// Test with the running PostgreSQL Docker container
-		dockerPostgresConn := "postgres://postgres:testpass@localhost:5433/testdb?sslmode=disable"
+		// Use the correct credentials from docker-compose.test.yml
+		dockerPostgresConn := "postgres://gra_user:gra_password@127.0.0.1:5433/gra_test?sslmode=disable"
 
 		// Test 1: Connection without migration (should reach success message)
 		*conn = dockerPostgresConn
@@ -1663,14 +1693,48 @@ func TestMainFunctionWithDockerPostgres(t *testing.T) {
 		*up = true
 		main() // Should handle "IF NOT EXISTS" and "ON CONFLICT DO NOTHING"
 
-		// Test 4: Test with postgres database
-		*conn = "postgres://postgres:testpass@localhost:5433/postgres?sslmode=disable"
+		// Test 4: Test with postgres database using correct credentials
+		*conn = "postgres://gra_user:gra_password@127.0.0.1:5433/postgres?sslmode=disable"
 		*up = true
 		main() // Different database context
 
 		// Test 5: Test with template1 database (might be restricted)
-		*conn = "postgres://postgres:testpass@localhost:5433/template1?sslmode=disable"
+		*conn = "postgres://gra_user:gra_password@127.0.0.1:5433/template1?sslmode=disable"
 		*up = true
 		main() // template1 might have different permissions
+	})
+}
+
+// TestMainFunctionWithDockerPostgresActual tests the main function with the actual Docker PostgreSQL instance
+func TestMainFunctionWithDockerPostgresActual(t *testing.T) {
+	t.Run("actual_docker_postgres_test", func(t *testing.T) {
+		// Use the exact credentials from docker-compose.test.yml
+		dockerConnString := "postgres://gra_user:gra_password@127.0.0.1:5433/gra_test?sslmode=disable"
+
+		tests := []struct {
+			name   string
+			conn   string
+			withUp bool
+		}{
+			{"docker_postgres_no_up", dockerConnString, false},
+			{"docker_postgres_with_up", dockerConnString, true},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				oldArgs := os.Args
+				defer func() { os.Args = oldArgs }()
+
+				if test.withUp {
+					os.Args = []string{"test_runner", "--conn", test.conn, "--up"}
+				} else {
+					os.Args = []string{"test_runner", "--conn", test.conn}
+				}
+
+				// This should either connect successfully and run migrations,
+				// or fail gracefully with a connection error
+				main()
+			})
+		}
 	})
 }

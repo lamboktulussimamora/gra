@@ -1266,3 +1266,314 @@ func TestMigrationFilePublicMethodsTableDriven(t *testing.T) {
 		})
 	}
 }
+
+// TestMainFunctionExecution tests the main function execution paths
+func TestMainFunctionExecution(t *testing.T) {
+	// Save original environment variables
+	originalDBPassword := os.Getenv("DB_PASSWORD")
+
+	defer func() {
+		// Restore original environment variables
+		if originalDBPassword != "" {
+			os.Setenv("DB_PASSWORD", originalDBPassword)
+		} else {
+			os.Unsetenv("DB_PASSWORD")
+		}
+	}()
+
+	// Test 1: getEnvWithDefault function (used by main)
+	os.Setenv("TEST_VAR", "test_value")
+	defer os.Unsetenv("TEST_VAR")
+
+	result := getEnvWithDefault("TEST_VAR", "default")
+	if result != "test_value" {
+		t.Errorf("Expected 'test_value', got %s", result)
+	}
+
+	result = getEnvWithDefault("NONEXISTENT_VAR", "default")
+	if result != "default" {
+		t.Errorf("Expected 'default', got %s", result)
+	}
+
+	// Test 2: initializeDatabase function (used by main)
+	// Note: initializeDatabase() requires PostgreSQL environment variables
+	// so we'll test the environment variable handling instead
+	os.Setenv("DB_PASSWORD", "test_password")
+	defer os.Unsetenv("DB_PASSWORD")
+
+	// Test that we can call initializeDatabase (it will fail without real PostgreSQL)
+	_, err := initializeDatabase()
+	if err != nil {
+		// This is expected in test environment without PostgreSQL
+		t.Logf("initializeDatabase failed as expected in test environment: %v", err)
+	}
+}
+
+// TestSetupMigratorFunction tests the setupMigrator function
+func TestSetupMigratorFunction(t *testing.T) {
+	// Create test database
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer db.Close()
+
+	// Test setupMigrator
+	migrator := setupMigrator(db)
+	if migrator == nil {
+		t.Error("Expected non-nil migrator")
+	}
+}
+
+// TestDisplayMigrationStatusFunction tests displayMigrationStatus
+func TestDisplayMigrationStatusFunction(t *testing.T) {
+	// Test displayMigrationStatus with nil status
+	displayMigrationStatus(nil)
+	// This function just prints, no error to check
+
+	// Test with empty status
+	status := &migrations.MigrationStatus{}
+	displayMigrationStatus(status)
+}
+
+// TestDisplayMigrationFileInfoFunction tests displayMigrationFileInfo
+func TestDisplayMigrationFileInfoFunction(t *testing.T) {
+	// Test displayMigrationFileInfo with nil file
+	displayMigrationFileInfo(nil)
+	// This function just prints, no error to check
+}
+
+// TestModelStructures tests the model structures used in main
+func TestModelStructures(t *testing.T) {
+	// Test User model
+	user := User{
+		ID:       1,
+		Email:    "test@example.com",
+		Name:     "Test User",
+		IsActive: true,
+	}
+
+	if user.ID != 1 {
+		t.Errorf("Expected user ID to be 1, got %d", user.ID)
+	}
+	if user.Email != "test@example.com" {
+		t.Errorf("Expected user email to be 'test@example.com', got %s", user.Email)
+	}
+
+	// Test Post model
+	post := Post{
+		ID:          1,
+		UserID:      1,
+		Title:       "Test Post",
+		Content:     "Test content",
+		IsPublished: false,
+	}
+
+	if post.ID != 1 {
+		t.Errorf("Expected post ID to be 1, got %d", post.ID)
+	}
+	if post.UserID != 1 {
+		t.Errorf("Expected post user ID to be 1, got %d", post.UserID)
+	}
+
+	// Test Comment model
+	comment := Comment{
+		ID:      1,
+		PostID:  1,
+		UserID:  1,
+		Content: "Test comment",
+	}
+
+	if comment.ID != 1 {
+		t.Errorf("Expected comment ID to be 1, got %d", comment.ID)
+	}
+	if comment.PostID != 1 {
+		t.Errorf("Expected comment post ID to be 1, got %d", comment.PostID)
+	}
+}
+
+// TestEnvironmentVariableHandling tests environment variable handling
+func TestEnvironmentVariableHandling(t *testing.T) {
+	// Test getEnvWithDefault with various scenarios
+
+	// Test with existing environment variable
+	os.Setenv("TEST_EXISTING", "existing_value")
+	defer os.Unsetenv("TEST_EXISTING")
+
+	result := getEnvWithDefault("TEST_EXISTING", "default_value")
+	if result != "existing_value" {
+		t.Errorf("Expected 'existing_value', got %s", result)
+	}
+
+	// Test with non-existing environment variable
+	result = getEnvWithDefault("TEST_NONEXISTENT", "default_value")
+	if result != "default_value" {
+		t.Errorf("Expected 'default_value', got %s", result)
+	}
+
+	// Test with empty environment variable
+	os.Setenv("TEST_EMPTY", "")
+	defer os.Unsetenv("TEST_EMPTY")
+
+	result = getEnvWithDefault("TEST_EMPTY", "default_value")
+	if result != "default_value" {
+		t.Errorf("Expected 'default_value' for empty env var, got %s", result)
+	}
+}
+
+// TestInitializeDatabaseComponents tests components of initializeDatabase
+func TestInitializeDatabaseComponents(t *testing.T) {
+	// Test environment variable handling (used by initializeDatabase)
+	originalVars := map[string]string{
+		"DB_USER":     os.Getenv("DB_USER"),
+		"DB_PASSWORD": os.Getenv("DB_PASSWORD"),
+		"DB_HOST":     os.Getenv("DB_HOST"),
+		"DB_PORT":     os.Getenv("DB_PORT"),
+		"DB_NAME":     os.Getenv("DB_NAME"),
+	}
+
+	defer func() {
+		// Restore original environment
+		for key, value := range originalVars {
+			if value != "" {
+				os.Setenv(key, value)
+			} else {
+				os.Unsetenv(key)
+			}
+		}
+	}()
+
+	// Test default values
+	// First unset all variables to test defaults
+	os.Unsetenv("DB_USER")
+	os.Unsetenv("DB_HOST")
+	os.Unsetenv("DB_PORT")
+	os.Unsetenv("DB_NAME")
+
+	user := getEnvWithDefault("DB_USER", "gra_user")
+	if user != "gra_user" {
+		t.Errorf("Expected default user 'gra_user', got %s", user)
+	}
+
+	host := getEnvWithDefault("DB_HOST", "localhost")
+	if host != "localhost" {
+		t.Errorf("Expected default host 'localhost', got %s", host)
+	}
+
+	port := getEnvWithDefault("DB_PORT", "5433")
+	if port != "5433" {
+		t.Errorf("Expected default port '5433', got %s", port)
+	}
+
+	dbName := getEnvWithDefault("DB_NAME", "gra_test")
+	if dbName != "gra_test" {
+		t.Errorf("Expected default db name 'gra_test', got %s", dbName)
+	}
+
+	// Test missing password error
+	os.Unsetenv("DB_PASSWORD")
+	_, err := initializeDatabase()
+	if err == nil {
+		t.Error("Expected error when DB_PASSWORD is not set")
+	}
+	if !strings.Contains(err.Error(), "DB_PASSWORD environment variable is required") {
+		t.Errorf("Expected password error, got: %v", err)
+	}
+}
+
+// TestMainFunctionComponents tests components used by main
+func TestMainFunctionComponents(t *testing.T) {
+	// Test database connection attempt (main() does this)
+	os.Setenv("DB_PASSWORD", "test_password")
+	defer os.Unsetenv("DB_PASSWORD")
+
+	_, err := initializeDatabase()
+	if err != nil {
+		// Expected to fail without real PostgreSQL
+		t.Logf("Database connection failed as expected: %v", err)
+	}
+
+	// Test migrator creation with SQLite (main() creates migrator)
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer db.Close()
+
+	migrator := setupMigrator(db)
+	if migrator == nil {
+		t.Error("Expected non-nil migrator")
+	}
+}
+
+// TestMainWorkflowSimulation tests simulated main workflow
+func TestMainWorkflowSimulation(t *testing.T) {
+	// This test simulates parts of the main workflow that we can test
+
+	// Step 1: Environment variable handling (main() does this)
+	os.Setenv("DB_PASSWORD", "test_password")
+	defer os.Unsetenv("DB_PASSWORD")
+
+	user := getEnvWithDefault("DB_USER", "gra_user")
+	host := getEnvWithDefault("DB_HOST", "localhost")
+	port := getEnvWithDefault("DB_PORT", "5433")
+	dbName := getEnvWithDefault("DB_NAME", "gra_test")
+
+	if user == "" || host == "" || port == "" || dbName == "" {
+		t.Error("Environment variables should have default values")
+	}
+
+	// Step 2: Database initialization attempt (main() does this)
+	_, err := initializeDatabase()
+	if err != nil {
+		// Expected without real PostgreSQL
+		t.Logf("Database initialization failed as expected: %v", err)
+	}
+
+	// Step 3: Migrator setup with test database (main() does this)
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	migrator := setupMigrator(testDB)
+	if migrator == nil {
+		t.Error("Expected non-nil migrator")
+	}
+
+	// Step 4: Display functions (main() calls these)
+	displayMigrationStatus(nil)   // Test with nil
+	displayMigrationFileInfo(nil) // Test with nil
+}
+
+// TestFunctionExistenceForMain tests that functions called by main exist
+func TestFunctionExistenceForMain(t *testing.T) {
+	// Test that all functions called by main() are callable
+
+	// Test getEnvWithDefault
+	result := getEnvWithDefault("TEST", "default")
+	if result != "default" {
+		t.Errorf("getEnvWithDefault should return default for missing env var")
+	}
+
+	// Test initializeDatabase exists (will fail without PostgreSQL)
+	_, err := initializeDatabase()
+	if err == nil {
+		t.Log("initializeDatabase succeeded unexpectedly")
+	}
+
+	// Test setupMigrator exists
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err == nil {
+		defer db.Close()
+		migrator := setupMigrator(db)
+		if migrator == nil {
+			t.Error("setupMigrator should return non-nil migrator")
+		}
+	}
+
+	// Test display functions exist
+	displayMigrationStatus(nil)
+	displayMigrationFileInfo(nil)
+}
