@@ -69,7 +69,12 @@ echo "📄 HTML report generated: migration_test_coverage.html"
 # Test the main function directly to verify it works
 echo "🔍 Testing main function directly..."
 cd tools/migration/test
-go run test_runner.go --conn "postgres://postgres:testpass@localhost:5433/testdb?sslmode=disable" --up
+
+# Use environment variable for database password
+DB_PASSWORD="${DB_PASSWORD:-testpass}"
+CONNECTION_STRING="postgres://postgres:${DB_PASSWORD}@localhost:5433/testdb?sslmode=disable"
+
+go run test_runner.go --conn "${CONNECTION_STRING}" --up
 
 echo "🎉 All tests completed successfully!"
 echo "💡 Note: PostgreSQL container will be cleaned up automatically"

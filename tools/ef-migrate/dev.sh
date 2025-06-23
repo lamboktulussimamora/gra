@@ -194,8 +194,12 @@ db_start() {
         return 1
     fi
     
-    # Use environment variable for database password with secure default
-    POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-MyPassword_123}
+    # Use environment variable for database password (required for security)
+    if [ -z "${POSTGRES_PASSWORD:-}" ]; then
+        print_error "POSTGRES_PASSWORD environment variable is required"
+        print_status "Example: export POSTGRES_PASSWORD=your_secure_password"
+        exit 1
+    fi
     
     docker run -d \
         --name gra-postgres-dev \

@@ -429,7 +429,7 @@ func TestSetupDatabaseConnectionFull(t *testing.T) {
 				os.Setenv("DATABASE_URL", "")
 				defer os.Setenv("DATABASE_URL", originalDatabaseURL)
 			}
-			
+
 			db, err := setupDatabaseConnection(tt.config)
 			if tt.expectError {
 				if err == nil {

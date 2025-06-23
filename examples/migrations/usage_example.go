@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/lamboktulussimamora/gra/orm/migrations"
@@ -42,9 +43,31 @@ type Comment struct {
 	CreatedAt time.Time `db:"created_at" migration:"not_null,default:CURRENT_TIMESTAMP"`
 }
 
+// getEnvWithDefault returns the value of an environment variable or a default value if not set
+func getEnvWithDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
 // initializeDatabase establishes and tests the database connection.
 func initializeDatabase() (*sql.DB, error) {
-	db, err := sql.Open("postgres", "postgres://gra_user:gra_password@localhost:5433/gra_test?sslmode=disable")
+	// Use environment variables for database connection
+	dbUser := getEnvWithDefault("DB_USER", "gra_user")
+	dbPassword := getEnvWithDefault("DB_PASSWORD", "")
+	dbHost := getEnvWithDefault("DB_HOST", "localhost")
+	dbPort := getEnvWithDefault("DB_PORT", "5433")
+	dbName := getEnvWithDefault("DB_NAME", "gra_test")
+
+	if dbPassword == "" {
+		return nil, fmt.Errorf("DB_PASSWORD environment variable is required")
+	}
+
+	connectionString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		dbUser, dbPassword, dbHost, dbPort, dbName)
+
+	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}

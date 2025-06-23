@@ -7,8 +7,14 @@ echo "🚀 PostgreSQL EF Migration System Complete Test"
 echo "==============================================="
 echo
 
-# Set PostgreSQL connection from environment variables
-: "${POSTGRES_PASSWORD:=postgres}"
+# Set PostgreSQL connection from environment variables  
+# POSTGRES_PASSWORD must be set for security reasons
+if [ -z "${POSTGRES_PASSWORD:-}" ]; then
+    echo "❌ Error: POSTGRES_PASSWORD environment variable is required"
+    echo "💡 Example: export POSTGRES_PASSWORD=your_secure_password"
+    exit 1
+fi
+
 : "${POSTGRES_HOST:=localhost}"
 : "${POSTGRES_PORT:=5432}"
 : "${POSTGRES_DB:=gra}"
