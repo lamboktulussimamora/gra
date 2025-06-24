@@ -9,6 +9,7 @@ import (
 	"github.com/lamboktulussimamora/gra"
 	"github.com/lamboktulussimamora/gra/cache"
 	"github.com/lamboktulussimamora/gra/middleware"
+	"github.com/lamboktulussimamora/gra/router"
 	"github.com/lamboktulussimamora/gra/versioning"
 )
 
@@ -29,60 +30,81 @@ type ProductV2 struct {
 	CreatedAt   string   `json:"created_at"`  // Added in v2
 }
 
-// Sample data
-var productsV1 = []ProductV1{
-	{ID: "1", Name: "Product 1", Price: 100},
-	{ID: "2", Name: "Product 2", Price: 200},
-	{ID: "3", Name: "Product 3", Price: 300},
+// GetSampleDataV1 returns sample data for API v1
+func GetSampleDataV1() []ProductV1 {
+	return []ProductV1{
+		{ID: "1", Name: "Product 1", Price: 100},
+		{ID: "2", Name: "Product 2", Price: 200},
+		{ID: "3", Name: "Product 3", Price: 300},
+	}
 }
 
-var productsV2 = []ProductV2{
-	{
-		ID:          "1",
-		Name:        "Product 1 Enhanced",
-		Price:       100,
-		Description: "This is product 1 with enhanced description",
-		Categories:  []string{"electronics", "gadgets"},
-		CreatedAt:   "2023-01-15T10:00:00Z",
-	},
-	{
-		ID:          "2",
-		Name:        "Product 2 Enhanced",
-		Price:       200,
-		Description: "This is product 2 with enhanced description",
-		Categories:  []string{"accessories", "lifestyle"},
-		CreatedAt:   "2023-02-20T11:30:00Z",
-	},
-	{
-		ID:          "3",
-		Name:        "Product 3 Enhanced",
-		Price:       300,
-		Description: "This is product 3 with enhanced description",
-		Categories:  []string{"home", "kitchen"},
-		CreatedAt:   "2023-03-25T09:15:00Z",
-	},
+// GetSampleDataV2 returns sample data for API v2
+func GetSampleDataV2() []ProductV2 {
+	return []ProductV2{
+		{
+			ID:          "1",
+			Name:        "Product 1 Enhanced",
+			Price:       100,
+			Description: "This is product 1 with enhanced description",
+			Categories:  []string{"electronics", "gadgets"},
+			CreatedAt:   "2023-01-15T10:00:00Z",
+		},
+		{
+			ID:          "2",
+			Name:        "Product 2 Enhanced",
+			Price:       200,
+			Description: "This is product 2 with enhanced description",
+			Categories:  []string{"accessories", "lifestyle"},
+			CreatedAt:   "2023-02-20T11:30:00Z",
+		},
+		{
+			ID:          "3",
+			Name:        "Product 3 Enhanced",
+			Price:       300,
+			Description: "This is product 3 with enhanced description",
+			Categories:  []string{"home", "kitchen"},
+			CreatedAt:   "2023-03-25T09:15:00Z",
+		},
+	}
 }
 
-func main() {
-	fmt.Println("🚀 Starting GRA Versioning and Cache Example")
-	fmt.Println("===========================================")
+// Sample data (now using functions)
+var productsV1 = GetSampleDataV1()
+var productsV2 = GetSampleDataV2()
 
+// AppConfig holds the configuration for the application
+type AppConfig struct {
+	CacheTTL          time.Duration
+	SupportedVersions []string
+	DefaultVersion    string
+	VersionHeaderName string
+}
+
+// DefaultAppConfig returns the default configuration
+func DefaultAppConfig() *AppConfig {
+	return &AppConfig{
+		CacheTTL:          30 * time.Second,
+		SupportedVersions: []string{"1", "2"},
+		DefaultVersion:    "1",
+		VersionHeaderName: "API-Version",
+	}
+}
+
+// SetupRouter creates and configures a new GRA router with versioning and caching
+func SetupRouter(config *AppConfig) *router.Router {
 	// Create a new GRA application
 	r := gra.New()
 
 	// Set up API versioning with header strategy
 	v := versioning.New().
-		WithStrategy(&versioning.HeaderVersionStrategy{HeaderName: "API-Version"}).
-		WithSupportedVersions("1", "2").
-		WithDefaultVersion("1")
+		WithStrategy(&versioning.HeaderVersionStrategy{HeaderName: config.VersionHeaderName}).
+		WithSupportedVersions(config.SupportedVersions...).
+		WithDefaultVersion(config.DefaultVersion)
 
-	fmt.Println("✓ API versioning configured (supported: v1, v2, default: v1)")
-
-	// Set up caching with a 30-second TTL for demonstration purposes
+	// Set up caching
 	cacheConfig := cache.DefaultCacheConfig()
-	cacheConfig.TTL = 30 * time.Second
-
-	fmt.Printf("✓ Cache configured with %v TTL\n", cacheConfig.TTL)
+	cacheConfig.TTL = config.CacheTTL
 
 	// Add global middleware
 	r.Use(
@@ -92,8 +114,6 @@ func main() {
 		cache.WithConfig(cacheConfig), // Apply cache middleware
 		middleware.SecureHeaders(),    // Add secure headers
 	)
-
-	fmt.Println("✓ Middleware configured (logger, recovery, versioning, cache, security)")
 
 	// Define API routes with versioning
 	api := r.Group("/api")
@@ -106,6 +126,39 @@ func main() {
 		api.GET("/health", health)
 	}
 
+	return r
+}
+
+// FindProductV1 finds a product by ID in V1 data
+func FindProductV1(id string, products []ProductV1) *ProductV1 {
+	for _, p := range products {
+		if p.ID == id {
+			return &p
+		}
+	}
+	return nil
+}
+
+// FindProductV2 finds a product by ID in V2 data
+func FindProductV2(id string, products []ProductV2) *ProductV2 {
+	for _, p := range products {
+		if p.ID == id {
+			return &p
+		}
+	}
+	return nil
+}
+
+func main() {
+	fmt.Println("🚀 Starting GRA Versioning and Cache Example")
+	fmt.Println("===========================================")
+
+	config := DefaultAppConfig()
+	r := SetupRouter(config)
+
+	fmt.Println("✓ API versioning configured (supported: v1, v2, default: v1)")
+	fmt.Printf("✓ Cache configured with %v TTL\n", config.CacheTTL)
+	fmt.Println("✓ Middleware configured (logger, recovery, versioning, cache, security)")
 	fmt.Println("✓ Routes configured:")
 	fmt.Println("  - GET /api/products (versioned)")
 	fmt.Println("  - GET /api/products/:id (versioned)")
@@ -182,20 +235,16 @@ func getProduct(c *gra.Context) {
 	// Different response based on version
 	switch versionInfo.Version {
 	case "1":
-		for _, p := range productsV1 {
-			if p.ID == id {
-				log.Printf("✓ Found product (v1): %s", p.Name)
-				c.Success(http.StatusOK, "Product retrieved successfully", p)
-				return
-			}
+		if p := FindProductV1(id, productsV1); p != nil {
+			log.Printf("✓ Found product (v1): %s", p.Name)
+			c.Success(http.StatusOK, "Product retrieved successfully", p)
+			return
 		}
 	case "2":
-		for _, p := range productsV2 {
-			if p.ID == id {
-				log.Printf("✓ Found product (v2): %s", p.Name)
-				c.Success(http.StatusOK, "Product retrieved successfully", p)
-				return
-			}
+		if p := FindProductV2(id, productsV2); p != nil {
+			log.Printf("✓ Found product (v2): %s", p.Name)
+			c.Success(http.StatusOK, "Product retrieved successfully", p)
+			return
 		}
 	default:
 		log.Printf("❌ Unsupported API version requested: %s", versionInfo.Version)
