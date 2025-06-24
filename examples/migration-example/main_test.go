@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -74,6 +75,98 @@ func TestCreateMigrationsTable(t *testing.T) {
 func TestAutoMigrateWithSQLite(t *testing.T) {
 	// Skip this test as it requires PostgreSQL-specific functionality
 	t.Skip("Skipping AutoMigrate test - requires proper PostgreSQL setup")
+}
+
+func TestAutoMigrateWithRealDB(t *testing.T) {
+	// Check if we have database environment variables
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+	dbUser := os.Getenv("DB_USER")
+	dbPassword := os.Getenv("DB_PASSWORD")
+	dbName := os.Getenv("DB_NAME")
+
+	if dbHost == "" || dbPort == "" || dbUser == "" || dbPassword == "" || dbName == "" {
+		t.Skip("Skipping real database test - database environment variables not set")
+		return
+	}
+
+	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		dbHost, dbPort, dbUser, dbPassword, dbName)
+
+	runner, err := NewMigrationRunner(connectionString)
+	if err != nil {
+		t.Fatalf("Failed to create migration runner: %v", err)
+	}
+	defer func() {
+		if closeErr := runner.Close(); closeErr != nil {
+			t.Logf("Warning: Failed to close migration runner: %v", closeErr)
+		}
+	}()
+
+	// Test AutoMigrate
+	err = runner.AutoMigrate()
+	if err != nil {
+		t.Fatalf("AutoMigrate failed: %v", err)
+	}
+
+	// Test ShowStatus
+	err = runner.ShowStatus()
+	if err != nil {
+		t.Fatalf("ShowStatus failed: %v", err)
+	}
+
+	// Verify that tables were created
+	tables := []string{"users", "products", "categories", "orders", "order_items", "reviews", "roles", "user_roles"}
+	for _, table := range tables {
+		exists, err := runner.tableExists(table)
+		if err != nil {
+			t.Fatalf("Failed to check table existence for %s: %v", table, err)
+		}
+		if !exists {
+			t.Errorf("Expected table %s to exist after migration", table)
+		}
+	}
+}
+
+func TestConnectionStringBuilding(t *testing.T) {
+	tests := []struct {
+		name   string
+		host   string
+		port   string
+		user   string
+		pass   string
+		dbname string
+		want   string
+	}{
+		{
+			name:   "standard_connection",
+			host:   "localhost",
+			port:   "5432",
+			user:   "postgres",
+			pass:   "password",
+			dbname: "testdb",
+			want:   "host=localhost port=5432 user=postgres password=password dbname=testdb sslmode=disable",
+		},
+		{
+			name:   "custom_port",
+			host:   "localhost",
+			port:   "5433",
+			user:   "test_user",
+			pass:   "test_pass",
+			dbname: "test_db",
+			want:   "host=localhost port=5433 user=test_user password=test_pass dbname=test_db sslmode=disable",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+				tt.host, tt.port, tt.user, tt.pass, tt.dbname)
+			if connStr != tt.want {
+				t.Errorf("Expected connection string %s, got %s", tt.want, connStr)
+			}
+		})
+	}
 }
 
 func TestMigrateEntityStructure(t *testing.T) {
