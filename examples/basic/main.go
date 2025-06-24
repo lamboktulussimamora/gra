@@ -8,6 +8,7 @@ import (
 
 	"github.com/lamboktulussimamora/gra"
 	"github.com/lamboktulussimamora/gra/middleware"
+	"github.com/lamboktulussimamora/gra/router"
 	"github.com/lamboktulussimamora/gra/validator"
 )
 
@@ -22,7 +23,8 @@ type User struct {
 	Password string `json:"password" validate:"required,min=6"`
 }
 
-func main() {
+// setupRoutes configures all routes and middleware for the application
+func setupRoutes() *router.Router {
 	// Create a new router
 	r := gra.New()
 
@@ -33,49 +35,81 @@ func main() {
 		middleware.CORS("*"),
 	)
 
-	// Set up routes
+	// Home route - provides basic API information
 	r.GET("/", func(c *gra.Context) {
 		c.Success(http.StatusOK, "Welcome to GRA Framework", map[string]any{
 			"version": gra.Version,
 			"time":    time.Now(),
+			"endpoints": []map[string]string{
+				{"method": "GET", "path": "/", "description": "API information"},
+				{"method": "GET", "path": "/users/:id", "description": "Get user by ID"},
+				{"method": "POST", "path": "/users", "description": "Create new user"},
+			},
 		})
 	})
 
+	// Get user by ID route
 	r.GET("/users/:id", func(c *gra.Context) {
 		id := c.GetParam("id")
+
+		// In a real application, you would fetch from database
+		// Here we just return a mock user
 		c.Success(http.StatusOK, "User found", map[string]any{
-			"id":   id,
-			"name": "John Doe",
+			"id":    id,
+			"name":  "John Doe",
+			"email": "john.doe@example.com",
 		})
 	})
 
-	r.POST("/users", func(c *gra.Context) {
-		var user User
-		if err := c.BindJSON(&user); err != nil {
-			c.Error(http.StatusBadRequest, "Invalid request body")
-			return
-		}
+	// Create user route
+	r.POST("/users", createUserHandler)
 
-		// Validate user
-		v := validator.New()
-		errors := v.Validate(user)
-		if len(errors) > 0 {
-			c.JSON(http.StatusBadRequest, map[string]any{
-				"status": "error",
-				"error":  "Validation failed",
-				"errors": errors,
-			})
-			return
-		}
+	return r
+}
 
-		// Mock creating a user
-		user.ID = 1
-		user.Password = "********" // Hide password
+// createUserHandler handles user creation with validation
+func createUserHandler(c *gra.Context) {
+	var user User
 
-		c.Success(http.StatusCreated, "User created", user)
-	})
+	// Bind JSON request body to user struct
+	if err := c.BindJSON(&user); err != nil {
+		c.Error(http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate user input
+	v := validator.New()
+	errors := v.Validate(user)
+	if len(errors) > 0 {
+		c.JSON(http.StatusBadRequest, map[string]any{
+			"status": "error",
+			"error":  "Validation failed",
+			"errors": errors,
+		})
+		return
+	}
+
+	// Mock creating a user (in real app, save to database)
+	user.ID = 1
+	user.Password = "********" // Hide password in response
+
+	c.Success(http.StatusCreated, "User created successfully", user)
+}
+
+func main() {
+	// Setup routes
+	router := setupRoutes()
 
 	// Start the server
-	fmt.Println("Server running at http://localhost:8080")
-	gra.Run(":8080", r)
+	fmt.Println("🚀 Starting GRA Framework Basic Example")
+	fmt.Println("📍 Server running at http://localhost:8080")
+	fmt.Println("📖 Available endpoints:")
+	fmt.Println("   GET  / - API information")
+	fmt.Println("   GET  /users/:id - Get user by ID")
+	fmt.Println("   POST /users - Create new user")
+	fmt.Println()
+
+	if err := gra.Run(":8080", router); err != nil {
+		fmt.Printf("❌ Server failed to start: %v\n", err)
+	}
 }
