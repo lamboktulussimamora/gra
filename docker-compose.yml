@@ -1,33 +1,11 @@
-version: '3.8'
+# GRA Project - Main Docker Compose
+# This is the primary development environment
 
 services:
-  # EF Migration Tool
-  ef-migrate:
-    build:
-      context: ../../
-      dockerfile: tools/ef-migrate/Dockerfile
-      args:
-        VERSION: dev
-        BUILD_TIME: ${BUILD_TIME:-$(date -u +%Y-%m-%d_%H:%M:%S)}
-        GIT_COMMIT: ${GIT_COMMIT:-dev}
-    container_name: gra-ef-migrate
-    volumes:
-      - ./migrations:/app/migrations
-      - ./examples:/app/examples:ro
-    environment:
-      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/gra_dev?sslmode=disable
-      - MIGRATIONS_DIR=/app/migrations
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - gra-network
-    command: ["status"]
-
-  # PostgreSQL Database
+  # Main PostgreSQL Database for Development
   postgres:
     image: postgres:15-alpine
-    container_name: gra-postgres
+    container_name: gra-postgres-dev
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -37,7 +15,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./examples/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./tools/ef-migrate/examples/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -62,6 +40,9 @@ services:
       - postgres
     networks:
       - gra-network
+    profiles:
+      - dev
+      - full
 
   # Redis for caching (optional)
   redis:
@@ -78,6 +59,9 @@ services:
       retries: 5
     networks:
       - gra-network
+    profiles:
+      - dev
+      - full
 
 volumes:
   postgres_data:

@@ -1,0 +1,29 @@
+# Docker Compose Override - Additional Development Services
+# Use: docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+
+services:
+  # EF Migration Tool (development only)
+  ef-migrate:
+    build:
+      context: .
+      dockerfile: tools/ef-migrate/Dockerfile
+      args:
+        VERSION: dev
+        BUILD_TIME: ${BUILD_TIME:-$(date -u +%Y-%m-%d_%H:%M:%S)}
+        GIT_COMMIT: ${GIT_COMMIT:-dev}
+    container_name: gra-ef-migrate
+    volumes:
+      - ./tools/ef-migrate/migrations:/app/migrations
+      - ./tools/ef-migrate/examples:/app/examples:ro
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/gra_dev?sslmode=disable
+      - MIGRATIONS_DIR=/app/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gra-network
+    command: ["status"]
+    profiles:
+      - migration
+      - full
