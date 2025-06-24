@@ -10,14 +10,32 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// IntegrationDemo demonstrates the complete migration workflow
-func main() {
-	fmt.Println("=== GRA Hybrid Migration Integration Demo ===")
+// DemoResult contains the results of running the demo
+type DemoResult struct {
+	ModelsRegistered int
+	MigrationStatus  *migrations.MigrationStatus
+	MigrationFile    *migrations.MigrationFile
+	Error            error
+	FeaturesDemo     []string
+}
+
+// RunIntegrationDemo demonstrates the complete migration workflow
+func RunIntegrationDemo() (*DemoResult, error) {
+	result := &DemoResult{
+		FeaturesDemo: []string{
+			"Model registration (EF Core-style DbSet)",
+			"Change detection from struct definitions",
+			"Migration file generation",
+			"Safety checks and warnings",
+			"Multiple migration modes",
+		},
+	}
 
 	// 1. Setup test database
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
+		result.Error = fmt.Errorf("failed to open database: %v", err)
+		return result, err
 	}
 	defer db.Close()
 
@@ -29,44 +47,63 @@ func main() {
 	)
 
 	// 3. Register existing GRA models
-	fmt.Println("1. Registering GRA models...")
 	migrator.DbSet(&models.User{})
 	migrator.DbSet(&models.Product{})
 	migrator.DbSet(&models.Category{})
-	fmt.Println("   ✓ Core models registered")
+	result.ModelsRegistered = 3
 
-	// 4. Initialize migration system (happens automatically when checking status)
-	fmt.Println("2. Initializing migration system...")
-
-	// 5. Check migration status (this initializes the schema automatically)
-	fmt.Println("3. Checking migration status...")
+	// 4. Check migration status (this initializes the schema automatically)
 	status, err := migrator.GetMigrationStatus()
 	if err != nil {
-		log.Fatalf("Failed to get migration status: %v", err)
+		result.Error = fmt.Errorf("failed to get migration status: %v", err)
+		return result, err
 	}
-	fmt.Println("   ✓ Migration system initialized")
+	result.MigrationStatus = status
 
-	fmt.Printf("   Applied migrations: %d\n", len(status.AppliedMigrations))
-	fmt.Printf("   Pending migrations: %d\n", len(status.PendingMigrations))
-	fmt.Printf("   Has pending changes: %t\n", status.HasPendingChanges)
-	fmt.Println()
-
-	// 6. Create initial migration
-	fmt.Println("3. Creating initial migration...")
+	// 5. Create initial migration
 	migrationFile, err := migrator.AddMigration(
 		"create_initial_schema",
 		migrations.ModeGenerateOnly, // Generate files only for review
 	)
 	if err != nil {
-		log.Fatalf("Failed to create migration: %v", err)
+		result.Error = fmt.Errorf("failed to create migration: %v", err)
+		return result, err
+	}
+	result.MigrationFile = migrationFile
+
+	return result, nil
+}
+
+// PrintDemoResults prints the demo results in a user-friendly format
+func PrintDemoResults(result *DemoResult) {
+	fmt.Println("=== GRA Hybrid Migration Integration Demo ===")
+
+	if result.Error != nil {
+		fmt.Printf("❌ Demo failed: %v\n", result.Error)
+		return
 	}
 
-	if migrationFile != nil {
-		fmt.Printf("   ✓ Migration created: %s\n", migrationFile.Filename)
-		fmt.Printf("   Changes: %d\n", len(migrationFile.Changes))
-		fmt.Printf("   Has destructive changes: %t\n", migrationFile.HasDestructiveChanges())
+	fmt.Println("1. Registering GRA models...")
+	fmt.Printf("   ✓ %d core models registered\n", result.ModelsRegistered)
 
-		if warnings := migrationFile.GetWarnings(); len(warnings) > 0 {
+	fmt.Println("2. Initializing migration system...")
+	fmt.Println("   ✓ Migration system initialized")
+
+	fmt.Println("3. Checking migration status...")
+	if result.MigrationStatus != nil {
+		fmt.Printf("   Applied migrations: %d\n", len(result.MigrationStatus.AppliedMigrations))
+		fmt.Printf("   Pending migrations: %d\n", len(result.MigrationStatus.PendingMigrations))
+		fmt.Printf("   Has pending changes: %t\n", result.MigrationStatus.HasPendingChanges)
+	}
+	fmt.Println()
+
+	fmt.Println("4. Creating initial migration...")
+	if result.MigrationFile != nil {
+		fmt.Printf("   ✓ Migration created: %s\n", result.MigrationFile.Filename)
+		fmt.Printf("   Changes: %d\n", len(result.MigrationFile.Changes))
+		fmt.Printf("   Has destructive changes: %t\n", result.MigrationFile.HasDestructiveChanges())
+
+		if warnings := result.MigrationFile.GetWarnings(); len(warnings) > 0 {
 			fmt.Println("   Warnings:")
 			for _, warning := range warnings {
 				fmt.Printf("     - %s\n", warning)
@@ -80,9 +117,15 @@ func main() {
 	fmt.Println("=== Demo Complete ===")
 	fmt.Println("The hybrid migration system is working correctly!")
 	fmt.Println("Key features demonstrated:")
-	fmt.Println("  ✓ Model registration (EF Core-style DbSet)")
-	fmt.Println("  ✓ Change detection from struct definitions")
-	fmt.Println("  ✓ Migration file generation")
-	fmt.Println("  ✓ Safety checks and warnings")
-	fmt.Println("  ✓ Multiple migration modes")
+	for _, feature := range result.FeaturesDemo {
+		fmt.Printf("  ✓ %s\n", feature)
+	}
+}
+
+func main() {
+	result, err := RunIntegrationDemo()
+	if err != nil {
+		log.Fatalf("Demo failed: %v", err)
+	}
+	PrintDemoResults(result)
 }
