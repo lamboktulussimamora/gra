@@ -154,22 +154,57 @@ func (s *Service) ValidateToken(tokenString string) (map[string]interface{}, err
 
 // RefreshToken generates a new token based on the claims in an existing token
 func (s *Service) RefreshToken(tokenString string) (string, error) {
-	// First validate the old token
+	// First try to validate the token normally
 	claims, err := s.ValidateToken(tokenString)
-	if err != nil {
-		// Allow refresh for expired tokens, but not for invalid tokens
-		if err != ErrExpiredToken {
-			return "", err
+	if err != nil && err != ErrExpiredToken {
+		// For non-expired errors, return the error
+		return "", err
+	}
+
+	// If token is expired, parse it without validation to extract claims
+	if err == ErrExpiredToken {
+		token, parseErr := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			// Validate signing method
+			if token.Method.Alg() != s.config.SigningMethod.Alg() {
+				return nil, ErrInvalidToken
+			}
+			return s.config.SigningKey, nil
+		})
+
+		if parseErr != nil && !errors.Is(parseErr, jwt.ErrTokenExpired) {
+			// If parsing failed for reasons other than expiration, return error
+			return "", ErrInvalidToken
 		}
+
+		// Extract claims from expired token
+		if token != nil && token.Claims != nil {
+			if jwtClaims, ok := token.Claims.(jwt.MapClaims); ok {
+				claims = make(map[string]interface{})
+				for key, value := range jwtClaims {
+					claims[key] = value
+				}
+			}
+		}
+	}
+
+	if claims == nil {
+		return "", ErrInvalidToken
 	}
 
 	// Create a new StandardClaims object
 	newClaims := StandardClaims{
-		Subject: claims["sub"].(string),
-		// Add some randomness to ensure new token is different
-		ID:     generateRandomTokenID(),
 		Custom: make(map[string]interface{}),
 	}
+
+	// Extract subject if available
+	if sub, ok := claims["sub"]; ok && sub != nil {
+		if subStr, ok := sub.(string); ok {
+			newClaims.Subject = subStr
+		}
+	}
+
+	// Add some randomness to ensure new token is different
+	newClaims.ID = generateRandomTokenID()
 
 	// Copy custom claims
 	for k, v := range claims {
@@ -178,7 +213,7 @@ func (s *Service) RefreshToken(tokenString string) (string, error) {
 		}
 	}
 
-	// Generate new token
+	// Generate new token with fresh expiration
 	return s.GenerateToken(newClaims)
 }
 
