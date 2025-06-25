@@ -928,7 +928,6 @@ func TestMainRollbackWorkflow(t *testing.T) {
 			t.Fatalf("Failed to get final migration history: %v", err)
 		}
 
-		// Test the final status
 		printMigrationStatus(finalHistory)
 	})
 }
