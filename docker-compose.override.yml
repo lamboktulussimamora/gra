@@ -16,7 +16,7 @@ services:
       - ./tools/ef-migrate/migrations:/app/migrations
       - ./tools/ef-migrate/examples:/app/examples:ro
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/gra_dev?sslmode=disable
+      - DATABASE_URL=postgres://gra_user:gra_password@postgres:5432/gra_dev?sslmode=disable
       - MIGRATIONS_DIR=/app/migrations
     depends_on:
       postgres:

@@ -5,22 +5,29 @@ services:
   # Main PostgreSQL Database for Development
   postgres:
     image: postgres:15-alpine
-    container_name: gra-postgres-dev
+    container_name: gra-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: gra_dev
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./tools/ef-migrate/examples/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gra_dev"]
       interval: 10s
       timeout: 5s
       retries: 5
+    command: >
+      postgres 
+      -c log_statement=all
+      -c log_destination=stderr
+      -c logging_collector=off
+      -c max_connections=200
     networks:
       - gra-network
 

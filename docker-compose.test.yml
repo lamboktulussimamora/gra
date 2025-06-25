@@ -1,27 +1,35 @@
+# Docker Compose Test Configuration
+# This provides a separate test environment with its own PostgreSQL instance
+# Use: docker-compose -f docker-compose.test.yml up
+
 services:
+  # PostgreSQL Database for Testing
   postgres-test:
     image: postgres:15-alpine
     container_name: gra-postgres-test
     environment:
-      POSTGRES_DB: gra_test
       POSTGRES_USER: gra_user
       POSTGRES_PASSWORD: gra_password
+      POSTGRES_DB: gra_test
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "5433:5432"
+      - "5433:5432"  # Use different port to avoid conflicts with dev
     volumes:
       - postgres_test_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gra_user -d gra_test"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 5s
+      timeout: 3s
+      retries: 3
     command: >
       postgres 
       -c log_statement=all
       -c log_destination=stderr
       -c logging_collector=off
-      -c max_connections=200
+      -c max_connections=100
+      -c shared_preload_libraries=''
 
 volumes:
   postgres_test_data:
+    driver: local
