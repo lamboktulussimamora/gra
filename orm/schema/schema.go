@@ -198,13 +198,16 @@ type columnInfo struct {
 // extractColumnInfo extracts column information from a struct field
 func extractColumnInfo(field reflect.StructField, driver DatabaseDriver) columnInfo {
 	sqlTag := field.Tag.Get("sql")
-	migrationTag := field.Tag.Get("migration")
+	migrationTag := field.Tag.Get("migrations") // plural version (new format)
+	if migrationTag == "" {
+		migrationTag = field.Tag.Get("migration") // singular version (backward compatibility)
+	}
 	columnName := field.Tag.Get("db")
 
 	sqlType := goTypeToSQLTypeForDriver(field.Type, driver)
 	if migrationTag != "" {
 		if typeMatch := extractSQLValue(migrationTag, "type"); typeMatch != "" {
-			sqlType = typeMatch
+			sqlType = normalizeTypeForDriver(typeMatch, driver)
 		} else if field.Type.Kind() == reflect.String {
 			// Check for max_length in migration tag for string fields
 			if maxLength := extractSQLValue(migrationTag, "max_length"); maxLength != "" {
@@ -496,4 +499,66 @@ func GenerateForeignKeySQL(tableName, columnName, refTable, refColumn string) st
 	constraintName := fmt.Sprintf("fk_%s_%s", tableName, columnName)
 	return fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s(%s);",
 		tableName, constraintName, columnName, refTable, refColumn)
+}
+
+// normalizeTypeForDriver converts generic SQL types to driver-specific types
+func normalizeTypeForDriver(sqlType string, driver DatabaseDriver) string {
+	// Convert to uppercase for comparison
+	upperType := strings.ToUpper(strings.TrimSpace(sqlType))
+
+	switch driver {
+	case SQLite:
+		// SQLite type normalization
+		if strings.HasPrefix(upperType, "VARCHAR") || strings.HasPrefix(upperType, "CHAR") {
+			return "TEXT"
+		}
+		if strings.HasPrefix(upperType, "DECIMAL") || strings.HasPrefix(upperType, "NUMERIC") {
+			return "REAL"
+		}
+		if strings.HasPrefix(upperType, "INT") || strings.HasPrefix(upperType, "BIGINT") {
+			return "INTEGER"
+		}
+		if upperType == "BOOLEAN" {
+			return "INTEGER"
+		}
+		if upperType == "TIMESTAMP" || upperType == "DATETIME" {
+			return "DATETIME"
+		}
+		if upperType == "BLOB" {
+			return "BLOB"
+		}
+		if upperType == "REAL" || upperType == "FLOAT" || upperType == "DOUBLE" {
+			return "REAL"
+		}
+		return "TEXT" // Default fallback for SQLite
+
+	case PostgreSQL:
+		// PostgreSQL already handles most types well, but normalize some common variants
+		if strings.HasPrefix(upperType, "VARCHAR") && !strings.Contains(upperType, "(") {
+			return "VARCHAR(255)"
+		}
+		if upperType == "INT" {
+			return "INTEGER"
+		}
+		if upperType == "BOOL" {
+			return "BOOLEAN"
+		}
+		return sqlType // Keep as-is for PostgreSQL
+
+	case MySQL:
+		// MySQL type normalization
+		if upperType == "BOOLEAN" {
+			return "TINYINT(1)"
+		}
+		if upperType == "INT" {
+			return "INT"
+		}
+		if strings.HasPrefix(upperType, "VARCHAR") && !strings.Contains(upperType, "(") {
+			return "VARCHAR(255)"
+		}
+		return sqlType // Keep as-is for MySQL
+
+	default:
+		return sqlType // Keep as-is for unknown drivers
+	}
 }

@@ -58,12 +58,14 @@ func TestAutoMigratorEnhanced(t *testing.T) {
 
 	t.Run("MigrateMultipleEntities", func(t *testing.T) {
 		// Test migrating multiple entities
+		type SecondTestEntity struct {
+			ID   int    `db:"id" migrations:"primary_key"`
+			Data string `db:"data" migrations:"type:text"`
+		}
+
 		entities := []interface{}{
 			TestEntityEnhanced{},
-			struct {
-				ID   int    `db:"id" migrations:"primary_key"`
-				Data string `db:"data" migrations:"type:text"`
-			}{},
+			SecondTestEntity{},
 		}
 
 		err := migrator.MigrateModels(entities...)
@@ -79,15 +81,16 @@ func TestAutoMigrationTypesEnhanced(t *testing.T) {
 	defer cleanup()
 
 	t.Run("ComplexDataTypes", func(t *testing.T) {
-		entity := struct {
+		type ComplexDataType struct {
 			ID          int       `db:"id" migrations:"primary_key"`
 			StringField string    `db:"string_field" migrations:"type:varchar(255),not_null"`
 			IntField    int       `db:"int_field" migrations:"index"`
 			BoolField   bool      `db:"bool_field" migrations:"default:false"`
 			TimeField   time.Time `db:"time_field" migrations:"auto_timestamp"`
 			FloatField  float64   `db:"float_field" migrations:"type:decimal(10,2)"`
-		}{}
+		}
 
+		entity := ComplexDataType{}
 		err := migrator.MigrateModels(entity)
 		if err != nil {
 			t.Errorf("Expected complex type migration to succeed, got error: %v", err)
@@ -103,13 +106,14 @@ func TestAutoMigrationTypesEnhanced(t *testing.T) {
 	})
 
 	t.Run("EntityWithIndexes", func(t *testing.T) {
-		entity := struct {
+		type EntityWithIndexes struct {
 			ID       int    `db:"id" migrations:"primary_key"`
 			Username string `db:"username" migrations:"unique,index,type:varchar(50)"`
 			Email    string `db:"email" migrations:"unique,type:varchar(100)"`
 			Status   string `db:"status" migrations:"index,type:varchar(20)"`
-		}{}
+		}
 
+		entity := EntityWithIndexes{}
 		err := migrator.MigrateModels(entity)
 		if err != nil {
 			t.Errorf("Expected indexed entity migration to succeed, got error: %v", err)
@@ -117,14 +121,15 @@ func TestAutoMigrationTypesEnhanced(t *testing.T) {
 	})
 
 	t.Run("EntityWithDefaults", func(t *testing.T) {
-		entity := struct {
+		type EntityWithDefaults struct {
 			ID        int    `db:"id" migrations:"primary_key"`
 			Name      string `db:"name" migrations:"type:varchar(100),default:'Unknown'"`
 			IsActive  bool   `db:"is_active" migrations:"default:true"`
 			Score     int    `db:"score" migrations:"default:0"`
 			CreatedAt string `db:"created_at" migrations:"default:CURRENT_TIMESTAMP"`
-		}{}
+		}
 
+		entity := EntityWithDefaults{}
 		err := migrator.MigrateModels(entity)
 		if err != nil {
 			t.Errorf("Expected entity with defaults migration to succeed, got error: %v", err)
@@ -182,12 +187,13 @@ func TestMigrationConstraintsEnhanced(t *testing.T) {
 	defer cleanup()
 
 	t.Run("UniqueConstraints", func(t *testing.T) {
-		entity := struct {
+		type UniqueEntity struct {
 			ID       int    `db:"id" migrations:"primary_key"`
 			Username string `db:"username" migrations:"unique,type:varchar(50)"`
 			Email    string `db:"email" migrations:"unique,type:varchar(100)"`
-		}{}
+		}
 
+		entity := UniqueEntity{}
 		err := migrator.MigrateModels(entity)
 		if err != nil {
 			t.Errorf("Expected unique constraint migration to succeed, got error: %v", err)
@@ -195,12 +201,13 @@ func TestMigrationConstraintsEnhanced(t *testing.T) {
 	})
 
 	t.Run("NotNullConstraints", func(t *testing.T) {
-		entity := struct {
+		type NotNullEntity struct {
 			ID   int    `db:"id" migrations:"primary_key"`
 			Name string `db:"name" migrations:"not_null,type:varchar(100)"`
 			Age  int    `db:"age" migrations:"not_null"`
-		}{}
+		}
 
+		entity := NotNullEntity{}
 		err := migrator.MigrateModels(entity)
 		if err != nil {
 			t.Errorf("Expected not null constraint migration to succeed, got error: %v", err)
@@ -208,12 +215,13 @@ func TestMigrationConstraintsEnhanced(t *testing.T) {
 	})
 
 	t.Run("IndexConstraints", func(t *testing.T) {
-		entity := struct {
+		type IndexEntity struct {
 			ID       int    `db:"id" migrations:"primary_key"`
 			Category string `db:"category" migrations:"index,type:varchar(50)"`
 			Status   string `db:"status" migrations:"index,type:varchar(20)"`
-		}{}
+		}
 
+		entity := IndexEntity{}
 		err := migrator.MigrateModels(entity)
 		if err != nil {
 			t.Errorf("Expected index constraint migration to succeed, got error: %v", err)
@@ -227,12 +235,13 @@ func TestMigrationDatabaseSpecificTypesEnhanced(t *testing.T) {
 	defer cleanup()
 
 	t.Run("SQLiteSpecificTypes", func(t *testing.T) {
-		entity := struct {
+		type SQLiteEntity struct {
 			ID       int     `db:"id" migrations:"primary_key"`
 			RealNum  float64 `db:"real_num" migrations:"type:real"`
 			BlobData []byte  `db:"blob_data" migrations:"type:blob"`
-		}{}
+		}
 
+		entity := SQLiteEntity{}
 		err := migrator.MigrateModels(entity)
 		if err != nil {
 			t.Errorf("Expected SQLite-specific type migration to succeed, got error: %v", err)
@@ -240,12 +249,13 @@ func TestMigrationDatabaseSpecificTypesEnhanced(t *testing.T) {
 	})
 
 	t.Run("NumericTypes", func(t *testing.T) {
-		entity := struct {
+		type NumericEntity struct {
 			ID      int     `db:"id" migrations:"primary_key"`
 			Price   float64 `db:"price" migrations:"type:decimal(10,2)"`
 			Quantity int    `db:"quantity" migrations:"type:integer"`
-		}{}
+		}
 
+		entity := NumericEntity{}
 		err := migrator.MigrateModels(entity)
 		if err != nil {
 			t.Errorf("Expected numeric type migration to succeed, got error: %v", err)
@@ -259,7 +269,8 @@ func TestMigrationEdgeCasesEnhanced(t *testing.T) {
 	defer cleanup()
 
 	t.Run("EmptyStruct", func(t *testing.T) {
-		entity := struct{}{}
+		type EmptyEntity struct{}
+		entity := EmptyEntity{}
 		err := migrator.MigrateModels(entity)
 		// Should handle empty struct gracefully
 		if err != nil {
@@ -268,11 +279,12 @@ func TestMigrationEdgeCasesEnhanced(t *testing.T) {
 	})
 
 	t.Run("StructWithNoDbTags", func(t *testing.T) {
-		entity := struct {
+		type NoTagsEntity struct {
 			ID   int
 			Name string
-		}{}
+		}
 
+		entity := NoTagsEntity{}
 		err := migrator.MigrateModels(entity)
 		// Should handle struct without db tags
 		if err != nil {
@@ -291,11 +303,12 @@ func TestMigrationEdgeCasesEnhanced(t *testing.T) {
 		}
 
 		// Try to migrate entity with same structure
-		entity := struct {
+		type ExistingEntity struct {
 			ID   int    `db:"id" migrations:"primary_key"`
 			Name string `db:"name" migrations:"type:text"`
-		}{}
+		}
 
+		entity := ExistingEntity{}
 		err = migrator.MigrateModels(entity)
 		// Should handle existing table gracefully
 		if err != nil {
@@ -356,19 +369,23 @@ func TestConcurrentMigrationsEnhanced(t *testing.T) {
 
 	t.Run("ConcurrentEntityMigration", func(t *testing.T) {
 		// Test concurrent migrations of different entities
+		type ConcurrentEntity1 struct {
+			ID   int    `db:"id" migrations:"primary_key"`
+			Name string `db:"name" migrations:"type:varchar(100)"`
+		}
+		type ConcurrentEntity2 struct {
+			ID    int    `db:"id" migrations:"primary_key"`
+			Email string `db:"email" migrations:"unique,type:varchar(255)"`
+		}
+		type ConcurrentEntity3 struct {
+			ID  int `db:"id" migrations:"primary_key"`
+			Age int `db:"age" migrations:"index"`
+		}
+
 		entities := []interface{}{
-			struct {
-				ID   int    `db:"id" migrations:"primary_key"`
-				Name string `db:"name" migrations:"type:varchar(100)"`
-			}{},
-			struct {
-				ID    int    `db:"id" migrations:"primary_key"`
-				Email string `db:"email" migrations:"unique,type:varchar(255)"`
-			}{},
-			struct {
-				ID  int `db:"id" migrations:"primary_key"`
-				Age int `db:"age" migrations:"index"`
-			}{},
+			ConcurrentEntity1{},
+			ConcurrentEntity2{},
+			ConcurrentEntity3{},
 		}
 
 		// Run migrations concurrently
