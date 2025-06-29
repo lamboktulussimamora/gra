@@ -164,15 +164,11 @@ func (mr *MigrationRunner) ShowStatus() error {
 	return rows.Err()
 }
 
-// Main function to demonstrate migration functionality
-func main() {
-	// Example usage of the migration runner
-	connectionString := "host=localhost port=5432 user=postgres password=password dbname=ecommerce sslmode=disable"
-
+// runMigrations is the main logic extracted for testing
+func runMigrations(connectionString string) error {
 	runner, err := NewMigrationRunner(connectionString)
 	if err != nil {
-		log.Printf("Failed to create migration runner: %v", err)
-		return
+		return fmt.Errorf("failed to create migration runner: %w", err)
 	}
 	defer func() {
 		if closeErr := runner.Close(); closeErr != nil {
@@ -182,9 +178,20 @@ func main() {
 
 	log.Println("Starting automatic migration...")
 	if err := runner.AutoMigrate(); err != nil {
-		log.Printf("Migration failed: %v", err)
-		return
+		return fmt.Errorf("migration failed: %w", err)
 	}
 
 	log.Println("Migration completed successfully!")
+	return nil
+}
+
+// Main function to demonstrate migration functionality
+func main() {
+	// Example usage of the migration runner
+	connectionString := "host=localhost port=5432 user=postgres password=password dbname=ecommerce sslmode=disable"
+
+	if err := runMigrations(connectionString); err != nil {
+		log.Printf("Error: %v", err)
+		return
+	}
 }
