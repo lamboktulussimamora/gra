@@ -14,17 +14,30 @@ import (
 	"github.com/lamboktulussimamora/gra/orm/models"
 	"github.com/lamboktulussimamora/gra/orm/schema"
 	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
 )
+
+// DatabaseConfig holds database configuration
+type DatabaseConfig struct {
+	Driver     string
+	ConnString string
+}
 
 // MigrationRunner handles automatic database migrations
 type MigrationRunner struct {
 	db     *sql.DB
 	logger *log.Logger
+	config DatabaseConfig
 }
 
 // NewMigrationRunner creates a new migration runner
 func NewMigrationRunner(connectionString string) (*MigrationRunner, error) {
-	db, err := sql.Open("postgres", connectionString)
+	return NewMigrationRunnerWithDriver("postgres", connectionString)
+}
+
+// NewMigrationRunnerWithDriver creates a new migration runner with specific driver
+func NewMigrationRunnerWithDriver(driver, connectionString string) (*MigrationRunner, error) {
+	db, err := sql.Open(driver, connectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
@@ -36,6 +49,7 @@ func NewMigrationRunner(connectionString string) (*MigrationRunner, error) {
 	return &MigrationRunner{
 		db:     db,
 		logger: log.Default(),
+		config: DatabaseConfig{Driver: driver, ConnString: connectionString},
 	}, nil
 }
 
