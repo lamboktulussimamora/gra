@@ -12,6 +12,7 @@ examples/*/enhanced-demo
 examples/*/auth-and-security
 examples/*/versioning-and-cache
 examples/ef_migrations/ef_migrations_example
+examples/ef_migrations/ef_migrations
 examples/hybrid-migration-demo/hybrid_demo
 examples/migration-example/migration_example
 
