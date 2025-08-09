@@ -32,6 +32,12 @@ func TestMain(m *testing.M) {
 func TestEFMigrationLifecycle(t *testing.T) {
 	// Create test database
 	dbPath := filepath.Join("test_migrations", "test_lifecycle.db")
+	
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+	
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
@@ -267,6 +273,12 @@ func TestEFMigrationLifecycle(t *testing.T) {
 func TestMigrationRollback(t *testing.T) {
 	// Create test database
 	dbPath := filepath.Join("test_migrations", "test_rollback.db")
+	
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+	
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
@@ -336,6 +348,12 @@ func TestMigrationRollback(t *testing.T) {
 func TestAutoMigration(t *testing.T) {
 	// Create test database
 	dbPath := filepath.Join("test_migrations", "test_auto.db")
+	
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+	
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
@@ -378,6 +396,12 @@ func TestAutoMigration(t *testing.T) {
 func TestPrintMigrationStatus(t *testing.T) {
 	// Create test database
 	dbPath := filepath.Join("test_migrations", "test_status.db")
+	
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+	
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)

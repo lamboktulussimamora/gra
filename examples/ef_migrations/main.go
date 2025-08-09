@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/lamboktulussimamora/gra/orm/migrations"
-	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
@@ -58,9 +58,9 @@ func runMigrationDemo(dbPath string) error {
 	fmt.Println("\n1️⃣  ADDING INITIAL MIGRATION (Add-Migration CreateUsersTable)")
 	createUsersSQL := `
 	CREATE TABLE users (
-		id SERIAL PRIMARY KEY,
-		email VARCHAR(255) UNIQUE NOT NULL,
-		name VARCHAR(100) NOT NULL,
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		email TEXT UNIQUE NOT NULL,
+		name TEXT NOT NULL,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE INDEX idx_users_email ON users(email);
@@ -82,10 +82,10 @@ func runMigrationDemo(dbPath string) error {
 	fmt.Println("\n2️⃣  ADDING SECOND MIGRATION (Add-Migration AddUserProfiles)")
 	createProfilesSQL := `
 	CREATE TABLE user_profiles (
-		id SERIAL PRIMARY KEY,
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
 		bio TEXT,
-		avatar_url VARCHAR(500),
+		avatar_url TEXT,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE INDEX idx_profiles_user_id ON user_profiles(user_id);
@@ -131,9 +131,9 @@ func runMigrationDemo(dbPath string) error {
 	fmt.Println("\n6️⃣  ADDING THIRD MIGRATION (Add-Migration AddUserSettings)")
 	createSettingsSQL := `
 	CREATE TABLE user_settings (
-		id SERIAL PRIMARY KEY,
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-		setting_key VARCHAR(100) NOT NULL,
+		setting_key TEXT NOT NULL,
 		setting_value TEXT,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		UNIQUE(user_id, setting_key)

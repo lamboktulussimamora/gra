@@ -931,22 +931,22 @@ func TestFieldSettersIndirect(t *testing.T) {
 }
 
 func TestEmbeddedStructHandling(t *testing.T) {
-	// Test embedded struct handling with a custom struct
+	// Test embedded struct handling with an anonymous embedded struct
 	type EmbeddedStruct struct {
 		Field1 string `db:"field1"`
 		Field2 int    `db:"field2"`
 	}
 
 	type TestEntity struct {
-		ID       int64          `db:"id"`
-		Name     string         `db:"name"`
-		Embedded EmbeddedStruct `db:"-"` // Embedded struct
+		ID             int64  `db:"id"`
+		Name           string `db:"name"`
+		EmbeddedStruct        // Anonymous embedded struct to trigger handleEmbeddedStruct
 	}
 
 	entity := &TestEntity{
 		ID:   1,
 		Name: "test",
-		Embedded: EmbeddedStruct{
+		EmbeddedStruct: EmbeddedStruct{
 			Field1: "embedded_value",
 			Field2: 42,
 		},
@@ -963,6 +963,63 @@ func TestEmbeddedStructHandling(t *testing.T) {
 	}
 	if len(placeholders) == 0 {
 		t.Error("getFieldData should return placeholders for embedded struct")
+	}
+
+	// Check that embedded struct fields are included
+	hasEmbeddedField := false
+	for _, col := range columns {
+		if col == "field1" || col == "field2" {
+			hasEmbeddedField = true
+			break
+		}
+	}
+	if !hasEmbeddedField {
+		t.Error("Embedded struct fields should be included in columns")
+	}
+
+	// Test with another anonymous embedded struct for better coverage
+	type BaseModel struct {
+		CreatedAt string `db:"created_at"`
+		UpdatedAt string `db:"updated_at"`
+	}
+
+	type User struct {
+		BaseModel        // Anonymous embedded struct
+		ID        int64  `db:"id"`
+		Username  string `db:"username"`
+	}
+
+	userEntity := &User{
+		BaseModel: BaseModel{
+			CreatedAt: "2023-01-01",
+			UpdatedAt: "2023-01-02",
+		},
+		ID:       1,
+		Username: "testuser",
+	}
+
+	columns2, values2, placeholders2 := getFieldData(userEntity, false, testSQLite3Driver)
+
+	if len(columns2) == 0 {
+		t.Error("getFieldData should return columns for anonymous embedded struct")
+	}
+	if len(values2) == 0 {
+		t.Error("getFieldData should return values for anonymous embedded struct")
+	}
+	if len(placeholders2) == 0 {
+		t.Error("getFieldData should return placeholders for anonymous embedded struct")
+	}
+
+	// Verify embedded fields are present
+	hasBaseModelField := false
+	for _, col := range columns2 {
+		if col == "created_at" || col == "updated_at" {
+			hasBaseModelField = true
+			break
+		}
+	}
+	if !hasBaseModelField {
+		t.Error("Anonymous embedded struct fields should be included in columns")
 	}
 }
 

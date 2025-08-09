@@ -546,3 +546,173 @@ func TestEnhancedSetWithTransaction(t *testing.T) {
 		t.Error("Count within transaction should return positive value")
 	}
 }
+
+// setupCleanEnhancedSetTestDB creates a clean test database without pre-populated data
+func setupCleanEnhancedSetTestDB(t *testing.T) (*sql.DB, *EnhancedDbContext) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+
+	// Create test table
+	createTableQuery := `
+		CREATE TABLE test_users_2 (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			email TEXT UNIQUE,
+			is_active BOOLEAN DEFAULT 1,
+			age INTEGER,
+			department TEXT
+		)
+	`
+	if _, err := db.Exec(createTableQuery); err != nil {
+		t.Fatalf("Failed to create test table: %v", err)
+	}
+
+	// Create projects table for join testing
+	createProjectsQuery := `
+		CREATE TABLE test_projects (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			user_id INTEGER,
+			FOREIGN KEY (user_id) REFERENCES test_users_2(id)
+		)
+	`
+	if _, err := db.Exec(createProjectsQuery); err != nil {
+		t.Fatalf("Failed to create projects table: %v", err)
+	}
+
+	ctx := NewEnhancedDbContextWithDB(db)
+	return db, ctx
+}
+
+// TestEnhancedSet_WhereLike tests the WhereLike functionality
+func TestEnhancedSet_WhereLike(t *testing.T) {
+	db, ctx := setupCleanEnhancedSetTestDB(t)
+	defer db.Close()
+
+	// Insert test data
+	users := []TestUser2{
+		{Name: "Alice Smith", Email: "alice@example.com", IsActive: true, Age: 25},
+		{Name: "Bob Johnson", Email: "bob@example.com", IsActive: true, Age: 30},
+		{Name: "Charlie Brown", Email: "charlie@example.com", IsActive: false, Age: 35},
+	}
+
+	for _, user := range users {
+		ctx.Add(&user)
+	}
+	ctx.SaveChanges()
+
+	set := NewEnhancedSet[TestUser2](ctx)
+
+	// Test WhereLike with pattern matching
+	results, err := set.WhereLike("name", "A%").ToList()
+	if err != nil {
+		t.Errorf("WhereLike should not return error: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result, got %d", len(results))
+	}
+
+	if len(results) > 0 && results[0].Name != "Alice Smith" {
+		t.Errorf("Expected Alice Smith, got %s", results[0].Name)
+	}
+
+	// Test WhereLike with multiple matches - create a new set to avoid state from previous query
+	set2 := NewEnhancedSet[TestUser2](ctx)
+	results, err = set2.WhereLike("email", "%@example.com").ToList()
+	if err != nil {
+		t.Errorf("WhereLike should not return error: %v", err)
+	}
+
+	if len(results) != 3 {
+		t.Errorf("Expected 3 results, got %d", len(results))
+	}
+}
+
+// TestEnhancedSet_FirstOrDefault tests the FirstOrDefault functionality
+func TestEnhancedSet_FirstOrDefault(t *testing.T) {
+	db, ctx := setupCleanEnhancedSetTestDB(t)
+	defer db.Close()
+
+	set := NewEnhancedSet[TestUser2](ctx)
+
+	// Test FirstOrDefault with no data
+	result, err := set.FirstOrDefault()
+	if err != nil {
+		t.Errorf("FirstOrDefault should not return error: %v", err)
+	}
+
+	// Should return zero value
+	if result.ID != 0 || result.Name != "" {
+		t.Error("FirstOrDefault should return zero value when no data exists")
+	}
+
+	// Insert test data
+	user := TestUser2{Name: "Test User", Email: "test@example.com", IsActive: true, Age: 25}
+	ctx.Add(&user)
+	ctx.SaveChanges()
+
+	// Create a new set to avoid cached state
+	set2 := NewEnhancedSet[TestUser2](ctx)
+
+	// Test FirstOrDefault with data
+	result, err = set2.FirstOrDefault()
+	if err != nil {
+		t.Errorf("FirstOrDefault should not return error: %v", err)
+	}
+
+	if result.Name != "Test User" {
+		t.Errorf("Expected Test User, got %s", result.Name)
+	}
+
+	// Test FirstOrDefault with Where condition that matches
+	result, err = set2.Where("name", "=", "Test User").FirstOrDefault()
+	if err != nil {
+		t.Errorf("FirstOrDefault with Where should not return error: %v", err)
+	}
+
+	if result.Name != "Test User" {
+		t.Errorf("Expected Test User, got %s", result.Name)
+	}
+
+	// Test FirstOrDefault with Where condition that doesn't match
+	result, err = set2.Where("name", "=", "Non Existent").FirstOrDefault()
+	if err != nil {
+		t.Errorf("FirstOrDefault with non-matching Where should not return error: %v", err)
+	}
+
+	if result.ID != 0 || result.Name != "" {
+		t.Error("FirstOrDefault should return zero value when condition doesn't match")
+	}
+}
+
+// TestEnhancedSet_Find tests the Find functionality
+func TestEnhancedSet_Find(t *testing.T) {
+	db, ctx := setupCleanEnhancedSetTestDB(t)
+	defer db.Close()
+
+	// Insert test data
+	user := TestUser2{Name: "Test User", Email: "test@example.com", IsActive: true, Age: 25}
+	ctx.Add(&user)
+	ctx.SaveChanges()
+
+	set := NewEnhancedSet[TestUser2](ctx)
+
+	// Test Find with existing ID
+	result, err := set.Find(1)
+	if err != nil {
+		t.Errorf("Find should not return error: %v", err)
+	}
+
+	if result.Name != "Test User" {
+		t.Errorf("Expected Test User, got %s", result.Name)
+	}
+
+	// Test Find with non-existing ID
+	_, err = set.Find(999)
+	if err == nil {
+		t.Error("Find with non-existing ID should return error")
+	}
+}
