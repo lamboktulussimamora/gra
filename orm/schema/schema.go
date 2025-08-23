@@ -235,19 +235,29 @@ func handleAutoIncrement(parts []string, sqlType string, driver DatabaseDriver, 
 }
 
 func handleAutoIncrementPostgres(parts []string, sqlType string) []string {
+	// The base column definition is always at index 0 (e.g., "id BIGINT").
+	// Replace the type there regardless of appended constraints order.
+	if len(parts) == 0 {
+		return parts
+	}
+	base := parts[0]
 	if strings.Contains(sqlType, "INTEGER") || strings.Contains(sqlType, "BIGINT") {
 		if strings.Contains(sqlType, "BIGINT") {
-			parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "BIGSERIAL", 1)
+			base = strings.Replace(base, sqlType, "BIGSERIAL", 1)
 		} else {
-			parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "SERIAL", 1)
+			base = strings.Replace(base, sqlType, "SERIAL", 1)
 		}
 	}
+	parts[0] = base
 	return parts
 }
 
 func handleAutoIncrementSQLite(parts []string, sqlType, sqlTag, migrationTag string) []string {
 	if hasTagAttr(sqlTag, migrationTag, "primary_key") && strings.Contains(sqlType, "INTEGER") {
-		parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "INTEGER", 1)
+		// Ensure base definition remains INTEGER and append AUTOINCREMENT
+		if len(parts) > 0 {
+			parts[0] = strings.Replace(parts[0], sqlType, "INTEGER", 1)
+		}
 		if !strings.Contains(strings.Join(parts, " "), "AUTOINCREMENT") {
 			parts = append(parts, "AUTOINCREMENT")
 		}

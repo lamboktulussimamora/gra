@@ -193,18 +193,33 @@ func (v *Validator) validateSliceOfStructs(field reflect.Value, fieldName string
 
 // parseValidationRules parses the validation tag and extracts individual rules
 func (v *Validator) parseValidationRules(validateTag string) []string {
-	var rules []string
+	// Unified parser that preserves commas inside enum values and regexp patterns
+	// Rule format examples:
+	//  - "required,min=3"
+	//  - "enum=A,B|custom,min=2"
+	//  - "regexp=^[a-z]+$,max=10"
+	tokens := strings.Split(validateTag, ",")
+	rules := make([]string, 0, len(tokens))
 
-	// Special handling for regexp rules which might contain commas
-	if strings.Contains(validateTag, "regexp=") {
-		rules = v.parseRulesWithRegexp(validateTag)
-	} else {
-		// No regexp rule, just split by comma
-		for _, rule := range strings.Split(validateTag, ",") {
-			if rule != "" {
-				rules = append(rules, rule)
-			}
+	for i := 0; i < len(tokens); i++ {
+		tok := tokens[i]
+		if tok == "" {
+			continue
 		}
+
+		// Merge subsequent comma tokens for enum=... and regexp=...
+		if strings.HasPrefix(tok, "enum=") || strings.HasPrefix(tok, "regexp=") {
+			rule := tok
+			// Consume following tokens that don't start a new rule (heuristic: no '=')
+			for i+1 < len(tokens) && !strings.Contains(tokens[i+1], "=") {
+				rule += "," + tokens[i+1]
+				i++
+			}
+			rules = append(rules, rule)
+			continue
+		}
+
+		rules = append(rules, tok)
 	}
 
 	return rules
@@ -409,7 +424,12 @@ func (v *Validator) validateMin(field reflect.Value, fieldName, arg, customMessa
 			return
 		}
 		if field.Float() < minVal {
-			v.addError(fieldName, fmt.Sprintf("%s must be at least %.2f", fieldName, minVal), customMessage)
+			// Format without decimals if minVal is an integer value (e.g., 0 instead of 0.00)
+			if minVal == float64(int64(minVal)) {
+				v.addError(fieldName, fmt.Sprintf("%s must be at least %d", fieldName, int64(minVal)), customMessage)
+			} else {
+				v.addError(fieldName, fmt.Sprintf("%s must be at least %.2f", fieldName, minVal), customMessage)
+			}
 		}
 	}
 }

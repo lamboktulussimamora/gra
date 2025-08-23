@@ -243,23 +243,38 @@ func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error {
 		tableName, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
 
 	var err error
-	var result sql.Result
 
+	// For PostgreSQL, use RETURNING id to fetch the generated primary key
+	if ctx.driver == driverPostgres {
+		queryWithReturning := query + " RETURNING id"
+		var id int64
+		if ctx.tx != nil {
+			err = ctx.tx.QueryRow(queryWithReturning, values...).Scan(&id)
+		} else {
+			err = ctx.db.QueryRow(queryWithReturning, values...).Scan(&id)
+		}
+		if err != nil {
+			return err
+		}
+		if id > 0 {
+			setIDField(entity, id)
+		}
+		return nil
+	}
+
+	// For SQLite/MySQL drivers, Exec and LastInsertId()
+	var result sql.Result
 	if ctx.tx != nil {
 		result, err = ctx.tx.Exec(query, values...)
 	} else {
 		result, err = ctx.db.Exec(query, values...)
 	}
-
 	if err != nil {
 		return err
 	}
-
-	// Set the ID if it's an auto-increment field
 	if id, err := result.LastInsertId(); err == nil && id > 0 {
 		setIDField(entity, id)
 	}
-
 	return nil
 }
 
@@ -271,21 +286,24 @@ func (ctx *EnhancedDbContext) updateEntity(entity interface{}) error {
 	tableName := getTableName(entity)
 	setPairs, values, idValue := getUpdateData(entity, ctx.driver)
 
-	// Safe: table/column names are trusted, user data is parameterized (see values...)
-	//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
-	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?",
-		tableName, strings.Join(setPairs, ", "))
+	// Build query depending on driver to ensure consistent placeholder numbering
+	var query string
+	if ctx.driver == driverPostgres {
+		// setPairs already contain $1..$N, so WHERE placeholder must be $N+1
+		wherePlaceholder := fmt.Sprintf("$%d", len(values)+1)
+		query = fmt.Sprintf("UPDATE %s SET %s WHERE id = %s", tableName, strings.Join(setPairs, ", "), wherePlaceholder)
+	} else {
+		// SQLite/MySQL use '?'
+		query = fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", tableName, strings.Join(setPairs, ", "))
+	}
 
-	// Convert placeholders for PostgreSQL
-	query = convertQueryPlaceholders(query, ctx.driver)
-
-	values = append(values, idValue)
+	args := append(values, idValue)
 
 	if ctx.tx != nil {
-		_, err := ctx.tx.Exec(query, values...)
+		_, err := ctx.tx.Exec(query, args...)
 		return err
 	}
-	_, err := ctx.db.Exec(query, values...)
+	_, err := ctx.db.Exec(query, args...)
 	return err
 }
 
@@ -410,6 +428,8 @@ func (set *EnhancedDbSet[T]) WhereIn(column string, values []interface{}) *Enhan
 // WhereOr adds an OR WHERE clause to the query
 func (set *EnhancedDbSet[T]) WhereOr(condition string, args ...interface{}) *EnhancedDbSet[T] {
 	newSet := *set
+	// Convert placeholders for PostgreSQL
+	condition = newSet.adjustPlaceholdersForCondition(condition)
 	if newSet.whereClause != "" {
 		newSet.whereClause += " OR (" + condition + ")"
 	} else {
@@ -632,10 +652,10 @@ func shouldSkipField(field reflect.StructField, excludeID bool) bool {
 }
 
 // handleEmbeddedStruct extracts field data from an embedded struct
-func handleEmbeddedStruct(field reflect.StructField, value reflect.Value, excludeID bool, driver string) ([]string, []interface{}, []string) {
+func handleEmbeddedStruct(field reflect.StructField, value reflect.Value, excludeID bool, driver string, start int) ([]string, []interface{}, []string) {
 	embeddedPtr := reflect.New(field.Type)
 	embeddedPtr.Elem().Set(value)
-	return getFieldData(embeddedPtr.Interface(), excludeID, driver)
+	return getFieldDataWithStart(embeddedPtr.Interface(), excludeID, driver, start)
 }
 
 // getPlaceholder returns the correct placeholder for the driver
@@ -648,6 +668,11 @@ func getPlaceholder(driver string, idx int) string {
 
 // getFieldData extracts field data recursively, handling embedded structs
 func getFieldData(entity interface{}, excludeID bool, driver string) ([]string, []interface{}, []string) {
+	return getFieldDataWithStart(entity, excludeID, driver, 0)
+}
+
+// getFieldDataWithStart is an internal helper that keeps placeholder numbering consistent across recursion
+func getFieldDataWithStart(entity interface{}, excludeID bool, driver string, start int) ([]string, []interface{}, []string) {
 	v := reflect.ValueOf(entity).Elem()
 	t := v.Type()
 
@@ -664,7 +689,7 @@ func getFieldData(entity interface{}, excludeID bool, driver string) ([]string, 
 		}
 
 		if field.Anonymous && field.Type.Kind() == reflect.Struct {
-			embeddedCols, embeddedVals, embeddedPlaceholders := handleEmbeddedStruct(field, value, excludeID, driver)
+			embeddedCols, embeddedVals, embeddedPlaceholders := handleEmbeddedStruct(field, value, excludeID, driver, start+len(placeholders))
 			columns = append(columns, embeddedCols...)
 			values = append(values, embeddedVals...)
 			placeholders = append(placeholders, embeddedPlaceholders...)
@@ -678,7 +703,7 @@ func getFieldData(entity interface{}, excludeID bool, driver string) ([]string, 
 
 		columns = append(columns, columnName)
 		values = append(values, value.Interface())
-		placeholders = append(placeholders, getPlaceholder(driver, len(placeholders)))
+		placeholders = append(placeholders, getPlaceholder(driver, start+len(placeholders)))
 	}
 
 	return columns, values, placeholders
@@ -839,6 +864,10 @@ func scanEntity(rows *sql.Rows, entity interface{}) error {
 	for i, column := range columns {
 		fieldName := toCamelCase(column)
 		field := v.FieldByName(fieldName)
+		// Special-case: map 'id' column to 'ID' field if present
+		if (!field.IsValid() || !field.CanSet()) && strings.EqualFold(column, "id") {
+			field = v.FieldByName("ID")
+		}
 
 		if !field.IsValid() || !field.CanSet() {
 			continue

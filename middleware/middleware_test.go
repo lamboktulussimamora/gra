@@ -4,7 +4,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/lamboktulussimamora/gra/context"
 	"github.com/lamboktulussimamora/gra/router"
@@ -468,4 +470,321 @@ func TestSecureHeadersWithConfig(t *testing.T) {
 	verifySecureHeader(t, headers, headerReferrerPolicy, customReferrerPolicy)
 	verifySecureHeader(t, headers, headerHSTS, customHSTSMaxAgeHeaderValue)
 	verifySecureHeader(t, headers, headerCrossOriginResource, valueCrossOriginResource)
+}
+
+func TestSecureHeaders_HSTSPreload(t *testing.T) {
+	cfg := DefaultSecureHeadersConfig()
+	cfg.HSTSMaxAge = 10
+	cfg.HSTSIncludeSubdomains = true
+	cfg.HSTSPreload = true
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	c := context.New(w, r)
+	h := SecureHeadersWithConfig(cfg)(func(c *context.Context) { c.Status(http.StatusOK) })
+	h(c)
+
+	if got := w.Header().Get(headerHSTS); got != "max-age=10; includeSubDomains; preload" {
+		t.Fatalf("unexpected HSTS header with preload: %q", got)
+	}
+}
+
+// ---- Additional tests to improve coverage ----
+
+func TestInMemoryStoreIncrement_BelowAndAtLimit(t *testing.T) {
+	store := NewInMemoryStore()
+	limit := 3
+	window := 2 // seconds
+
+	// First call: count=1, exceeded=false
+	count, exceeded := store.Increment("key", limit, window)
+	if exceeded {
+		t.Fatalf("unexpected exceeded on first call")
+	}
+	if count != 1 {
+		t.Fatalf("expected count 1, got %d", count)
+	}
+
+	// Second call: count=2, exceeded=false
+	count, exceeded = store.Increment("key", limit, window)
+	if exceeded {
+		t.Fatalf("unexpected exceeded on second call")
+	}
+	if count != 2 {
+		t.Fatalf("expected count 2, got %d", count)
+	}
+
+	// Third call hits the limit but should not mark exceeded yet (increment happens when not exceeded)
+	count, exceeded = store.Increment("key", limit, window)
+	if exceeded {
+		t.Fatalf("unexpected exceeded on reaching limit; should exceed on next attempt")
+	}
+	if count != 3 {
+		t.Fatalf("expected count 3, got %d", count)
+	}
+
+	// Fourth call should return exceeded=true and not increment count
+	count, exceeded = store.Increment("key", limit, window)
+	if !exceeded {
+		t.Fatalf("expected exceeded=true on call beyond limit")
+	}
+	if count != 3 {
+		t.Fatalf("expected count to remain 3 when exceeded, got %d", count)
+	}
+}
+
+func TestInMemoryStoreIncrement_CleanupOldEntries(t *testing.T) {
+	store := NewInMemoryStore()
+	key := "k"
+	limit := 10
+	window := 1 // second
+
+	// Seed with an old timestamp outside window and a current timestamp
+	now := time.Now().Unix()
+	store.data[key] = map[int64]int{
+		now - 10: 5, // should be cleaned
+		now:      2,
+	}
+
+	// Call increment once; this should cleanup the old bucket and increment the current
+	count, exceeded := store.Increment(key, limit, window)
+	if exceeded {
+		t.Fatalf("did not expect to exceed limit during cleanup test")
+	}
+	if count != 3 {
+		t.Fatalf("expected count 3 after cleanup+increment, got %d", count)
+	}
+
+	// Verify old entries cleaned
+	for ts := range store.data[key] {
+		if ts < now-int64(window) {
+			t.Fatalf("found stale timestamp %d not cleaned", ts)
+		}
+	}
+}
+
+func TestRateLimitMiddleware_HeadersAndBlocking(t *testing.T) {
+	store := NewInMemoryStore()
+	cfg := RateLimiterConfig{
+		Store:  store,
+		Limit:  2,
+		Window: 2,
+		KeyFunc: func(_ *context.Context) string {
+			return "fixed-key"
+		},
+		ErrorMessage: "Rate limit exceeded. Try again later.",
+	}
+
+	called := 0
+	handler := func(c *context.Context) {
+		called++
+		c.Status(http.StatusOK)
+	}
+
+	mw := RateLimitWithConfig(cfg)
+	wrapped := mw(handler)
+
+	// First request
+	w1 := httptest.NewRecorder()
+	r1 := httptest.NewRequest(http.MethodGet, "/", nil)
+	wrapped(context.New(w1, r1))
+	if w1.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w1.Code)
+	}
+	if got := w1.Header().Get("X-RateLimit-Limit"); got != "2" {
+		t.Fatalf("expected X-RateLimit-Limit=2, got %s", got)
+	}
+	if got := w1.Header().Get("X-RateLimit-Remaining"); got != "1" {
+		t.Fatalf("expected X-RateLimit-Remaining=1, got %s", got)
+	}
+
+	// Second request
+	w2 := httptest.NewRecorder()
+	r2 := httptest.NewRequest(http.MethodGet, "/", nil)
+	wrapped(context.New(w2, r2))
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w2.Code)
+	}
+	if got := w2.Header().Get("X-RateLimit-Remaining"); got != "0" {
+		t.Fatalf("expected X-RateLimit-Remaining=0, got %s", got)
+	}
+
+	// Third request should be limited
+	w3 := httptest.NewRecorder()
+	r3 := httptest.NewRequest(http.MethodGet, "/", nil)
+	wrapped(context.New(w3, r3))
+	if w3.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d", w3.Code)
+	}
+	if called != 2 {
+		t.Fatalf("handler should have been called exactly twice, got %d", called)
+	}
+}
+
+func TestRateLimitMiddleware_ExcludeFunc(t *testing.T) {
+	cfg := RateLimiterConfig{
+		Store:  NewInMemoryStore(),
+		Limit:  1,
+		Window: 1,
+		KeyFunc: func(_ *context.Context) string {
+			return "ignored"
+		},
+		ExcludeFunc: func(_ *context.Context) bool { return true },
+	}
+	called := false
+	handler := func(c *context.Context) {
+		called = true
+		c.Status(http.StatusOK)
+	}
+	wrapped := RateLimitWithConfig(cfg)(handler)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	wrapped(context.New(w, r))
+	if !called {
+		t.Fatalf("expected handler to be called when excluded")
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	// When excluded, middleware returns early and should not set rate headers
+	if got := w.Header().Get("X-RateLimit-Limit"); got != "" {
+		t.Fatalf("expected no X-RateLimit-Limit when excluded, got %s", got)
+	}
+}
+
+func TestRequestID_Default(t *testing.T) {
+	var captured string
+	handler := func(c *context.Context) {
+		if v := c.Value("requestID"); v != nil {
+			if s, ok := v.(string); ok {
+				captured = s
+			}
+		}
+		c.Status(http.StatusOK)
+	}
+	wrapped := RequestID()(handler)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	wrapped(context.New(w, r))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if captured == "" {
+		t.Fatalf("expected request ID stored in context")
+	}
+	if hdr := w.Header().Get("X-Request-ID"); hdr == "" {
+		t.Fatalf("expected X-Request-ID response header to be set")
+	}
+}
+
+func TestRequestID_WithConfig(t *testing.T) {
+	cfg := DefaultRequestIDConfig()
+	cfg.HeaderName = "X-Custom-ReqID"
+	cfg.ResponseHeader = false // don't expose header
+	cfg.Generator = func() string { return "fixed-id" }
+
+	var captured string
+	handler := func(c *context.Context) {
+		if v := c.Value(cfg.ContextKey); v != nil {
+			if s, ok := v.(string); ok {
+				captured = s
+			}
+		}
+		c.Status(http.StatusOK)
+	}
+
+	wrapped := RequestIDWithConfig(cfg)(handler)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	wrapped(context.New(w, r))
+
+	if captured != "fixed-id" {
+		t.Fatalf("expected fixed-id in context, got %s", captured)
+	}
+	if hdr := w.Header().Get(cfg.HeaderName); hdr != "" {
+		t.Fatalf("did not expect response header %s to be set", cfg.HeaderName)
+	}
+}
+
+func TestContainsHelper(t *testing.T) {
+	list := []string{"a", "b", "c"}
+	if !contains(list, "a") || !contains(list, "c") {
+		t.Fatalf("expected contains true for existing items")
+	}
+	if contains(list, "z") {
+		t.Fatalf("expected contains false for non-existing item")
+	}
+}
+
+func TestDetermineAllowedOrigin(t *testing.T) {
+	// wildcard when no origin
+	if got := determineAllowedOrigin("", []string{"*"}); got != "*" {
+		t.Fatalf("expected '*', got %q", got)
+	}
+	// exact match
+	if got := determineAllowedOrigin("http://a", []string{"http://a", "http://b"}); got != "http://a" {
+		t.Fatalf("expected origin match, got %q", got)
+	}
+	// not allowed
+	if got := determineAllowedOrigin("http://c", []string{"http://a"}); got != "" {
+		t.Fatalf("expected empty string for not allowed, got %q", got)
+	}
+}
+
+func TestCSPBuilderAndMiddleware(t *testing.T) {
+	b := NewCSPBuilder().DefaultSrc("'self'").ScriptSrc("'self'", "cdn.example.com").UpgradeInsecureRequests()
+	csp := b.Build()
+	if csp == "" || !strings.Contains(csp, "default-src 'self'") || !strings.Contains(csp, "script-src 'self' cdn.example.com") || !strings.Contains(csp, "upgrade-insecure-requests") {
+		t.Fatalf("unexpected CSP string: %s", csp)
+	}
+
+	mw := CSP(b)
+	handler := mw(func(c *context.Context) {
+		c.Status(http.StatusOK)
+	})
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	handler(context.New(w, r))
+	if got := w.Header().Get("Content-Security-Policy"); got != csp {
+		t.Fatalf("expected CSP header %q, got %q", csp, got)
+	}
+}
+
+func TestCORSWithConfig_Custom(t *testing.T) {
+	cfg := CORSConfig{
+		AllowOrigins:     []string{"http://example.com"},
+		AllowMethods:     []string{"GET", "POST"},
+		AllowHeaders:     []string{"X-Test"},
+		ExposeHeaders:    []string{"X-Exposed"},
+		AllowCredentials: true,
+		MaxAge:           60,
+	}
+	mw := CORSWithConfig(cfg)
+	h := mw(func(c *context.Context) { c.Status(http.StatusOK) })
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("Origin", "http://example.com")
+	h(context.New(w, r))
+	hdr := w.Result().Header
+	if got := hdr.Get("Access-Control-Allow-Origin"); got != "http://example.com" {
+		t.Fatalf("expected allowed origin to echo request origin, got %q", got)
+	}
+	if got := hdr.Get("Access-Control-Allow-Methods"); got != "GET, POST" {
+		t.Fatalf("unexpected allow methods: %q", got)
+	}
+	if got := hdr.Get("Access-Control-Allow-Headers"); got != "X-Test" {
+		t.Fatalf("unexpected allow headers: %q", got)
+	}
+	if got := hdr.Get("Access-Control-Expose-Headers"); got != "X-Exposed" {
+		t.Fatalf("unexpected expose headers: %q", got)
+	}
+	if got := hdr.Get("Access-Control-Allow-Credentials"); got != "true" {
+		t.Fatalf("expected credentials true, got %q", got)
+	}
+	if got := hdr.Get("Access-Control-Max-Age"); got != "60" {
+		t.Fatalf("unexpected max age: %q", got)
+	}
 }

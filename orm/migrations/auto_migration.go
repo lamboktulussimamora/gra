@@ -256,13 +256,9 @@ func (am *AutoMigrator) updateTableSchema(tableName string, modelType reflect.Ty
 func (am *AutoMigrator) processStructFields(modelType reflect.Type, fieldHandler func(field reflect.StructField, dbTag string)) {
 	for i := 0; i < modelType.NumField(); i++ {
 		field := modelType.Field(i)
-		if !field.IsExported() {
-			continue
-		}
 
-		// Check if this is an embedded struct
+		// Always recurse into anonymous embedded structs, even if the type/name is unexported
 		if field.Anonymous {
-			// This is an embedded struct, process its fields recursively
 			fieldType := field.Type
 			if fieldType.Kind() == reflect.Ptr {
 				fieldType = fieldType.Elem()
@@ -270,6 +266,11 @@ func (am *AutoMigrator) processStructFields(modelType reflect.Type, fieldHandler
 			if fieldType.Kind() == reflect.Struct {
 				am.processStructFields(fieldType, fieldHandler)
 			}
+			continue
+		}
+
+		// For non-embedded fields, skip unexported ones
+		if !field.IsExported() {
 			continue
 		}
 
@@ -287,14 +288,17 @@ func (am *AutoMigrator) processStructFields(modelType reflect.Type, fieldHandler
 func (am *AutoMigrator) processStructFieldsWithError(modelType reflect.Type, fieldHandler func(field reflect.StructField, dbTag string) error) error {
 	for i := 0; i < modelType.NumField(); i++ {
 		field := modelType.Field(i)
-		if !field.IsExported() {
-			continue
-		}
 
+		// Recurse into anonymous embedded structs regardless of export status
 		if am.isEmbeddedStruct(field) {
 			if err := am.handleEmbeddedStructWithError(field, fieldHandler); err != nil {
 				return err
 			}
+			continue
+		}
+
+		// For non-embedded fields, skip unexported ones
+		if !field.IsExported() {
 			continue
 		}
 
@@ -480,7 +484,7 @@ func (am *AutoMigrator) getTableColumnsQuery(driver schema.DatabaseDriver, table
 	case schema.PostgreSQL:
 		return `
 			SELECT column_name, data_type, is_nullable, column_default
-			FROM information_schema.columns 
+			FROM information_schema.columns
 			WHERE table_name = $1
 			ORDER BY ordinal_position`, []interface{}{tableName}, nil
 	case schema.SQLite:
@@ -488,7 +492,7 @@ func (am *AutoMigrator) getTableColumnsQuery(driver schema.DatabaseDriver, table
 	case schema.MySQL:
 		return `
 			SELECT column_name, data_type, is_nullable, column_default
-			FROM information_schema.columns 
+			FROM information_schema.columns
 			WHERE table_name = ? AND table_schema = DATABASE()
 			ORDER BY ordinal_position`, []interface{}{tableName}, nil
 	default:

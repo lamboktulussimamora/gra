@@ -210,6 +210,14 @@ func (cd *ChangeDetector) isIncompatibleTypeChange(oldType, newType string) bool
 	oldType = strings.ToUpper(strings.TrimSpace(oldType))
 	newType = strings.ToUpper(strings.TrimSpace(newType))
 
+	// Normalize parametrized types like VARCHAR(255) -> VARCHAR
+	if idx := strings.Index(oldType, "("); idx != -1 {
+		oldType = strings.TrimSpace(oldType[:idx])
+	}
+	if idx := strings.Index(newType, "("); idx != -1 {
+		newType = strings.TrimSpace(newType[:idx])
+	}
+
 	// Define incompatible type changes
 	incompatibleChanges := map[string][]string{
 		"TEXT":      {"INTEGER", "BIGINT", "BOOLEAN", "TIMESTAMP", "DATE"},
