@@ -270,6 +270,9 @@ func (em *EFMigrationManager) EnsureSchema() error {
 			strings.ReplaceAll(em.historyTable, "__", ""), em.historyTable),
 		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_%s_state ON %s(state)`,
 			strings.ReplaceAll(em.historyTable, "__", ""), em.historyTable),
+		// Ensure ON CONFLICT(migration_id) works by making migration_id unique across rows
+		fmt.Sprintf(`CREATE UNIQUE INDEX IF NOT EXISTS idx_%s_migration_id_unique ON %s(migration_id)`,
+			strings.ReplaceAll(em.historyTable, "__", ""), em.historyTable),
 	}
 
 	if err := em.ensureSchemaIndexes(indexQueries); err != nil {
@@ -337,7 +340,7 @@ func (em *EFMigrationManager) GetMigrationHistory() (*MigrationHistory, error) {
 	// Get all migrations from history table
 	// #nosec G201 -- Table name is controlled by migration manager, not user input
 	query := fmt.Sprintf(`
-		SELECT migration_id, name, version, description, up_sql, down_sql, 
+		SELECT migration_id, name, version, description, up_sql, down_sql,
 		       applied_at, state
 		FROM %s
 		ORDER BY version ASC
@@ -601,7 +604,7 @@ func (em *EFMigrationManager) rollbackMigration(migration Migration) error {
 	// Update history table
 	executionTime := int(time.Since(startTime).Milliseconds())
 	updateQuery := em.convertQueryPlaceholders(fmt.Sprintf(`
-		UPDATE %s 
+		UPDATE %s
 		SET rolled_back_at = ?, state = 'rolled_back'
 		WHERE migration_id = ?
 	`, em.historyTable))
@@ -676,7 +679,7 @@ func (em *EFMigrationManager) recordMigrationResult(migration Migration, state M
 	query := em.convertQueryPlaceholders(fmt.Sprintf(`
 		INSERT INTO %s (migration_id, name, version, description, up_sql, down_sql, state, execution_time_ms, error_message)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (migration_id) DO UPDATE SET 
+		ON CONFLICT (migration_id) DO UPDATE SET
 			state = EXCLUDED.state,
 			execution_time_ms = EXCLUDED.execution_time_ms,
 			error_message = EXCLUDED.error_message
@@ -753,7 +756,12 @@ func (em *EFMigrationManager) getTableName(entity interface{}) string {
 		if i > 0 && r >= 'A' && r <= 'Z' {
 			result.WriteRune('_')
 		}
-		result.WriteRune(r + 32) // Convert to lowercase
+		// Only convert uppercase letters to lowercase; leave others unchanged
+		if r >= 'A' && r <= 'Z' {
+			result.WriteRune(r + 32)
+		} else {
+			result.WriteRune(r)
+		}
 	}
 
 	return result.String()

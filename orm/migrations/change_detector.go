@@ -158,17 +158,23 @@ func (cd *ChangeDetector) hasDestructiveChanges(changes []MigrationChange) bool 
 // requiresManualReview determines if changes need manual review
 func (cd *ChangeDetector) requiresManualReview(changes []MigrationChange) bool {
 	for _, change := range changes {
-		switch change.Type {
-		case DropTable, DropColumn:
+		if cd.requiresReviewForChange(change) {
 			return true
-		case AlterColumn:
-			// Check if it's a potentially data-losing change
-			if cd.isDataLosingAlterColumn(change) {
-				return true
-			}
 		}
 	}
 	return false
+}
+
+// requiresReviewForChange encapsulates the per-change review logic to reduce cognitive complexity
+func (cd *ChangeDetector) requiresReviewForChange(change MigrationChange) bool {
+	switch change.Type {
+	case DropTable, DropColumn:
+		return true
+	case AlterColumn:
+		return cd.isDataLosingAlterColumn(change)
+	default:
+		return false
+	}
 }
 
 // isDataLosingAlterColumn checks if a column alteration might lose data
@@ -209,6 +215,14 @@ func (cd *ChangeDetector) isDataLosingAlterColumn(change MigrationChange) bool {
 func (cd *ChangeDetector) isIncompatibleTypeChange(oldType, newType string) bool {
 	oldType = strings.ToUpper(strings.TrimSpace(oldType))
 	newType = strings.ToUpper(strings.TrimSpace(newType))
+
+	// Normalize parametrized types like VARCHAR(255) -> VARCHAR
+	if idx := strings.Index(oldType, "("); idx != -1 {
+		oldType = strings.TrimSpace(oldType[:idx])
+	}
+	if idx := strings.Index(newType, "("); idx != -1 {
+		newType = strings.TrimSpace(newType[:idx])
+	}
 
 	// Define incompatible type changes
 	incompatibleChanges := map[string][]string{
@@ -394,37 +408,28 @@ func (cd *ChangeDetector) GetChangeSummary(plan *MigrationPlan) string {
 	}
 
 	var parts []string
-	if count, exists := summary[CreateTable]; exists {
-		parts = append(parts, fmt.Sprintf("%d table(s) to create", count))
-	}
-	if count, exists := summary[DropTable]; exists {
-		parts = append(parts, fmt.Sprintf("%d table(s) to drop", count))
-	}
-	if count, exists := summary[AddColumn]; exists {
-		parts = append(parts, fmt.Sprintf("%d column(s) to add", count))
-	}
-	if count, exists := summary[DropColumn]; exists {
-		parts = append(parts, fmt.Sprintf("%d column(s) to drop", count))
-	}
-	if count, exists := summary[AlterColumn]; exists {
-		parts = append(parts, fmt.Sprintf("%d column(s) to alter", count))
-	}
-	if count, exists := summary[CreateIndex]; exists {
-		parts = append(parts, fmt.Sprintf("%d index(es) to create", count))
-	}
-	if count, exists := summary[DropIndex]; exists {
-		parts = append(parts, fmt.Sprintf("%d index(es) to drop", count))
-	}
+	parts = cd.appendSummary(parts, summary, CreateTable, "%d table(s) to create")
+	parts = cd.appendSummary(parts, summary, DropTable, "%d table(s) to drop")
+	parts = cd.appendSummary(parts, summary, AddColumn, "%d column(s) to add")
+	parts = cd.appendSummary(parts, summary, DropColumn, "%d column(s) to drop")
+	parts = cd.appendSummary(parts, summary, AlterColumn, "%d column(s) to alter")
+	parts = cd.appendSummary(parts, summary, CreateIndex, "%d index(es) to create")
+	parts = cd.appendSummary(parts, summary, DropIndex, "%d index(es) to drop")
 
 	result := strings.Join(parts, ", ")
-
 	if plan.HasDestructive {
 		result += " (includes destructive changes)"
 	}
-
 	if plan.RequiresReview {
 		result += " (requires manual review)"
 	}
-
 	return result
+}
+
+// appendSummary formats and appends a summary fragment when a given change type exists
+func (cd *ChangeDetector) appendSummary(parts []string, summary map[ChangeType]int, t ChangeType, format string) []string {
+	if count, exists := summary[t]; exists {
+		parts = append(parts, fmt.Sprintf(format, count))
+	}
+	return parts
 }

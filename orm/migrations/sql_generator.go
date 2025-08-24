@@ -389,10 +389,6 @@ func (sg *SQLGenerator) generateForeignKeyStatements(snapshot *ModelSnapshot) []
 
 // generateColumnDefinition generates column definition SQL
 func (sg *SQLGenerator) generateColumnDefinition(column *ColumnInfo) string {
-	// Debug: log column info
-	fmt.Printf("DEBUG: Column info: Name=%s, Type=%s, SQLType=%s, DataType=%s\n",
-		column.Name, column.Type, column.SQLType, column.DataType)
-
 	parts := []string{}
 
 	// Data type

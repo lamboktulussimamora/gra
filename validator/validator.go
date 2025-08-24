@@ -12,12 +12,14 @@ import (
 // Common validation patterns and literals
 const (
 	// Pattern prefixes - used to identify truncated patterns
-	UsernamePatternPrefix    = "^[a-zA-Z0-9_]{3"
-	UsernamePattern          = "^[a-zA-Z0-9_]{3,20}$"
-	LowercaseUsernamePrefix  = "[a-z0-9_]{3"
-	LowercaseUsernamePattern = "[a-z0-9_]{3,16}"
-	PhoneNumberPrefix        = "[0-9]{10"
-	PhoneNumberPattern       = "[0-9]{10}"
+	UsernamePatternPrefix            = "^[a-zA-Z0-9_]{3"
+	UsernamePattern                  = "^[a-zA-Z0-9_]{3,20}$"
+	LowercaseUsernamePrefix          = "[a-z0-9_]{3"
+	LowercaseUsernamePattern         = "[a-z0-9_]{3,16}"
+	PhoneNumberPrefix                = "[0-9]{10"
+	PhoneNumberPattern               = "[0-9]{10}"
+	AnchoredPhoneNumberPattern       = "^[0-9]{10}$"
+	AnchoredLowercaseUsernamePattern = "^[a-z0-9_]{3,16}$"
 
 	// Error message templates
 	InvalidRangeMsg    = "Invalid range values for %s"
@@ -193,103 +195,33 @@ func (v *Validator) validateSliceOfStructs(field reflect.Value, fieldName string
 
 // parseValidationRules parses the validation tag and extracts individual rules
 func (v *Validator) parseValidationRules(validateTag string) []string {
-	var rules []string
+	// Unified parser that preserves commas inside enum values, regexp patterns, and range pairs
+	// Rule format examples:
+	//  - "required,min=3"
+	//  - "enum=A,B|custom,min=2"
+	//  - "regexp=^[a-z]+$,max=10"
+	tokens := strings.Split(validateTag, ",")
+	rules := make([]string, 0, len(tokens))
 
-	// Special handling for regexp rules which might contain commas
-	if strings.Contains(validateTag, "regexp=") {
-		rules = v.parseRulesWithRegexp(validateTag)
-	} else {
-		// No regexp rule, just split by comma
-		for _, rule := range strings.Split(validateTag, ",") {
-			if rule != "" {
-				rules = append(rules, rule)
+	for i := 0; i < len(tokens); i++ {
+		tok := tokens[i]
+		if tok == "" {
+			continue
+		}
+
+		// Merge subsequent comma tokens for enum=..., regexp=..., and range=min,max
+		if strings.HasPrefix(tok, "enum=") || strings.HasPrefix(tok, "regexp=") || strings.HasPrefix(tok, "range=") {
+			rule := tok
+			// Consume following tokens that don't start a new rule (heuristic: no '=')
+			for i+1 < len(tokens) && !strings.Contains(tokens[i+1], "=") {
+				rule += "," + tokens[i+1]
+				i++
 			}
+			rules = append(rules, rule)
+			continue
 		}
-	}
 
-	return rules
-}
-
-// parseRulesWithRegexp handles extracting rules when a regexp rule is present
-func (v *Validator) parseRulesWithRegexp(validateTag string) []string {
-	var rules []string
-	regexpIndex := strings.Index(validateTag, "regexp=")
-
-	// Handle case where regexp is not the first rule
-	if regexpIndex > 0 {
-		rules = v.parseRulesBeforeRegexp(validateTag, regexpIndex)
-		return v.parseRegexpAndRemainingRules(validateTag, regexpIndex, rules)
-	}
-
-	// Handle case where regexp is the first rule
-	return v.parseRegexpAsFirstRule(validateTag)
-}
-
-// parseRulesBeforeRegexp extracts rules that come before the regexp rule
-func (v *Validator) parseRulesBeforeRegexp(validateTag string, regexpIndex int) []string {
-	var rules []string
-	beforeRules := validateTag[:regexpIndex]
-	if beforeRules != "" {
-		for _, r := range strings.Split(strings.TrimRight(beforeRules, ","), ",") {
-			if r != "" {
-				rules = append(rules, r)
-			}
-		}
-	}
-	return rules
-}
-
-// parseRegexpAndRemainingRules extracts regexp rule and rules after it
-func (v *Validator) parseRegexpAndRemainingRules(validateTag string, regexpIndex int, rules []string) []string {
-	afterIndex := regexpIndex
-	nextCommaIndex := strings.Index(validateTag[afterIndex+7:], ",")
-
-	var regexpRule string
-	var afterRules string
-
-	if nextCommaIndex == -1 {
-		// No comma after regexp rule
-		regexpRule = validateTag[afterIndex:]
-		afterRules = ""
-	} else {
-		// Found a comma after regexp rule
-		nextCommaIndex += afterIndex + 7
-		regexpRule = validateTag[afterIndex:nextCommaIndex]
-		afterRules = validateTag[nextCommaIndex+1:]
-	}
-
-	rules = append(rules, regexpRule)
-
-	// Add rules after regexp
-	if afterRules != "" {
-		for _, r := range strings.Split(afterRules, ",") {
-			if r != "" {
-				rules = append(rules, r)
-			}
-		}
-	}
-
-	return rules
-}
-
-// parseRegexpAsFirstRule handles case where regexp is the first rule
-func (v *Validator) parseRegexpAsFirstRule(validateTag string) []string {
-	var rules []string
-	nextCommaIndex := strings.Index(validateTag[7:], ",")
-
-	if nextCommaIndex == -1 {
-		// Only regexp rule
-		return append(rules, validateTag)
-	}
-
-	// There are rules after regexp
-	nextCommaIndex += 7
-	rules = append(rules, validateTag[:nextCommaIndex])
-
-	for _, r := range strings.Split(validateTag[nextCommaIndex+1:], ",") {
-		if r != "" {
-			rules = append(rules, r)
-		}
+		rules = append(rules, tok)
 	}
 
 	return rules
@@ -385,31 +317,51 @@ func (v *Validator) validateEmail(field reflect.Value, fieldName, customMessage 
 func (v *Validator) validateMin(field reflect.Value, fieldName, arg, customMessage string) {
 	switch field.Kind() {
 	case reflect.String:
-		minVal := 0
-		if _, err := fmt.Sscanf(arg, "%d", &minVal); err != nil {
-			v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
-			return
-		}
-		if len(field.String()) < minVal {
-			v.addError(fieldName, fmt.Sprintf("%s must be at least %d characters", fieldName, minVal), customMessage)
-		}
+		v.validateMinString(field, fieldName, arg, customMessage)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		minVal := int64(0)
-		if _, err := fmt.Sscanf(arg, "%d", &minVal); err != nil {
-			v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
-			return
-		}
-		if field.Int() < minVal {
-			v.addError(fieldName, fmt.Sprintf("%s must be at least %d", fieldName, minVal), customMessage)
-		}
+		v.validateMinInt(field, fieldName, arg, customMessage)
 	case reflect.Float32, reflect.Float64:
-		minVal := float64(0)
-		if _, err := fmt.Sscanf(arg, "%f", &minVal); err != nil {
-			v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
-			return
-		}
-		if field.Float() < minVal {
-			v.addError(fieldName, fmt.Sprintf("%s must be at least %.6f", fieldName, minVal), customMessage)
+		v.validateMinFloat(field, fieldName, arg, customMessage)
+	}
+}
+
+// validateMinString validates that a string's length is at least the given minimum
+func (v *Validator) validateMinString(field reflect.Value, fieldName, arg, customMessage string) {
+	minVal := 0
+	if _, err := fmt.Sscanf(arg, "%d", &minVal); err != nil {
+		v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
+		return
+	}
+	if len(field.String()) < minVal {
+		v.addError(fieldName, fmt.Sprintf("%s must be at least %d characters", fieldName, minVal), customMessage)
+	}
+}
+
+// validateMinInt validates that an integer value is at least the given minimum
+func (v *Validator) validateMinInt(field reflect.Value, fieldName, arg, customMessage string) {
+	minVal := int64(0)
+	if _, err := fmt.Sscanf(arg, "%d", &minVal); err != nil {
+		v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
+		return
+	}
+	if field.Int() < minVal {
+		v.addError(fieldName, fmt.Sprintf("%s must be at least %d", fieldName, minVal), customMessage)
+	}
+}
+
+// validateMinFloat validates that a floating value is at least the given minimum
+func (v *Validator) validateMinFloat(field reflect.Value, fieldName, arg, customMessage string) {
+	minVal := float64(0)
+	if _, err := fmt.Sscanf(arg, "%f", &minVal); err != nil {
+		v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
+		return
+	}
+	if field.Float() < minVal {
+		// Format without decimals if minVal is an integer value (e.g., 0 instead of 0.00)
+		if minVal == float64(int64(minVal)) {
+			v.addError(fieldName, fmt.Sprintf("%s must be at least %d", fieldName, int64(minVal)), customMessage)
+		} else {
+			v.addError(fieldName, fmt.Sprintf("%s must be at least %.2f", fieldName, minVal), customMessage)
 		}
 	}
 }
@@ -502,7 +454,7 @@ func fixKnownPatterns(pattern string) string {
 			return UsernamePattern
 		}
 		if strings.HasPrefix(pattern, "^[0-9]{10") {
-			return "^[0-9]{10}$"
+			return AnchoredPhoneNumberPattern
 		}
 	}
 
@@ -512,17 +464,17 @@ func fixKnownPatterns(pattern string) string {
 // addAnchorsIfNeeded adds ^ and $ to patterns that need them
 func addAnchorsIfNeeded(pattern string) string {
 	// Special handling for common patterns that might be missing anchors
-	if pattern == "[a-z0-9_]{3,16}" {
-		return "^[a-z0-9_]{3,16}$"
+	if pattern == LowercaseUsernamePattern {
+		return AnchoredLowercaseUsernamePattern
 	}
 
-	if pattern == "[0-9]{10}" {
-		return "^[0-9]{10}$"
+	if pattern == PhoneNumberPattern {
+		return AnchoredPhoneNumberPattern
 	}
 
 	// Handle the specific case from the test
-	if strings.HasPrefix(pattern, "[a-z0-9_]{3") {
-		return "^[a-z0-9_]{3,16}$"
+	if strings.HasPrefix(pattern, LowercaseUsernamePrefix) {
+		return AnchoredLowercaseUsernamePattern
 	}
 
 	// Add anchors to patterns that don't have them but should

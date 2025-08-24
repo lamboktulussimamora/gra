@@ -31,23 +31,33 @@ const (
 func DetectDatabaseDriver(db *sql.DB) DatabaseDriver {
 	// Try to get the driver name through reflection
 	if db != nil {
-		// Use a test query approach to detect database type
+		// Use a test query approach to detect database type.
+		// IMPORTANT: Always close returned rows to avoid leaking connections.
 		// PostgreSQL specific query
-		if _, err := db.Query("SELECT version()"); err == nil {
-			// Try PostgreSQL-specific syntax
-			if _, err := db.Query("SELECT 1::integer"); err == nil {
+		if rows, err := db.Query("SELECT version()"); err == nil {
+			_ = rows.Close()
+			if rows2, err2 := db.Query("SELECT 1::integer"); err2 == nil {
+				_ = rows2.Close()
 				return PostgreSQL
+			} else if rows2 != nil {
+				_ = rows2.Close()
 			}
 		}
 
 		// SQLite specific query
-		if _, err := db.Query("SELECT sqlite_version()"); err == nil {
+		if rows, err := db.Query("SELECT sqlite_version()"); err == nil {
+			_ = rows.Close()
 			return SQLite
+		} else if rows != nil {
+			_ = rows.Close()
 		}
 
 		// MySQL specific query
-		if _, err := db.Query("SELECT VERSION()"); err == nil {
+		if rows, err := db.Query("SELECT VERSION()"); err == nil {
+			_ = rows.Close()
 			return MySQL
+		} else if rows != nil {
+			_ = rows.Close()
 		}
 	}
 
@@ -235,19 +245,29 @@ func handleAutoIncrement(parts []string, sqlType string, driver DatabaseDriver, 
 }
 
 func handleAutoIncrementPostgres(parts []string, sqlType string) []string {
+	// The base column definition is always at index 0 (e.g., "id BIGINT").
+	// Replace the type there regardless of appended constraints order.
+	if len(parts) == 0 {
+		return parts
+	}
+	base := parts[0]
 	if strings.Contains(sqlType, "INTEGER") || strings.Contains(sqlType, "BIGINT") {
 		if strings.Contains(sqlType, "BIGINT") {
-			parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "BIGSERIAL", 1)
+			base = strings.Replace(base, sqlType, "BIGSERIAL", 1)
 		} else {
-			parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "SERIAL", 1)
+			base = strings.Replace(base, sqlType, "SERIAL", 1)
 		}
 	}
+	parts[0] = base
 	return parts
 }
 
 func handleAutoIncrementSQLite(parts []string, sqlType, sqlTag, migrationTag string) []string {
 	if hasTagAttr(sqlTag, migrationTag, "primary_key") && strings.Contains(sqlType, "INTEGER") {
-		parts[len(parts)-1] = strings.Replace(parts[len(parts)-1], sqlType, "INTEGER", 1)
+		// Ensure base definition remains INTEGER and append AUTOINCREMENT
+		if len(parts) > 0 {
+			parts[0] = strings.Replace(parts[0], sqlType, "INTEGER", 1)
+		}
 		if !strings.Contains(strings.Join(parts, " "), "AUTOINCREMENT") {
 			parts = append(parts, "AUTOINCREMENT")
 		}
@@ -272,7 +292,7 @@ func handleDefaultValue(parts []string, sqlTag, migrationTag string) []string {
 		defaultMatch = extractSQLValue(migrationTag, "default")
 	}
 	if defaultMatch != "" {
-		if defaultMatch == "CURRENT_TIMESTAMP" {
+		if defaultMatch == currentTimestampValue {
 			parts = append(parts, "DEFAULT CURRENT_TIMESTAMP")
 		} else if defaultMatch != "null" {
 			parts = append(parts, fmt.Sprintf("DEFAULT %s", defaultMatch))
@@ -280,6 +300,11 @@ func handleDefaultValue(parts []string, sqlTag, migrationTag string) []string {
 	}
 	return parts
 }
+
+// common SQL literal constants
+const (
+	currentTimestampValue = "CURRENT_TIMESTAMP"
+)
 
 // goTypeToSQLTypeForDriver converts Go types to SQL types for a specific database driver
 func goTypeToSQLTypeForDriver(t reflect.Type, driver DatabaseDriver) string {

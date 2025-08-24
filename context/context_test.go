@@ -548,3 +548,65 @@ func TestJSONDataEncodingError(t *testing.T) {
 		t.Errorf(errStatusCode, http.StatusCreated, w.code)
 	}
 }
+
+func TestHeadersAndCookiesAndRedirect(t *testing.T) {
+	// Headers
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+	c := New(w, r)
+
+	c.SetHeader("X-Test", "abc123")
+	if got := c.GetHeader("X-Test"); got != "" { // GetHeader reads from request, not response
+		t.Errorf("Expected request header empty before set on request, got %q", got)
+	}
+	// Also set on request and verify
+	c.Request.Header.Set("X-Test", "abc123")
+	if got := c.GetHeader("X-Test"); got != "abc123" {
+		t.Errorf("Expected request header 'abc123', got %q", got)
+	}
+
+	// GetContentType reflects request header
+	c.Request.Header.Set(headerContentType, contentTypeJSON)
+	if ct := c.GetContentType(); ct != contentTypeJSON {
+		t.Errorf("Expected content type %s, got %s", contentTypeJSON, ct)
+	}
+
+	// Cookies
+	// Set cookie in response, then attach it to a new request for GetCookie
+	c.SetCookie("sess", "v1", 3600, "/", "", false, true)
+	// The cookie is written to response headers
+	if setCookie := w.Header().Get("Set-Cookie"); !strings.Contains(setCookie, "sess=v1") {
+		t.Errorf("expected Set-Cookie header to contain sess=v1, got %q", setCookie)
+	}
+	// Now build a request that includes that cookie and verify GetCookie
+	r2 := httptest.NewRequest("GET", "/test", nil)
+	r2.AddCookie(&http.Cookie{Name: "sess", Value: "v1"})
+	w2 := httptest.NewRecorder()
+	c2 := New(w2, r2)
+	if val, err := c2.GetCookie("sess"); err != nil || val != "v1" {
+		t.Errorf("expected to read cookie value 'v1', got %q, err=%v", val, err)
+	}
+	if _, err := c2.GetCookie("missing"); err == nil {
+		t.Errorf("expected error for missing cookie")
+	}
+
+	// Redirect
+	w3 := httptest.NewRecorder()
+	r3 := httptest.NewRequest("GET", "/from", nil)
+	c3 := New(w3, r3)
+	c3.Redirect(http.StatusFound, "/to")
+	if w3.Code != http.StatusFound {
+		t.Errorf(errStatusCode, http.StatusFound, w3.Code)
+	}
+	if loc := w3.Header().Get("Location"); loc != "/to" {
+		t.Errorf("expected Location /to, got %q", loc)
+	}
+
+	// Status chaining returns same context
+	w4 := httptest.NewRecorder()
+	r4 := httptest.NewRequest("GET", "/status", nil)
+	c4 := New(w4, r4)
+	if got := c4.Status(http.StatusAccepted); got != c4 {
+		t.Errorf("expected Status to return same context instance")
+	}
+}

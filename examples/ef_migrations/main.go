@@ -13,11 +13,24 @@ import (
 )
 
 func main() {
+	if err := runMigrationDemo("./test_migrations/example.db"); err != nil {
+		log.Printf("Migration demo failed: %v", err)
+		os.Exit(1)
+	}
+}
+
+// runMigrationDemo runs the complete EF migration lifecycle demonstration
+func runMigrationDemo(dbPath string) error {
+	// Ensure directory exists
+	//nolint:gosec // examples: fixed, non-sensitive path; permissive perms acceptable for demo
+	if err := os.MkdirAll("./test_migrations", 0o755); err != nil {
+		return fmt.Errorf("failed to create test directory: %w", err)
+	}
+
 	// Database connection
-	db, err := sql.Open("sqlite3", "./test_migrations/example.db")
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		log.Printf("Failed to connect to database: %v", err)
-		return
+		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
@@ -32,8 +45,7 @@ func main() {
 
 	// Initialize migration schema (like EF Core's initial setup)
 	if err := manager.EnsureSchema(); err != nil {
-		log.Printf("Failed to initialize migration schema: %v", err)
-		return
+		return fmt.Errorf("failed to initialize migration schema: %w", err)
 	}
 
 	// ========================================
@@ -96,8 +108,7 @@ func main() {
 	fmt.Println("\n3️⃣  CHECKING MIGRATION STATUS (Get-Migration)")
 	history, err := manager.GetMigrationHistory()
 	if err != nil {
-		log.Printf("Failed to get migration history: %v", err)
-		return
+		return fmt.Errorf("failed to get migration history: %w", err)
 	}
 
 	printMigrationStatus(history)
@@ -105,16 +116,14 @@ func main() {
 	// 4. UPDATE-DATABASE: Apply all pending migrations
 	fmt.Println("\n4️⃣  APPLYING MIGRATIONS (Update-Database)")
 	if err := manager.UpdateDatabase(); err != nil {
-		log.Printf("Failed to update database: %v", err)
-		return
+		return fmt.Errorf("failed to update database: %w", err)
 	}
 
 	// 5. GET-MIGRATION: View status after applying
 	fmt.Println("\n5️⃣  CHECKING STATUS AFTER UPDATE (Get-Migration)")
 	history, err = manager.GetMigrationHistory()
 	if err != nil {
-		log.Printf("Failed to get migration history: %v", err)
-		return
+		return fmt.Errorf("failed to get migration history after update: %w", err)
 	}
 
 	printMigrationStatus(history)
@@ -148,23 +157,20 @@ func main() {
 	// 7. UPDATE-DATABASE: Apply specific migration
 	fmt.Println("\n7️⃣  APPLYING SPECIFIC MIGRATION (Update-Database AddUserSettings)")
 	if err := manager.UpdateDatabase(migration3.ID); err != nil {
-		log.Printf("Failed to update database to specific migration: %v", err)
-		return
+		return fmt.Errorf("failed to update database to specific migration: %w", err)
 	}
 
 	// 8. ROLLBACK: Demonstrate rollback functionality
 	fmt.Println("\n8️⃣  ROLLING BACK MIGRATION (Update-Database CreateUsersTable)")
 	if err := manager.RollbackMigration(migration1.ID); err != nil {
-		log.Printf("Failed to rollback migration: %v", err)
-		return
+		return fmt.Errorf("failed to rollback migration: %w", err)
 	}
 
 	// 9. FINAL STATUS: Check final state
 	fmt.Println("\n9️⃣  FINAL MIGRATION STATUS")
 	history, err = manager.GetMigrationHistory()
 	if err != nil {
-		log.Printf("Failed to get final migration history: %v", err)
-		return
+		return fmt.Errorf("failed to get final migration history: %w", err)
 	}
 
 	printMigrationStatus(history)
@@ -175,6 +181,8 @@ func main() {
 
 	fmt.Println("\n✅ MIGRATION LIFECYCLE DEMO COMPLETED!")
 	fmt.Println("=====================================")
+
+	return nil
 }
 
 // printMigrationStatus displays the current migration status

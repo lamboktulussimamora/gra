@@ -75,6 +75,9 @@ func TestHandleAndHTTPMethods(t *testing.T) {
 		{"POST", r.POST, 3},
 		{"PUT", r.PUT, 4},
 		{"DELETE", r.DELETE, 5},
+		{"PATCH", r.PATCH, 6},
+		{"HEAD", r.HEAD, 7},
+		{"OPTIONS", r.OPTIONS, 8},
 	}
 
 	for _, tc := range testCases {

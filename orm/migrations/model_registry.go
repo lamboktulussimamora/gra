@@ -242,7 +242,11 @@ func (mr *ModelRegistry) pluralize(word string) string {
 }
 
 func (mr *ModelRegistry) getDBColumnName(field reflect.StructField) string {
-	if tag := field.Tag.Get("db"); tag != "" && tag != "-" {
+	// Respect explicit skip with db:"-"
+	if tag := field.Tag.Get("db"); tag != "" {
+		if tag == "-" {
+			return "-"
+		}
 		// Extract just the column name (before any comma)
 		parts := strings.Split(tag, ",")
 		return parts[0]
@@ -325,7 +329,16 @@ func (mr *ModelRegistry) getSQLType(field reflect.StructField, fieldType reflect
 		precision := mr.getPrecision(field)
 		scale := mr.getScale(field)
 		if precision != nil && scale != nil {
-			return fmt.Sprintf("DECIMAL(%d,%d)", *precision, *scale)
+			switch mr.driver {
+			case SQLite:
+				return mr.getDoubleType() // REAL
+			case MySQL:
+				return mr.getDoubleType() // DOUBLE
+			case PostgreSQL:
+				return fmt.Sprintf("DECIMAL(%d,%d)", *precision, *scale)
+			default:
+				return mr.getDoubleType()
+			}
 		}
 		return mr.getDoubleType()
 	case reflect.String:
@@ -337,8 +350,8 @@ func (mr *ModelRegistry) getSQLType(field reflect.StructField, fieldType reflect
 		}
 		return "VARCHAR(255)"
 	default:
-		if fieldType.String() == "time.Time" {
-			return "TIMESTAMP"
+		if fieldType.String() == goTypeTime {
+			return sqlTypeTimeStamp
 		}
 		return sqlTypeText
 	}
@@ -574,9 +587,9 @@ func (mr *ModelRegistry) getBooleanType() string {
 	case MySQL:
 		return "TINYINT(1)"
 	case PostgreSQL:
-		return "BOOLEAN"
+		return sqlTypeBoolean
 	default:
-		return "BOOLEAN"
+		return sqlTypeBoolean
 	}
 }
 

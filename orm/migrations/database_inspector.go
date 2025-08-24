@@ -63,9 +63,9 @@ func (di *DatabaseInspector) getPostgreSQLSchema() (map[string]*TableSchema, err
 
 	// Get all tables in the current schema
 	tableRows, err := di.db.Query(`
-		SELECT table_name 
-		FROM information_schema.tables 
-		WHERE table_schema = 'public' 
+		SELECT table_name
+		FROM information_schema.tables
+		WHERE table_schema = 'public'
 		AND table_type = 'BASE TABLE'
 		ORDER BY table_name
 	`)
@@ -121,7 +121,7 @@ func (di *DatabaseInspector) getPostgreSQLSchema() (map[string]*TableSchema, err
 // getPostgreSQLColumns reads column information for a table
 func (di *DatabaseInspector) getPostgreSQLColumns(table *TableSchema) error {
 	rows, err := di.db.Query(`
-		SELECT 
+		SELECT
 			column_name,
 			data_type,
 			is_nullable,
@@ -131,8 +131,8 @@ func (di *DatabaseInspector) getPostgreSQLColumns(table *TableSchema) error {
 			numeric_scale,
 			is_identity,
 			is_generated
-		FROM information_schema.columns 
-		WHERE table_schema = 'public' 
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
 		AND table_name = $1
 		ORDER BY ordinal_position
 	`, table.Name)
@@ -141,7 +141,7 @@ func (di *DatabaseInspector) getPostgreSQLColumns(table *TableSchema) error {
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			fmt.Printf(dbWarnCloseRows+"\n", closeErr)
 		}
 	}()
 
@@ -199,14 +199,14 @@ func (di *DatabaseInspector) getPostgreSQLColumns(table *TableSchema) error {
 func (di *DatabaseInspector) getPostgreSQLPrimaryKeys(table *TableSchema) error {
 	rows, err := di.db.Query(`
 		SELECT column_name
-		FROM information_schema.key_column_usage 
-		WHERE table_schema = 'public' 
+		FROM information_schema.key_column_usage
+		WHERE table_schema = 'public'
 		AND table_name = $1
 		AND constraint_name IN (
-			SELECT constraint_name 
-			FROM information_schema.table_constraints 
-			WHERE table_schema = 'public' 
-			AND table_name = $1 
+			SELECT constraint_name
+			FROM information_schema.table_constraints
+			WHERE table_schema = 'public'
+			AND table_name = $1
 			AND constraint_type = 'PRIMARY KEY'
 		)
 		ORDER BY ordinal_position
@@ -216,7 +216,7 @@ func (di *DatabaseInspector) getPostgreSQLPrimaryKeys(table *TableSchema) error 
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			fmt.Printf(dbWarnCloseRows+"\n", closeErr)
 		}
 	}()
 
@@ -234,7 +234,7 @@ func (di *DatabaseInspector) getPostgreSQLPrimaryKeys(table *TableSchema) error 
 // getPostgreSQLIndexes reads index information
 func (di *DatabaseInspector) getPostgreSQLIndexes(table *TableSchema) error {
 	rows, err := di.db.Query(`
-		SELECT 
+		SELECT
 			i.indexname,
 			i.indexdef,
 			ix.indisunique
@@ -243,7 +243,7 @@ func (di *DatabaseInspector) getPostgreSQLIndexes(table *TableSchema) error {
 		JOIN pg_index ix ON ix.indexrelid = (
 			SELECT oid FROM pg_class WHERE relname = i.indexname
 		)
-		WHERE i.schemaname = 'public' 
+		WHERE i.schemaname = 'public'
 		AND i.tablename = $1
 		AND i.indexname NOT LIKE '%_pkey'
 	`, table.Name)
@@ -252,7 +252,7 @@ func (di *DatabaseInspector) getPostgreSQLIndexes(table *TableSchema) error {
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			fmt.Printf(dbWarnCloseRows+"\n", closeErr)
 		}
 	}()
 
@@ -308,18 +308,18 @@ func (di *DatabaseInspector) parsePostgreSQLIndexColumns(indexDef string) []stri
 // getPostgreSQLConstraints reads constraint information
 func (di *DatabaseInspector) getPostgreSQLConstraints(table *TableSchema) error {
 	rows, err := di.db.Query(`
-		SELECT 
+		SELECT
 			tc.constraint_name,
 			tc.constraint_type,
 			kcu.column_name,
 			ccu.table_name AS foreign_table_name,
 			ccu.column_name AS foreign_column_name
 		FROM information_schema.table_constraints tc
-		LEFT JOIN information_schema.key_column_usage kcu 
+		LEFT JOIN information_schema.key_column_usage kcu
 			ON tc.constraint_name = kcu.constraint_name
-		LEFT JOIN information_schema.constraint_column_usage ccu 
+		LEFT JOIN information_schema.constraint_column_usage ccu
 			ON tc.constraint_name = ccu.constraint_name
-		WHERE tc.table_schema = 'public' 
+		WHERE tc.table_schema = 'public'
 		AND tc.table_name = $1
 		AND tc.constraint_type IN ('FOREIGN KEY', 'UNIQUE', 'CHECK')
 		ORDER BY tc.constraint_name, kcu.ordinal_position
@@ -329,7 +329,7 @@ func (di *DatabaseInspector) getPostgreSQLConstraints(table *TableSchema) error 
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			fmt.Printf(dbWarnCloseRows+"\n", closeErr)
 		}
 	}()
 
@@ -393,7 +393,7 @@ func (di *DatabaseInspector) getSQLiteSchema() (map[string]*TableSchema, error) 
 
 	// Get all tables (excluding sqlite_* system tables)
 	tableRows, err := di.db.Query(`
-		SELECT name FROM sqlite_master 
+		SELECT name FROM sqlite_master
 		WHERE type='table' AND name NOT LIKE 'sqlite_%'
 		ORDER BY name
 	`)
@@ -445,7 +445,7 @@ func (di *DatabaseInspector) getSQLiteColumns(table *TableSchema) error {
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			fmt.Printf("Warning: Failed to close rows: %v\n", closeErr)
+			fmt.Printf(dbWarnCloseRows+"\n", closeErr)
 		}
 	}()
 

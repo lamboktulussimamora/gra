@@ -1188,7 +1188,7 @@ func TestPointerStructValidation(t *testing.T) {
 
 		hasNameError := false
 		for _, err := range errors {
-			if err.Field == "name" && err.Message == "name is required" {
+			if err.Field == fieldName && err.Message == fieldName+" is required" {
 				hasNameError = true
 				break
 			}

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -633,7 +634,15 @@ func (b *CSPBuilder) UpgradeInsecureRequests() *CSPBuilder {
 func (b *CSPBuilder) Build() string {
 	parts := []string{}
 
-	for directive, values := range b.directives {
+	// Ensure deterministic order to avoid flaky outputs/tests
+	keys := make([]string, 0, len(b.directives))
+	for k := range b.directives {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, directive := range keys {
+		values := b.directives[directive]
 		if len(values) == 0 || (len(values) == 1 && values[0] == "") {
 			// Handle directives without values (like upgrade-insecure-requests)
 			parts = append(parts, directive)
