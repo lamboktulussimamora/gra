@@ -195,7 +195,7 @@ func (v *Validator) validateSliceOfStructs(field reflect.Value, fieldName string
 
 // parseValidationRules parses the validation tag and extracts individual rules
 func (v *Validator) parseValidationRules(validateTag string) []string {
-	// Unified parser that preserves commas inside enum values and regexp patterns
+	// Unified parser that preserves commas inside enum values, regexp patterns, and range pairs
 	// Rule format examples:
 	//  - "required,min=3"
 	//  - "enum=A,B|custom,min=2"
@@ -209,8 +209,8 @@ func (v *Validator) parseValidationRules(validateTag string) []string {
 			continue
 		}
 
-		// Merge subsequent comma tokens for enum=... and regexp=...
-		if strings.HasPrefix(tok, "enum=") || strings.HasPrefix(tok, "regexp=") {
+		// Merge subsequent comma tokens for enum=..., regexp=..., and range=min,max
+		if strings.HasPrefix(tok, "enum=") || strings.HasPrefix(tok, "regexp=") || strings.HasPrefix(tok, "range=") {
 			rule := tok
 			// Consume following tokens that don't start a new rule (heuristic: no '=')
 			for i+1 < len(tokens) && !strings.Contains(tokens[i+1], "=") {

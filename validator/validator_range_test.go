@@ -2,9 +2,7 @@ package validator
 
 import "testing"
 
-// Cover validateRange error path via struct tags. Due to comma-splitting in
-// tag parsing, "range=1,3" is split and triggers the "Invalid range specification"
-// branch. We assert that behavior to raise coverage without altering production code.
+// Validate proper range handling for int, uint, and float, plus an invalid spec.
 
 type rangeSample struct {
 	I  int     `json:"i" validate:"range=1,3"`
@@ -16,10 +14,20 @@ type rangeSample struct {
 func TestValidateRange(t *testing.T) {
 	v := New()
 
-	// Any usage of range currently yields "Invalid range specification" due to parsing
+	// In-range values should pass with no errors for I, U, F.
 	sample := rangeSample{I: 2, U: 3, F: 1.0, I2: 10}
 	errs := v.Validate(sample)
-	if len(errs) != 4 {
-		t.Fatalf("expected 4 spec errors (i,u,f,i2), got %v", errs)
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 error for invalid spec (i2), got %d: %v", len(errs), errs)
+	}
+	if errs[0].Field != "i2" {
+		t.Fatalf("expected error on field 'i2', got %s", errs[0].Field)
+	}
+
+	// Out-of-range should error for each field plus the invalid spec (i2)
+	sample2 := rangeSample{I: 0, U: 5, F: 2.0}
+	errs2 := v.Validate(sample2)
+	if len(errs2) != 4 { // i out (<1), u out (>4), f out (>1.5), and i2 invalid spec
+		t.Fatalf("expected 4 errors (i,u,f out-of-range + i2 invalid spec), got %d: %v", len(errs2), errs2)
 	}
 }

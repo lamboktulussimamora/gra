@@ -23,7 +23,10 @@ COVERAGE_THRESHOLD = 80
 POSTGRES_COMPOSE = docker-compose.db.yml
 POSTGRES_URL ?= postgres://postgres:MyPassword_123@localhost:5432/gra_test?sslmode=disable
 
-# Default target
+## Default target shows help for discoverability
+.DEFAULT_GOAL := help
+
+# Default target (explicit)
 .PHONY: all
 all: test
 
@@ -32,10 +35,7 @@ all: test
 test:
 	$(GO) test -v $(TEST_PACKAGES)
 
-# Run only DB-related integration tests locally (SQLite)
-.PHONY: db-test
-db-test: pg-test
-	@true
+# (Deprecated) db-test alias removed to avoid duplicate target; use the db-* section below
 
 .PHONY: pg-up pg-down pg-test
 POSTGRES_HOST_PORT ?= 5432
@@ -94,11 +94,11 @@ coverage:
 .PHONY: coverage-check
 coverage-check: coverage
 	@echo "🔎 Verifying test coverage >= $(COVERAGE_THRESHOLD)%..."
-		@if [ -f coverage-summary.out ]; then \
-			COVERAGE=$$(sed -n 's/.*Weighted overall coverage:[[:space:]]*\([0-9.][0-9.]*\)%.*/\1/p' coverage-summary.out); \
-		else \
-			COVERAGE=$$($(GO) tool cover -func=$(COVERAGE_FILE) | awk '/^total:/ {print $$3}' | tr -d '%'); \
-		fi; \
+	@if [ -f coverage-summary.out ]; then \
+		COVERAGE=$$(sed -n 's/.*Weighted overall coverage:[[:space:]]*\([0-9.][0-9.]*\)%.*/\1/p' coverage-summary.out); \
+	else \
+		COVERAGE=$$($(GO) tool cover -func=$(COVERAGE_FILE) | awk '/^total:/ {print $$3}' | tr -d '%'); \
+	fi; \
 	if command -v bc >/dev/null 2>&1; then \
 	  COMP=$$(echo "$$COVERAGE >= $(COVERAGE_THRESHOLD)" | bc -l); \
 	else \
@@ -149,6 +149,35 @@ verify:
 		exit 1; \
 	fi
 	@echo "🎉 All code quality checks passed!"
+
+# Open the generated coverage HTML in default browser
+.PHONY: coverage-open
+coverage-open: coverage
+	@echo "🌐 Opening coverage report (coverage.html)..."
+	@open coverage.html || xdg-open coverage.html || true
+
+# Quick test alias: run tests with -short flag across packages
+.PHONY: short
+short:
+	@echo "🧪 Running short tests..."
+	@$(GO) test -short $(TEST_PACKAGES)
+
+# CI pipeline convenience target
+.PHONY: ci
+ci:
+	@$(MAKE) quality
+
+# Formatting and module housekeeping
+.PHONY: fmt tidy
+
+fmt:
+	@echo "🧹 Running go fmt..."
+	@$(GO) fmt $(PACKAGES)
+
+tidy:
+	@echo "📦 Ensuring go.mod/go.sum are tidy..."
+	@$(GO) mod tidy
+	@$(GO) mod verify
 
 # Build helper tools
 .PHONY: tools
@@ -356,28 +385,41 @@ help:
 	@echo "📋 Testing & Coverage:"
 	@echo "  make test         - Run tests (defaults to excluding ./examples)"
 	@echo "  make coverage     - Run tests with coverage and generate HTML report"
+	@echo "  make coverage-open - Open the HTML coverage report"
 	@echo "  make bench        - Run benchmarks"
 	@echo "  make race         - Run tests with race detector"
 	@echo "      Tip: INCLUDE_EXAMPLES=true make coverage   # include example apps in coverage"
 	@echo ""
 	@echo "🔍 Code Quality (MANDATORY BEFORE COMMIT):"
 	@echo "  make verify       - Full code quality check (fmt, vet, golangci-lint)"
+	@echo "  make fmt          - Run go fmt across packages"
+	@echo "  make tidy         - Run go mod tidy && verify modules"
 	@echo "  make lint         - Quick lint with auto-fix"
 	@echo "  make security     - Security analysis with gosec"
 	@echo "  make pre-commit   - Pre-commit quality gate (test + verify)"
 	@echo "  make quality      - Full quality pipeline (all checks)"
+	@echo "  make ci           - Run quality pipeline for CI"
+	@echo ""
+	@echo "🐘 Database (PostgreSQL) for integration tests:"
+	@echo "  make pg-up        - Start local PostgreSQL (docker-compose.db.yml)"
+	@echo "  make pg-down      - Stop local PostgreSQL"
+	@echo "  make pg-test      - Run Postgres-specific integration tests"
+	@echo "  make db-start     - Start test DB and wait for health"
+	@echo "  make db-test      - Run integration tests against PostgreSQL"
+	@echo "  make db-logs      - Tail DB logs"
+	@echo "  make db-stop      - Stop and remove test DB containers/volumes"
 	@echo ""
 	@echo "📊 SonarQube Analysis:"
-	@echo "  make sonar-start  - Start SonarQube server with Docker"
-	@echo "  make sonar-analyze- Run SonarQube analysis (set SONAR_TOKEN for remote)"
-	@echo "  make sonar-coverage- Check SonarQube coverage >= $(COVERAGE_THRESHOLD)% via API"
+	@echo "  make sonar-start   - Start SonarQube server with Docker"
+	@echo "  make sonar-analyze - Run SonarQube analysis (set SONAR_TOKEN for remote)"
+	@echo "  make sonar-coverage - Check SonarQube coverage >= $(COVERAGE_THRESHOLD)% via API"
 	@echo "  make sonar-status - Check SonarQube quality gate status"
 	@echo "  make sonar-stop   - Stop SonarQube server"
 	@echo "  make sonar-clean  - Clean SonarQube data and volumes"
 	@echo ""
 	@echo "🛠️  Utilities:"
 	@echo "  make pages        - Generate GitHub Pages content"
-	@echo "  make coverage-total- Print the total coverage line from coverage.out"
+	@echo "  make coverage-total - Print the total coverage line from coverage.out"
 	@echo "  make clean        - Clean up generated files, backups, and binaries"
 	@echo "  make help         - Show this help message"
 	@echo ""
