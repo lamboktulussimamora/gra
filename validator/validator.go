@@ -400,36 +400,51 @@ func (v *Validator) validateEmail(field reflect.Value, fieldName, customMessage 
 func (v *Validator) validateMin(field reflect.Value, fieldName, arg, customMessage string) {
 	switch field.Kind() {
 	case reflect.String:
-		minVal := 0
-		if _, err := fmt.Sscanf(arg, "%d", &minVal); err != nil {
-			v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
-			return
-		}
-		if len(field.String()) < minVal {
-			v.addError(fieldName, fmt.Sprintf("%s must be at least %d characters", fieldName, minVal), customMessage)
-		}
+		v.validateMinString(field, fieldName, arg, customMessage)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		minVal := int64(0)
-		if _, err := fmt.Sscanf(arg, "%d", &minVal); err != nil {
-			v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
-			return
-		}
-		if field.Int() < minVal {
-			v.addError(fieldName, fmt.Sprintf("%s must be at least %d", fieldName, minVal), customMessage)
-		}
+		v.validateMinInt(field, fieldName, arg, customMessage)
 	case reflect.Float32, reflect.Float64:
-		minVal := float64(0)
-		if _, err := fmt.Sscanf(arg, "%f", &minVal); err != nil {
-			v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
-			return
-		}
-		if field.Float() < minVal {
-			// Format without decimals if minVal is an integer value (e.g., 0 instead of 0.00)
-			if minVal == float64(int64(minVal)) {
-				v.addError(fieldName, fmt.Sprintf("%s must be at least %d", fieldName, int64(minVal)), customMessage)
-			} else {
-				v.addError(fieldName, fmt.Sprintf("%s must be at least %.2f", fieldName, minVal), customMessage)
-			}
+		v.validateMinFloat(field, fieldName, arg, customMessage)
+	}
+}
+
+// validateMinString validates that a string's length is at least the given minimum
+func (v *Validator) validateMinString(field reflect.Value, fieldName, arg, customMessage string) {
+	minVal := 0
+	if _, err := fmt.Sscanf(arg, "%d", &minVal); err != nil {
+		v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
+		return
+	}
+	if len(field.String()) < minVal {
+		v.addError(fieldName, fmt.Sprintf("%s must be at least %d characters", fieldName, minVal), customMessage)
+	}
+}
+
+// validateMinInt validates that an integer value is at least the given minimum
+func (v *Validator) validateMinInt(field reflect.Value, fieldName, arg, customMessage string) {
+	minVal := int64(0)
+	if _, err := fmt.Sscanf(arg, "%d", &minVal); err != nil {
+		v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
+		return
+	}
+	if field.Int() < minVal {
+		v.addError(fieldName, fmt.Sprintf("%s must be at least %d", fieldName, minVal), customMessage)
+	}
+}
+
+// validateMinFloat validates that a floating value is at least the given minimum
+func (v *Validator) validateMinFloat(field reflect.Value, fieldName, arg, customMessage string) {
+	minVal := float64(0)
+	if _, err := fmt.Sscanf(arg, "%f", &minVal); err != nil {
+		v.addError(fieldName, fmt.Sprintf(InvalidMinValueMsg, arg), customMessage)
+		return
+	}
+	if field.Float() < minVal {
+		// Format without decimals if minVal is an integer value (e.g., 0 instead of 0.00)
+		if minVal == float64(int64(minVal)) {
+			v.addError(fieldName, fmt.Sprintf("%s must be at least %d", fieldName, int64(minVal)), customMessage)
+		} else {
+			v.addError(fieldName, fmt.Sprintf("%s must be at least %.2f", fieldName, minVal), customMessage)
 		}
 	}
 }
