@@ -199,3 +199,41 @@ func TestSimpleMigrator_EndToEnd_SQLite(t *testing.T) {
 		t.Fatalf("did not expect pending changes after apply: %#v", status)
 	}
 }
+
+// TestEFMigrationManager_recordMigrationResult ensures insert and conflict-update paths are covered.
+func TestEFMigrationManager_recordMigrationResult_SQLite(t *testing.T) {
+	db := openTestSQLite(t)
+	em := NewEFMigrationManager(db, nil)
+	if err := em.EnsureSchema(); err != nil {
+		t.Fatalf("EnsureSchema failed: %v", err)
+	}
+
+	// Prepare a migration
+	mig := &Migration{ID: "1_init", Name: "init", Version: time.Now().Unix(), Description: "", UpSQL: "--", DownSQL: "--"}
+
+	// Insert as failed first
+	em.recordMigrationResult(*mig, MigrationStateFailed, 123, "boom")
+
+	var state string
+	var execMs int
+	var errMsg string
+	// Verify inserted
+	err := db.QueryRow("SELECT state, execution_time_ms, COALESCE(error_message,'') FROM "+em.historyTable+" WHERE migration_id=?", mig.ID).Scan(&state, &execMs, &errMsg)
+	if err != nil {
+		t.Fatalf("query history failed: %v", err)
+	}
+	if state != "failed" || execMs != 123 || errMsg != "boom" {
+		t.Fatalf("unexpected row: state=%s execMs=%d err=%q", state, execMs, errMsg)
+	}
+
+	// Update same migration to applied via conflict update
+	em.recordMigrationResult(*mig, MigrationStateApplied, 5, "")
+
+	err = db.QueryRow("SELECT state, execution_time_ms, COALESCE(error_message,'') FROM "+em.historyTable+" WHERE migration_id=?", mig.ID).Scan(&state, &execMs, &errMsg)
+	if err != nil {
+		t.Fatalf("requery history failed: %v", err)
+	}
+	if state != "applied" || execMs != 5 || errMsg != "" {
+		t.Fatalf("unexpected updated row: state=%s execMs=%d err=%q", state, execMs, errMsg)
+	}
+}

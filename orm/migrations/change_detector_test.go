@@ -199,3 +199,33 @@ func TestGetChangeSummary(t *testing.T) {
 		t.Fatalf("expected flags in summary, got: %s", summary)
 	}
 }
+
+func TestRequiresReviewForChange_Helper(t *testing.T) {
+	cd := &ChangeDetector{}
+	if !cd.requiresReviewForChange(MigrationChange{Type: DropTable}) {
+		t.Fatalf("expected DropTable to require review")
+	}
+	if cd.requiresReviewForChange(MigrationChange{Type: AddIndex}) {
+		t.Fatalf("did not expect AddIndex to require review")
+	}
+	// AlterColumn delegates to isDataLosingAlterColumn; provide scenario that returns true
+	oldCol := &DatabaseColumnInfo{IsNullable: true, DataType: "VARCHAR", MaxLength: pint(10)}
+	newCol := &ColumnInfo{IsNullable: false, DataType: "VARCHAR", MaxLength: pint(10)}
+	if !cd.requiresReviewForChange(MigrationChange{Type: AlterColumn, OldValue: oldCol, NewValue: newCol}) {
+		t.Fatalf("expected AlterColumn (nullable->not null) to require review")
+	}
+}
+
+func TestAppendSummary_Helper(t *testing.T) {
+	cd := &ChangeDetector{}
+	sum := map[ChangeType]int{CreateTable: 3}
+	parts := cd.appendSummary(nil, sum, CreateTable, "%d table(s) to create")
+	if len(parts) != 1 || !strings.Contains(parts[0], "3 table(s) to create") {
+		t.Fatalf("unexpected parts: %#v", parts)
+	}
+	// Missing key should not append
+	parts2 := cd.appendSummary(parts, sum, DropTable, "%d table(s) to drop")
+	if len(parts2) != 1 {
+		t.Fatalf("expected no new part when key missing; got %#v", parts2)
+	}
+}

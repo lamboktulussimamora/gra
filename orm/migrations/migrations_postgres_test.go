@@ -178,3 +178,90 @@ func TestPostgres_Migrations_AlterColumn_AddAndDrop(t *testing.T) {
 		t.Fatalf("bio column not found after alter: %v", err)
 	}
 }
+
+// Verify inspector discovers PK, unique index, and foreign key constraints.
+func TestPostgres_Inspector_PK_Index_Constraints(t *testing.T) {
+	db := openPGForMigrations(t)
+	// Clean any leftovers
+	_, _ = db.Exec(`DROP TABLE IF EXISTS orders`)
+	_, _ = db.Exec(`DROP TABLE IF EXISTS customers`)
+
+	// Create schema: customers with PK, unique email; orders with FK to customers(id)
+	_, err := db.Exec(`CREATE TABLE customers (
+		id SERIAL PRIMARY KEY,
+		email VARCHAR(200) UNIQUE NOT NULL,
+		name TEXT
+	)`)
+	if err != nil {
+		t.Skipf("setup customers failed: %v", err)
+	}
+	_, err = db.Exec(`CREATE TABLE orders (
+		id SERIAL PRIMARY KEY,
+		customer_id INTEGER NOT NULL,
+		amount NUMERIC(10,2) NOT NULL,
+		CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id) REFERENCES customers(id)
+	)`)
+	if err != nil {
+		t.Fatalf("setup orders failed: %v", err)
+	}
+	// extra index for coverage of index parsing
+	_, _ = db.Exec(`CREATE INDEX ix_orders_customer_id ON orders(customer_id)`)
+
+	inspector := NewDatabaseInspector(db, PostgreSQL)
+	schema, err := inspector.GetCurrentSchema()
+	if err != nil {
+		t.Fatalf("GetCurrentSchema: %v", err)
+	}
+
+	// customers checks
+	cust, ok := schema["customers"]
+	if !ok {
+		t.Fatalf("customers not found")
+	}
+	// Primary key contains id
+	foundPK := false
+	for _, c := range cust.PrimaryKeys {
+		if c == "id" {
+			foundPK = true
+			break
+		}
+	}
+	if !foundPK {
+		t.Fatalf("customers id not found in primary keys: %+v", cust.PrimaryKeys)
+	}
+	// Unique constraint should exist on email
+	hasUnique := false
+	for _, con := range cust.Constraints {
+		if con.Type == "UNIQUE" {
+			// Columns may be sorted; check contains email
+			for _, col := range con.Columns {
+				if col == "email" {
+					hasUnique = true
+					break
+				}
+			}
+		}
+	}
+	if !hasUnique {
+		t.Errorf("expected UNIQUE constraint on customers.email, got: %+v", cust.Constraints)
+	}
+
+	// orders checks
+	ord, ok := schema["orders"]
+	if !ok {
+		t.Fatalf("orders not found")
+	}
+	if _, ok := ord.Indexes["ix_orders_customer_id"]; !ok {
+		t.Errorf("expected index ix_orders_customer_id present, got: %+v", ord.Indexes)
+	}
+	hasFK := false
+	for _, con := range ord.Constraints {
+		if con.Type == "FOREIGN KEY" && con.ReferencedTable == "customers" {
+			hasFK = true
+			break
+		}
+	}
+	if !hasFK {
+		t.Errorf("expected FK to customers present, got: %+v", ord.Constraints)
+	}
+}

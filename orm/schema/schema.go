@@ -31,23 +31,33 @@ const (
 func DetectDatabaseDriver(db *sql.DB) DatabaseDriver {
 	// Try to get the driver name through reflection
 	if db != nil {
-		// Use a test query approach to detect database type
+		// Use a test query approach to detect database type.
+		// IMPORTANT: Always close returned rows to avoid leaking connections.
 		// PostgreSQL specific query
-		if _, err := db.Query("SELECT version()"); err == nil {
-			// Try PostgreSQL-specific syntax
-			if _, err := db.Query("SELECT 1::integer"); err == nil {
+		if rows, err := db.Query("SELECT version()"); err == nil {
+			_ = rows.Close()
+			if rows2, err2 := db.Query("SELECT 1::integer"); err2 == nil {
+				_ = rows2.Close()
 				return PostgreSQL
+			} else if rows2 != nil {
+				_ = rows2.Close()
 			}
 		}
 
 		// SQLite specific query
-		if _, err := db.Query("SELECT sqlite_version()"); err == nil {
+		if rows, err := db.Query("SELECT sqlite_version()"); err == nil {
+			_ = rows.Close()
 			return SQLite
+		} else if rows != nil {
+			_ = rows.Close()
 		}
 
 		// MySQL specific query
-		if _, err := db.Query("SELECT VERSION()"); err == nil {
+		if rows, err := db.Query("SELECT VERSION()"); err == nil {
+			_ = rows.Close()
 			return MySQL
+		} else if rows != nil {
+			_ = rows.Close()
 		}
 	}
 

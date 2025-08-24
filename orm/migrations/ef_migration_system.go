@@ -270,6 +270,9 @@ func (em *EFMigrationManager) EnsureSchema() error {
 			strings.ReplaceAll(em.historyTable, "__", ""), em.historyTable),
 		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_%s_state ON %s(state)`,
 			strings.ReplaceAll(em.historyTable, "__", ""), em.historyTable),
+		// Ensure ON CONFLICT(migration_id) works by making migration_id unique across rows
+		fmt.Sprintf(`CREATE UNIQUE INDEX IF NOT EXISTS idx_%s_migration_id_unique ON %s(migration_id)`,
+			strings.ReplaceAll(em.historyTable, "__", ""), em.historyTable),
 	}
 
 	if err := em.ensureSchemaIndexes(indexQueries); err != nil {
