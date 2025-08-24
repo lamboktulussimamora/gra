@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.1.0 (2025-08-24)
+
+### SonarQube Integration, Coverage Gate, Validator Range, and DX Improvements
+
+#### New Features:
+- SonarQube integration with Make targets: `sonar-start`, `sonar-analyze`, `sonar-status`, `sonar-coverage`, `sonar-clean`
+- Enforced coverage gate ≥ 80% via `make coverage-check`
+- Validator: `range=min,max` tag parsing and validation for numeric types (int/uint/float)
+
+#### Developer Experience:
+- Makefile ergonomics: default `help` goal; added `fmt`, `tidy`, `coverage-open`, `ci`; expanded help and DB controls
+
+#### Documentation:
+- Updated SonarQube setup guide with new targets and coverage gate flow
+- Added guide for validator `range=` rule usage with examples
+
 ## v1.0.7 (2025-06-05)
 
 ### Hybrid Migration System Bug Fix

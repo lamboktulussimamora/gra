@@ -64,6 +64,8 @@ source ~/.zshrc
 
 ```bash
 make sonar-analyze
+make sonar-status      # should be OK
+make sonar-coverage    # must be >= 80%
 ```
 
 This will:
@@ -79,6 +81,8 @@ This will:
 | `make sonar-start` | Start SonarQube server with Docker |
 | `make sonar-stop` | Stop SonarQube server |
 | `make sonar-analyze` | Run complete analysis (tests + SonarQube) |
+| `make sonar-status` | Check SonarQube quality gate status |
+| `make sonar-coverage` | Check coverage in SonarQube (threshold 80%) |
 | `make sonar-clean` | Clean SonarQube data and volumes |
 
 ## Manual Analysis
