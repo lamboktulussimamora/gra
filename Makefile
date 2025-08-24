@@ -235,7 +235,7 @@ db-test: db-start
 	$(MAKE) db-stop
 
 # SonarQube targets
-.PHONY: sonar-start sonar-stop sonar-analyze sonar-clean
+.PHONY: sonar-start sonar-stop sonar-analyze sonar-clean sonar-wait sonar-token
 
 sonar-start:
 	@echo "Starting SonarQube with Docker Compose..."
@@ -244,32 +244,61 @@ sonar-start:
 	@echo "Credentials used by Make targets: $(SONAR_USER)/********"
 	@echo "Please wait a few minutes for SonarQube to fully initialize"
 
+# Wait until SonarQube is UP
+sonar-wait: tools
+	@echo "⏳ Waiting for SonarQube to be UP at $(SONAR_HOST)..."
+	@for i in $$(seq 1 60); do \
+		STATUS=$$(curl -s $(SONAR_HOST)/api/system/status | ./bin/jsonval -p status 2>/dev/null || echo STARTING); \
+		if [ "$$STATUS" = "UP" ]; then echo "✅ SonarQube is UP"; exit 0; fi; \
+		echo "  Attempt $$i: status=$$STATUS"; \
+		sleep 2; \
+	done; \
+	echo "❌ SonarQube did not become UP in time"; exit 1
+
+# Generate or reuse a Sonar token (stored locally in .sonar.token)
+sonar-token: tools
+	@if [ -n "$$SONAR_TOKEN" ]; then \
+		echo "🔐 Using SONAR_TOKEN from environment"; \
+		exit 0; \
+	fi; \
+	if [ -s .sonar.token ]; then \
+		echo "🔐 Using cached token from .sonar.token"; \
+		exit 0; \
+	fi; \
+	NAME=gra-cli-$$RANDOM; \
+	echo "🔐 Generating new token '$$NAME' for $(SONAR_USER) ..."; \
+	RESP=$$(curl -s -u $(SONAR_USER):$(SONAR_PASSWORD) -X POST "$(SONAR_HOST)/api/user_tokens/generate?name=$$NAME"); \
+	TOKEN=$$(printf "%s" "$$RESP" | ./bin/jsonval -p token 2>/dev/null || echo ""); \
+	if [ -z "$$TOKEN" ]; then echo "❌ Failed to generate token (response: $$RESP)"; exit 1; fi; \
+	printf "%s" "$$TOKEN" > .sonar.token; \
+	chmod 600 .sonar.token; \
+	echo "✅ Token saved to .sonar.token"
+
 sonar-stop:
 	@echo "Stopping SonarQube..."
 	docker-compose -f docker-compose.sonar.yml down
 
-sonar-analyze: coverage tools
+sonar-analyze: coverage tools sonar-wait sonar-token
 	@echo "🔍 Running SonarQube analysis..."
-	@RUN_SCANNER() { \
-		if command -v sonar-scanner >/dev/null 2>&1; then \
-			if [ -z "$$SONAR_TOKEN" ]; then \
-				sonar-scanner -Dsonar.host.url=$(SONAR_HOST) -Dsonar.scanner.skipJreProvisioning=true; \
-			else \
-				sonar-scanner -Dsonar.host.url=$(SONAR_HOST) -Dsonar.token=$$SONAR_TOKEN -Dsonar.scanner.skipJreProvisioning=true; \
-			fi; \
+	@TOK="$$SONAR_TOKEN"; \
+	if [ -z "$$TOK" ] && [ -s .sonar.token ]; then TOK=$$(cat .sonar.token); fi; \
+	if command -v sonar-scanner >/dev/null 2>&1; then \
+		if [ -z "$$TOK" ]; then \
+			echo "⚠️  No SONAR_TOKEN available; analysis may fail"; \
+			sonar-scanner -Dsonar.host.url=$(SONAR_HOST) -Dsonar.scanner.skipJreProvisioning=true; \
 		else \
-			return 127; \
+			sonar-scanner -Dsonar.host.url=$(SONAR_HOST) -Dsonar.token=$$TOK -Dsonar.scanner.skipJreProvisioning=true; \
 		fi; \
-	}; \
-	if ! RUN_SCANNER; then \
+	else \
 		echo "⚠️  Local sonar-scanner not available or failed. Falling back to Docker scanner..."; \
 		if command -v docker >/dev/null 2>&1; then \
 			DOCKER_IMG=sonarsource/sonar-scanner-cli:latest; \
 			echo "🐳 Using $$DOCKER_IMG"; \
-			if [ -z "$$SONAR_TOKEN" ]; then \
-				docker run --rm -e SONAR_HOST_URL=$(SONAR_HOST) -v "$$PWD:/usr/src" -w /usr/src $$DOCKER_IMG; \
+			SCANNER_HOST=http://host.docker.internal:9000; \
+			if [ -z "$$TOK" ]; then \
+				docker run --rm -e SONAR_HOST_URL=$$SCANNER_HOST -v "$$PWD:/usr/src" -w /usr/src $$DOCKER_IMG; \
 			else \
-				docker run --rm -e SONAR_HOST_URL=$(SONAR_HOST) -e SONAR_TOKEN=$$SONAR_TOKEN -v "$$PWD:/usr/src" -w /usr/src $$DOCKER_IMG; \
+				docker run --rm -e SONAR_HOST_URL=$$SCANNER_HOST -e SONAR_TOKEN=$$TOK -v "$$PWD:/usr/src" -w /usr/src $$DOCKER_IMG; \
 			fi; \
 		else \
 			echo "❌ Neither local sonar-scanner nor Docker is available."; \
