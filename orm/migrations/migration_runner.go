@@ -39,11 +39,13 @@ const (
 	msgMigrationStatusDivider = "================"
 
 	// SQL type and struct type constants for migration runner
-	sqlTypeInteger   = "INTEGER"
-	sqlTypeText      = "TEXT"
-	sqlTypeBoolean   = "BOOLEAN"
-	sqlTypeTimeStamp = "TIMESTAMP"
-	goTypeTime       = "time.Time"
+	sqlTypeInteger    = "INTEGER"
+	sqlTypeText       = "TEXT"
+	sqlTypeBoolean    = "BOOLEAN"
+	sqlTypeTimeStamp  = "TIMESTAMP"
+	sqlTypeDecimal102 = "DECIMAL(10,2)"
+	sqlTypeSerialPK   = "SERIAL PRIMARY KEY"
+	goTypeTime        = "time.Time"
 )
 
 // MigrationRunner handles automatic database migrations
@@ -188,7 +190,7 @@ func sqlTypeForField(fieldType reflect.Type, dbTag string, field reflect.StructF
 	switch fieldType.Kind() {
 	case reflect.Int, reflect.Int32, reflect.Int64:
 		if dbTag == "id" {
-			return "SERIAL PRIMARY KEY", isNullable
+			return sqlTypeSerialPK, isNullable
 		}
 		return sqlTypeInteger, isNullable
 	case reflect.String:
@@ -198,7 +200,7 @@ func sqlTypeForField(fieldType reflect.Type, dbTag string, field reflect.StructF
 		}
 		return sqlTypeText, isNullable
 	case reflect.Float32, reflect.Float64:
-		return "DECIMAL(10,2)", isNullable
+		return sqlTypeDecimal102, isNullable
 	case reflect.Bool:
 		return sqlTypeBoolean, isNullable
 	case reflect.Struct:

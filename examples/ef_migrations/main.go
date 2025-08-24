@@ -22,7 +22,8 @@ func main() {
 // runMigrationDemo runs the complete EF migration lifecycle demonstration
 func runMigrationDemo(dbPath string) error {
 	// Ensure directory exists
-	if err := os.MkdirAll("./test_migrations", 0755); err != nil {
+	//nolint:gosec // examples: fixed, non-sensitive path; permissive perms acceptable for demo
+	if err := os.MkdirAll("./test_migrations", 0o755); err != nil {
 		return fmt.Errorf("failed to create test directory: %w", err)
 	}
 

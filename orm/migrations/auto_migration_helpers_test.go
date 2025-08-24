@@ -49,7 +49,7 @@ func TestAutoMigrator_getTableName(t *testing.T) {
 func TestAutoMigrator_processStructFields_Embedded(t *testing.T) {
 	am := &AutoMigrator{}
 	var seen []string
-	am.processStructFields(reflect.TypeOf(embeddedOuter{}), func(field reflect.StructField, dbTag string) {
+	am.processStructFields(reflect.TypeOf(embeddedOuter{}), func(_ reflect.StructField, dbTag string) {
 		seen = append(seen, dbTag)
 	})
 	got := strings.Join(seen, ",")

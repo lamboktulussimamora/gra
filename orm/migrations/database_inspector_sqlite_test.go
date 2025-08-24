@@ -17,7 +17,7 @@ func TestDatabaseInspector_SQLite_SchemaDiscovery(t *testing.T) {
 	}
 	// Allow multiple connections for nested queries; keep it modest.
 	db.SetMaxOpenConns(5)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// create a simple table and index
 	_, err = db.Exec(`CREATE TABLE users (

@@ -21,16 +21,16 @@ type singleRows struct {
 	done bool
 }
 
-func (d singleRowDriver) Open(name string) (driver.Conn, error) { return singleConn{}, nil }
-func (c singleConn) Prepare(query string) (driver.Stmt, error) {
-	return singleStmt{cols: []string{"id", "name", "age"}, vals: []driver.Value{int64(7), "Alice", int64(30)}}, nil
+func (d singleRowDriver) Open(_ string) (driver.Conn, error) { return singleConn{}, nil }
+func (c singleConn) Prepare(_ string) (driver.Stmt, error) {
+	return singleStmt{cols: []string{"id", "name", "age"}, vals: []driver.Value{int64(7), tNameAlice, int64(30)}}, nil
 }
-func (c singleConn) Close() error                                    { return nil }
-func (c singleConn) Begin() (driver.Tx, error)                       { return nil, nil }
-func (s singleStmt) Close() error                                    { return nil }
-func (s singleStmt) NumInput() int                                   { return -1 }
-func (s singleStmt) Exec(args []driver.Value) (driver.Result, error) { return nil, nil }
-func (s singleStmt) Query(args []driver.Value) (driver.Rows, error) {
+func (c singleConn) Close() error                                 { return nil }
+func (c singleConn) Begin() (driver.Tx, error)                    { return nil, nil }
+func (s singleStmt) Close() error                                 { return nil }
+func (s singleStmt) NumInput() int                                { return -1 }
+func (s singleStmt) Exec(_ []driver.Value) (driver.Result, error) { return nil, nil }
+func (s singleStmt) Query(_ []driver.Value) (driver.Rows, error) {
 	return &singleRows{cols: s.cols, vals: s.vals}, nil
 }
 func (r *singleRows) Columns() []string { return r.cols }
@@ -50,19 +50,19 @@ func TestScanEntity_SetsFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Prepare and query to get Rows
 	stmt, err := db.PrepareContext(context.Background(), "select 1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 	rows, err := stmt.QueryContext(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// Move to the first row before scanning
 	if !rows.Next() {
@@ -78,7 +78,7 @@ func TestScanEntity_SetsFields(t *testing.T) {
 	if err := scanEntity(rows, &e); err != nil {
 		t.Fatalf("scanEntity error: %v", err)
 	}
-	if e.ID != 7 || e.Name != "Alice" || e.Age != 30 {
+	if e.ID != 7 || e.Name != tNameAlice || e.Age != 30 {
 		t.Fatalf("unexpected entity values: %+v", e)
 	}
 }

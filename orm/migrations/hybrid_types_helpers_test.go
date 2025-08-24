@@ -37,9 +37,9 @@ func TestMigrationMode_ParseAndString(t *testing.T) {
 		in  string
 		out MigrationMode
 	}{
-		{"Automatic", ModeAutomatic},
+		{ModeAutomatic.String(), ModeAutomatic},
 		{"Interactive", ModeInteractive},
-		{"GenerateOnly", ModeGenerateOnly},
+		{ModeGenerateOnly.String(), ModeGenerateOnly},
 		{"ForceDestructive", ModeForceDestructive},
 		{"Unknown", ModeAutomatic},
 	}
@@ -48,7 +48,11 @@ func TestMigrationMode_ParseAndString(t *testing.T) {
 			t.Fatalf("ParseMigrationMode %s => %v", c.in, got)
 		}
 	}
-	if ModeAutomatic.String() != "Automatic" || ModeForceDestructive.String() != "ForceDestructive" {
+	const (
+		strAutomatic        = "Automatic"
+		strForceDestructive = "ForceDestructive"
+	)
+	if ModeAutomatic.String() != strAutomatic || ModeForceDestructive.String() != strForceDestructive {
 		t.Fatalf("unexpected String() output")
 	}
 }

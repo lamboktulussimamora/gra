@@ -2,20 +2,27 @@ package main
 
 import "testing"
 
+const (
+	drvPostgres = "postgres"
+	drvSQLite3  = "sqlite3"
+	drvSQLite   = "sqlite"
+	drvMySQL    = "mysql"
+)
+
 func TestGetDriver(t *testing.T) {
-	if d := getDriver("postgres"); d != "postgres" {
+	if d := getDriver(drvPostgres); d != drvPostgres {
 		t.Fatalf("expected postgres, got %q", d)
 	}
-	if d := getDriver("postgresql"); d != "postgres" {
+	if d := getDriver("postgresql"); d != drvPostgres {
 		t.Fatalf("expected postgres, got %q", d)
 	}
-	if d := getDriver("sqlite"); d != "sqlite3" {
+	if d := getDriver(drvSQLite); d != drvSQLite3 {
 		t.Fatalf("expected sqlite, got %q", d)
 	}
-	if d := getDriver("sqlite3"); d != "sqlite3" {
+	if d := getDriver(drvSQLite3); d != drvSQLite3 {
 		t.Fatalf("expected sqlite, got %q", d)
 	}
-	if d := getDriver("mysql"); d != "mysql" {
+	if d := getDriver(drvMySQL); d != drvMySQL {
 		t.Fatalf("expected mysql, got %q", d)
 	}
 }

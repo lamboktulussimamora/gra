@@ -202,6 +202,10 @@ func TestSimpleMigrator_EndToEnd_SQLite(t *testing.T) {
 
 // TestEFMigrationManager_recordMigrationResult ensures insert and conflict-update paths are covered.
 func TestEFMigrationManager_recordMigrationResult_SQLite(t *testing.T) {
+	const (
+		stateFailed  = "failed"
+		stateApplied = "applied"
+	)
 	db := openTestSQLite(t)
 	em := NewEFMigrationManager(db, nil)
 	if err := em.EnsureSchema(); err != nil {
@@ -222,7 +226,7 @@ func TestEFMigrationManager_recordMigrationResult_SQLite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query history failed: %v", err)
 	}
-	if state != "failed" || execMs != 123 || errMsg != "boom" {
+	if state != stateFailed || execMs != 123 || errMsg != "boom" {
 		t.Fatalf("unexpected row: state=%s execMs=%d err=%q", state, execMs, errMsg)
 	}
 
@@ -233,7 +237,7 @@ func TestEFMigrationManager_recordMigrationResult_SQLite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("requery history failed: %v", err)
 	}
-	if state != "applied" || execMs != 5 || errMsg != "" {
+	if state != stateApplied || execMs != 5 || errMsg != "" {
 		t.Fatalf("unexpected updated row: state=%s execMs=%d err=%q", state, execMs, errMsg)
 	}
 }

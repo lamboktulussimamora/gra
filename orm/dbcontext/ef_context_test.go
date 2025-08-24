@@ -45,7 +45,7 @@ func TestGetColumnNameFromFieldPriority(t *testing.T) {
 
 	// db tag wins
 	fName, _ := typ.FieldByName("Name")
-	if got := ctx.getColumnNameFromField(fName); got != "name" {
+	if got := ctx.getColumnNameFromField(fName); got != tColName {
 		t.Fatalf("db tag expected 'name', got %q", got)
 	}
 
@@ -177,7 +177,7 @@ func TestEF_getTableAndColumnAndSkipRules(t *testing.T) {
 
 func TestEF_ExtractFieldsForDebug_SkipsIDAndEmbeddedAndIgnored(t *testing.T) {
 	var ctx EFContext
-	u := &efUser{BaseEntity: BaseEntity{ID: 123}, Name: "Alice", Email: "a@example.com", SkipDB: "x", SkipJSON: "y"}
+	u := &efUser{BaseEntity: BaseEntity{ID: 123}, Name: tNameAlice, Email: "a@example.com", SkipDB: "x", SkipJSON: "y"}
 	cols, vals := ctx.ExtractFieldsForDebug(u)
 
 	// ID should be excluded, SkipDB and SkipJSON excluded, created_at/updated_at included via embedded BaseEntity.
@@ -208,7 +208,7 @@ func TestEF_ExtractFieldsForDebug_SkipsIDAndEmbeddedAndIgnored(t *testing.T) {
 	if nameIdx < 0 || emailIdx < 0 {
 		t.Fatalf("missing name or email columns: %v", cols)
 	}
-	if vals[nameIdx] != "Alice" || vals[emailIdx] != "a@example.com" {
+	if vals[nameIdx] != tNameAlice || vals[emailIdx] != "a@example.com" {
 		t.Fatalf("unexpected name/email values: %v", vals)
 	}
 }
@@ -240,16 +240,16 @@ func TestEFContext_DBGuards(t *testing.T) {
 	ctx := &EFContext{db: nil}
 	u := &efUser{Name: "Bob", Email: "b@example.com"}
 
-	if err := ctx.Add(u); err == nil || err.Error() != "database connection is nil" {
+	if err := ctx.Add(u); err == nil || err.Error() != tErrNilDB {
 		t.Fatalf("Add should error on nil db, got %v", err)
 	}
-	if err := ctx.Update(u); err == nil || err.Error() != "database connection is nil" {
+	if err := ctx.Update(u); err == nil || err.Error() != tErrNilDB {
 		t.Fatalf("Update should error on nil db, got %v", err)
 	}
-	if err := ctx.Remove(u); err == nil || err.Error() != "database connection is nil" {
+	if err := ctx.Remove(u); err == nil || err.Error() != tErrNilDB {
 		t.Fatalf("Remove should error on nil db, got %v", err)
 	}
-	if err := ctx.Find(u, 1); err == nil || err.Error() != "database connection is nil" {
+	if err := ctx.Find(u, 1); err == nil || err.Error() != tErrNilDB {
 		t.Fatalf("Find should error on nil db, got %v", err)
 	}
 	// SaveChanges is a no-op

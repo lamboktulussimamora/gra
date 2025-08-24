@@ -350,8 +350,8 @@ func (mr *ModelRegistry) getSQLType(field reflect.StructField, fieldType reflect
 		}
 		return "VARCHAR(255)"
 	default:
-		if fieldType.String() == "time.Time" {
-			return "TIMESTAMP"
+		if fieldType.String() == goTypeTime {
+			return sqlTypeTimeStamp
 		}
 		return sqlTypeText
 	}
@@ -587,9 +587,9 @@ func (mr *ModelRegistry) getBooleanType() string {
 	case MySQL:
 		return "TINYINT(1)"
 	case PostgreSQL:
-		return "BOOLEAN"
+		return sqlTypeBoolean
 	default:
-		return "BOOLEAN"
+		return sqlTypeBoolean
 	}
 }
 

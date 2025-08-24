@@ -43,14 +43,24 @@ func TestSetFieldValueHelpers(t *testing.T) {
 	rv := reflect.ValueOf(&s).Elem()
 
 	// string from []byte
-	setFieldValue(rv.FieldByName("Str"), []byte("hello"))
+	if err := setFieldValue(rv.FieldByName("Str"), []byte("hello")); err != nil {
+		t.Fatal(err)
+	}
 	// ints
-	setFieldValue(rv.FieldByName("I64"), int64(42))
-	setFieldValue(rv.FieldByName("U64"), int64(7))
+	if err := setFieldValue(rv.FieldByName("I64"), int64(42)); err != nil {
+		t.Fatal(err)
+	}
+	if err := setFieldValue(rv.FieldByName("U64"), int64(7)); err != nil {
+		t.Fatal(err)
+	}
 	// floats
-	setFieldValue(rv.FieldByName("F64"), float64(3.14))
+	if err := setFieldValue(rv.FieldByName("F64"), float64(3.14)); err != nil {
+		t.Fatal(err)
+	}
 	// bool from int64
-	setFieldValue(rv.FieldByName("B"), int64(1))
+	if err := setFieldValue(rv.FieldByName("B"), int64(1)); err != nil {
+		t.Fatal(err)
+	}
 
 	if s.Str != "hello" || s.I64 != 42 || s.U64 != 7 || s.F64 != 3.14 || s.B != true {
 		t.Fatalf("setFieldValue helpers produced wrong result: %+v", s)

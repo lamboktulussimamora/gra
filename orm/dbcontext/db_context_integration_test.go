@@ -53,7 +53,7 @@ func TestPG_InsertUpdateDelete_AndQueries(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 	db := ensurePg(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := NewEnhancedDbContextWithDB(db)
 	if ctx.driver != driverPostgres {
@@ -90,9 +90,9 @@ func TestPG_InsertUpdateDelete_AndQueries(t *testing.T) {
 		t.Fatalf("count err=%v cnt=%d", err, cnt)
 	}
 	// Any
-	any, err := set.Any()
-	if err != nil || !any {
-		t.Fatalf("any err=%v any=%v", err, any)
+	hasAny, err := set.Any()
+	if err != nil || !hasAny {
+		t.Fatalf("any err=%v any=%v", err, hasAny)
 	}
 	// Find by id
 	got, err := set.Find(u.ID)

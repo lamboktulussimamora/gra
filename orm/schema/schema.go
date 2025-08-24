@@ -292,7 +292,7 @@ func handleDefaultValue(parts []string, sqlTag, migrationTag string) []string {
 		defaultMatch = extractSQLValue(migrationTag, "default")
 	}
 	if defaultMatch != "" {
-		if defaultMatch == "CURRENT_TIMESTAMP" {
+		if defaultMatch == currentTimestampValue {
 			parts = append(parts, "DEFAULT CURRENT_TIMESTAMP")
 		} else if defaultMatch != "null" {
 			parts = append(parts, fmt.Sprintf("DEFAULT %s", defaultMatch))
@@ -300,6 +300,11 @@ func handleDefaultValue(parts []string, sqlTag, migrationTag string) []string {
 	}
 	return parts
 }
+
+// common SQL literal constants
+const (
+	currentTimestampValue = "CURRENT_TIMESTAMP"
+)
 
 // goTypeToSQLTypeForDriver converts Go types to SQL types for a specific database driver
 func goTypeToSQLTypeForDriver(t reflect.Type, driver DatabaseDriver) string {

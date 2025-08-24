@@ -1,3 +1,4 @@
+// Package main provides a simple CLI tool to extract values from JSON via a dot path.
 package main
 
 import (

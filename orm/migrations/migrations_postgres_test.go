@@ -57,7 +57,9 @@ type PGUser struct {
 	Name  string `db:"name" migration:"not_null,max_length:100"`
 }
 
-func (PGUser) TableName() string { return "pg_users" }
+const tblPGUsers = "pg_users"
+
+func (PGUser) TableName() string { return tblPGUsers }
 
 // Test that DatabaseInspector on Postgres returns expected schema after applying SQLGenerator output
 func TestPostgres_Migrations_CreateAndInspect(t *testing.T) {
@@ -103,7 +105,7 @@ func TestPostgres_Migrations_CreateAndInspect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCurrentSchema error: %v", err)
 	}
-	tbl, ok := schema["pg_users"]
+	tbl, ok := schema[tblPGUsers]
 	if !ok {
 		t.Fatalf("pg_users table not found in inspector")
 	}

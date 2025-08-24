@@ -23,14 +23,14 @@ type esRows struct {
 	idx  int
 }
 
-func (d esDriver) Open(name string) (driver.Conn, error) { return esConn{}, nil }
+func (d esDriver) Open(_ string) (driver.Conn, error) { return esConn{}, nil }
 func (c esConn) Prepare(query string) (driver.Stmt, error) {
 	q := strings.ToUpper(query)
 	// Default columns map to esUser db tags
 	cols := []string{"id", "name", "email", "role", "deleted_at", "updated_at"}
 	rows := [][]driver.Value{
-		{int64(1), "Alice", "alice@example.com", "admin", nil, nil},
-		{int64(2), "Bob", "bob@example.com", "user", nil, nil},
+		{int64(1), tNameAlice, "alice@example.com", "admin", nil, nil},
+		{int64(2), tNameBob, "bob@example.com", "user", nil, nil},
 	}
 	if strings.Contains(q, "COUNT(*)") {
 		cols = []string{"count"}
@@ -72,12 +72,12 @@ func (c esConn) Prepare(query string) (driver.Stmt, error) {
 	}
 	return esStmt{cols: cols, rows: rows}, nil
 }
-func (c esConn) Close() error                                    { return nil }
-func (c esConn) Begin() (driver.Tx, error)                       { return nil, nil }
-func (s esStmt) Close() error                                    { return nil }
-func (s esStmt) NumInput() int                                   { return -1 }
-func (s esStmt) Exec(args []driver.Value) (driver.Result, error) { return nil, nil }
-func (s esStmt) Query(args []driver.Value) (driver.Rows, error) {
+func (c esConn) Close() error                                 { return nil }
+func (c esConn) Begin() (driver.Tx, error)                    { return nil, nil }
+func (s esStmt) Close() error                                 { return nil }
+func (s esStmt) NumInput() int                                { return -1 }
+func (s esStmt) Exec(_ []driver.Value) (driver.Result, error) { return nil, nil }
+func (s esStmt) Query(_ []driver.Value) (driver.Rows, error) {
 	return &esRows{cols: s.cols, rows: s.rows}, nil
 }
 func (r *esRows) Columns() []string { return r.cols }
@@ -129,7 +129,7 @@ func setupESDB(t *testing.T) *sql.DB {
 
 func TestEnhancedSet_ToList_DBScan(t *testing.T) {
 	db := setupESDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := &EnhancedDbContext{Database: NewDatabase(db)}
 	set := NewEnhancedSet[esUser2](ctx)
@@ -142,14 +142,14 @@ func TestEnhancedSet_ToList_DBScan(t *testing.T) {
 	if len(results) != 2 {
 		t.Fatalf("expected 2 results, got %d", len(results))
 	}
-	if results[0].Name != "Alice" || results[1].Name != "Bob" {
+	if results[0].Name != tNameAlice || results[1].Name != tNameBob {
 		t.Fatalf("unexpected names: %#v", results)
 	}
 }
 
 func TestEnhancedSet_First_Single(t *testing.T) {
 	db := setupESDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := &EnhancedDbContext{Database: NewDatabase(db)}
 	set := NewEnhancedSet[esUser2](ctx)
@@ -159,7 +159,7 @@ func TestEnhancedSet_First_Single(t *testing.T) {
 	if err != nil {
 		t.Fatalf("First error: %v", err)
 	}
-	if first.Name != "Alice" {
+	if first.Name != tNameAlice {
 		t.Fatalf("expected Alice, got %s", first.Name)
 	}
 
@@ -171,7 +171,7 @@ func TestEnhancedSet_First_Single(t *testing.T) {
 
 func TestEnhancedSet_Count_Any(t *testing.T) {
 	db := setupESDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := &EnhancedDbContext{Database: NewDatabase(db)}
 	set := NewEnhancedSet[esUser2](ctx)
@@ -184,11 +184,11 @@ func TestEnhancedSet_Count_Any(t *testing.T) {
 		t.Fatalf("expected count 2, got %d", cnt)
 	}
 
-	any, err := set.Any()
+	hasAny, err := set.Any()
 	if err != nil {
 		t.Fatalf("Any error: %v", err)
 	}
-	if !any {
+	if !hasAny {
 		t.Fatalf("expected Any to be true")
 	}
 }

@@ -24,7 +24,7 @@ func TestEFContext_Utils(t *testing.T) {
 	}
 
 	field, _ := reflect.TypeOf(efEntity{}).FieldByName("Name")
-	if col := ctx.getColumnNameFromField(field); col != "name" {
+	if col := ctx.getColumnNameFromField(field); col != tColName {
 		t.Fatalf("unexpected column name: %s", col)
 	}
 

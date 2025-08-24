@@ -44,7 +44,7 @@ func Test_sqlTypeForField_Various(t *testing.T) {
 
 	// plain string -> TEXT
 	f = fieldByName(typ, "Name")
-	if sqlt, _ := sqlTypeForField(f.Type, "name", f); sqlt != "TEXT" {
+	if sqlt, _ := sqlTypeForField(f.Type, "name", f); sqlt != sqlTypeText {
 		t.Fatalf("string mapping unexpected: %q", sqlt)
 	}
 
@@ -80,13 +80,13 @@ func Test_sqlTypeForField_Various(t *testing.T) {
 }
 
 func Test_addNotNullConstraint(t *testing.T) {
-	if got := addNotNullConstraint("TEXT", "name", false); got != "TEXT NOT NULL" {
+	if got := addNotNullConstraint(sqlTypeText, "name", false); got != sqlTypeText+" NOT NULL" {
 		t.Fatalf("expected NOT NULL added, got %q", got)
 	}
-	if got := addNotNullConstraint("TEXT", "id", false); got != "TEXT" {
+	if got := addNotNullConstraint(sqlTypeText, "id", false); got != sqlTypeText {
 		t.Fatalf("id should not add NOT NULL, got %q", got)
 	}
-	if got := addNotNullConstraint("TEXT", "name", true); got != "TEXT" {
+	if got := addNotNullConstraint(sqlTypeText, "name", true); got != sqlTypeText {
 		t.Fatalf("nullable should not add NOT NULL, got %q", got)
 	}
 }

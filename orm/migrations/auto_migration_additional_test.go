@@ -37,7 +37,7 @@ func TestAutoMigrator_processStructFieldsWithError_Propagates(t *testing.T) {
 	am := &AutoMigrator{}
 	var seen []string
 	wantErr := errors.New("boom")
-	err := am.processStructFieldsWithError(reflect.TypeOf(outer{}), func(field reflect.StructField, dbTag string) error {
+	err := am.processStructFieldsWithError(reflect.TypeOf(outer{}), func(_ reflect.StructField, dbTag string) error {
 		seen = append(seen, dbTag)
 		if dbTag == "name" { // ensure error when visiting embedded field
 			return wantErr

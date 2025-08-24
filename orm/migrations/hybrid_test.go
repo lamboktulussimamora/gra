@@ -401,9 +401,10 @@ func TestColumnChanges(t *testing.T) {
 	}
 
 	// Should detect one AddColumn change
+	const colBio = "bio"
 	addColumnCount := 0
 	for _, change := range plan.Changes {
-		if change.Type == AddColumn && change.ColumnName == "bio" {
+		if change.Type == AddColumn && change.ColumnName == colBio {
 			addColumnCount++
 		}
 	}

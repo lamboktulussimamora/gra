@@ -41,7 +41,7 @@ func Test_getAutoIncrementSQL_ByDriver(t *testing.T) {
 		t.Fatalf("sqlite autoinc mismatch: %s", got)
 	}
 	m.driver = PostgreSQL
-	if got := m.getAutoIncrementSQL(); got != "SERIAL PRIMARY KEY" {
+	if got := m.getAutoIncrementSQL(); got != sqlTypeSerialPK {
 		t.Fatalf("postgres autoinc mismatch: %s", got)
 	}
 }

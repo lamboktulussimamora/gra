@@ -11,7 +11,11 @@ import (
 	"time"
 )
 
-const driverPostgres = "postgres"
+const (
+	driverPostgres = "postgres"
+	driverSQLite   = "sqlite3"
+	driverMySQL    = "mysql"
+)
 
 // detectDatabaseDriver detects the database driver type
 func detectDatabaseDriver(db *sql.DB) string {
@@ -20,13 +24,13 @@ func detectDatabaseDriver(db *sql.DB) string {
 		return driverPostgres
 	}
 	if _, err := db.Query("SELECT sqlite_version()"); err == nil {
-		return "sqlite3"
+		return driverSQLite
 	}
 	if _, err := db.Query("SELECT VERSION()"); err == nil {
-		return "mysql"
+		return driverMySQL
 	}
 	// Default to sqlite3 if detection fails
-	return "sqlite3"
+	return driverSQLite
 }
 
 // convertQueryPlaceholders converts query placeholders based on database driver
@@ -297,13 +301,14 @@ func (ctx *EnhancedDbContext) updateEntity(entity interface{}) error {
 		query = fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", tableName, strings.Join(setPairs, ", "))
 	}
 
-	args := append(values, idValue)
+	// assign result of append back to same slice to satisfy linter and maintain behavior
+	values = append(values, idValue)
 
 	if ctx.tx != nil {
-		_, err := ctx.tx.Exec(query, args...)
+		_, err := ctx.tx.Exec(query, values...)
 		return err
 	}
-	_, err := ctx.db.Exec(query, args...)
+	_, err := ctx.db.Exec(query, values...)
 	return err
 }
 
