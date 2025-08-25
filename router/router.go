@@ -243,10 +243,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				params = pathParams
 				break
 			}
-			// Path matched but method differs; track for method-not-allowed response
-			if route.Method != req.Method {
-				matchedRoutes = append(matchedRoutes, route)
-			}
+			// Path matched but method differs; mark that path matched
+			matchedPath = true
 		}
 	}
 
