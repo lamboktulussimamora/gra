@@ -346,25 +346,27 @@ func generateScript(manager *migrations.EFMigrationManager, args []string, _ CLI
 func removeMigration(manager *migrations.EFMigrationManager, _ []string, config CLIConfig) {
 	fmt.Println("🗑️  Removing last migration...")
 
-	history, err := manager.GetMigrationHistory()
+	removed, err := manager.RemoveLastPendingMigration()
 	if err != nil {
-		log.Printf(ErrorFailedToGetHistoryFmt, err)
+		log.Printf("❌ %v", err)
 		return
 	}
 
-	if len(history.Pending) == 0 {
-		log.Printf("❌ No pending migrations to remove")
-		return
+	fmt.Printf("🗑️  Removing migration: %s\n", removed.ID)
+
+	// Delete the migration file from disk if present
+	path := filepath.Join(config.MigrationsDir, removed.ID+".sql")
+	if _, statErr := os.Stat(path); statErr == nil {
+		if rmErr := os.Remove(path); rmErr != nil {
+			log.Printf("⚠️  Removed from pending list, but failed to delete file %s: %v", path, rmErr)
+		} else {
+			fmt.Printf("📁 Deleted file: %s\n", path)
+		}
+	} else {
+		fmt.Printf("ℹ️  File not found (already deleted?): %s\n", path)
 	}
 
-	// Remove the last pending migration
-	lastMigration := history.Pending[len(history.Pending)-1]
-
-	fmt.Printf("🗑️  Removing migration: %s\n", lastMigration.ID)
-
-	// TODO: Implement removal logic in EFMigrationManager
-	fmt.Println("⚠️  Note: Migration removal from database not yet implemented")
-	fmt.Printf("📁 Please manually delete: %s/%s.sql\n", config.MigrationsDir, lastMigration.ID)
+	fmt.Println("✅ Migration removed from pending list")
 }
 
 // Helper functions

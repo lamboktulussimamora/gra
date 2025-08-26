@@ -714,6 +714,25 @@ func (em *EFMigrationManager) CreateAutoMigrations(entities []interface{}, migra
 	return nil
 }
 
+// RemoveLastPendingMigration removes the last appended pending migration (LIFO) from memory and cache.
+// It returns the removed migration or an error if none are pending.
+func (em *EFMigrationManager) RemoveLastPendingMigration() (*Migration, error) {
+	if len(em.pendingMigrations) == 0 {
+		return nil, fmt.Errorf("no pending migrations to remove")
+	}
+
+	// Remove last element for deterministic behavior regardless of Version timestamp granularity
+	idx := len(em.pendingMigrations) - 1
+	removed := em.pendingMigrations[idx]
+	em.pendingMigrations = em.pendingMigrations[:idx]
+
+	// Remove from loaded cache (safe even if absent)
+	delete(em.loadedMigrations, removed.ID)
+
+	em.logger.Printf("✓ Removed pending migration: %s", removed.ID)
+	return &removed, nil
+}
+
 // generateCreateTablesSQL generates SQL to create tables for entities
 func (em *EFMigrationManager) generateCreateTablesSQL(entities []interface{}) string {
 	var sql strings.Builder
