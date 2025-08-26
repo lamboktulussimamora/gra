@@ -45,3 +45,32 @@ func Test_getAutoIncrementSQL_ByDriver(t *testing.T) {
 		t.Fatalf("postgres autoinc mismatch: %s", got)
 	}
 }
+
+func Test_RemoveLastPendingMigration_Basic(t *testing.T) {
+	m := newTestManager(t)
+	// Add two pending migrations with increasing time-based versions
+	a := m.AddMigration("alpha", "", "CREATE TABLE a(id INT);", "DROP TABLE a;")
+	b := m.AddMigration("beta", "", "CREATE TABLE b(id INT);", "DROP TABLE b;")
+
+	removed, err := m.RemoveLastPendingMigration()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if removed.ID != b.ID {
+		t.Fatalf("expected last pending to be %s, got %s", b.ID, removed.ID)
+	}
+
+	// Next removal should remove 'a'
+	removed2, err := m.RemoveLastPendingMigration()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if removed2.ID != a.ID {
+		t.Fatalf("expected next pending to be %s, got %s", a.ID, removed2.ID)
+	}
+
+	// No more pending
+	if _, err := m.RemoveLastPendingMigration(); err == nil {
+		t.Fatalf("expected error when no pending migrations remain")
+	}
+}
