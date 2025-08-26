@@ -220,6 +220,26 @@ CREATE TABLE user_profiles (
 -- End of migration script
 ```
 
+### 7. Remove-Migration (Pop last pending)
+
+Removes the most recently added pending migration from memory and deletes its migration file if it exists. This does not affect applied migrations in the database.
+
+```bash
+# Remove the last pending migration and delete its file
+ef-migrate remove-migration
+
+# Output example:
+🗑️  Removing last migration...
+🗑️  Removing migration: 1703123600_AddUserSettings
+📁 Deleted file: ./migrations/1703123600_AddUserSettings.sql
+✅ Migration removed from pending list
+```
+
+Notes:
+- LIFO semantics: the last pending migration is removed first.
+- If the file was already deleted, the command continues and removes the pending entry.
+- Applied migrations cannot be removed with this command; use rollback instead.
+
 ## 🏗️ Migration System Architecture
 
 ### Database Schema

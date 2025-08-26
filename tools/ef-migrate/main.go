@@ -502,7 +502,7 @@ func printUsage() {
 	fmt.Println(`  add-migration <name> [description]  Create a new migration`)
 	fmt.Println(`  update-database [target]            Apply pending migrations`)
 	fmt.Println(`  rollback <target>                   Rollback to specific migration`)
-	fmt.Println(`  remove-migration                    Remove the last migration`)
+	fmt.Println(`  remove-migration                    Remove the last pending migration (also deletes its file if present)`)
 	fmt.Println()
 	fmt.Println(`📋 Information:`)
 	fmt.Println(`  get-migration                       List all migrations`)
@@ -540,7 +540,7 @@ func printUsage() {
 	fmt.Println(`ENVIRONMENT:`)
 	fmt.Println(`  DATABASE_URL    Default database connection string`)
 	fmt.Println()
-	fmt.Println(`📚 More info: https://github.com/your-org/gra/docs/migrations`)
+	fmt.Println(`📚 More info: https://github.com/lamboktulussimamora/gra/blob/main/docs/EF_MIGRATION_LIFECYCLE.md`)
 }
 
 // loadMigrationsFromFilesystem loads migration files from the filesystem
