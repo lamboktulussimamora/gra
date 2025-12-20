@@ -12,6 +12,7 @@ Middleware functions provide a way to execute code before or after request handl
   - [Secure Headers](#secure-headers)
   - [Authentication](#authentication)
   - [Cache](#cache)
+    - [Rate Limiting](#rate-limiting)
 - [Creating Custom Middleware](#creating-custom-middleware)
 
 ## Using Middleware
@@ -218,51 +219,80 @@ config := middleware.CacheConfig{
 r.Use(middleware.CacheWithConfig(config))
 ```
 
-## Creating Custom Middleware
+### Rate Limiting
 
-You can create custom middleware by returning a `gra.HandlerFunc`:
+Rate limiting helps prevent abuse by limiting requests per client IP.
 
 ```go
-func RateLimiter(rps int, burst int) gra.HandlerFunc {
-    // Create a rate limiter
-    limiter := rate.NewLimiter(rate.Limit(rps), burst)
-    
-    // Return the middleware handler
-    return func(c *gra.Context) {
-        // Check if the request can proceed
-        if !limiter.Allow() {
-            c.Error(http.StatusTooManyRequests, "Too many requests")
-            return
+// Allow up to 100 requests per 60 seconds per client IP
+r.Use(middleware.RateLimit(100, 60))
+```
+
+#### Behind Reverse Proxies
+
+If you run behind a reverse proxy/load balancer, the real client IP is typically
+provided via `X-Forwarded-For` or `X-Real-IP`.
+
+For security, you must only trust these headers when the immediate peer
+(`RemoteAddr`) is a trusted proxy.
+
+```go
+trusted, err := middleware.ParseTrustedProxies([]string{
+    "127.0.0.1/32", // local reverse proxy
+    "10.0.0.0/8",   // internal load balancer network
+})
+if err != nil {
+    panic(err)
+}
+
+cfg := middleware.RateLimiterConfig{
+    Store:  middleware.NewInMemoryStore(),
+    Limit:  100,
+    Window: 60,
+    KeyFunc: func(c *gra.Context) string {
+        return middleware.ClientIPFromContext(c, trusted)
+    },
+}
+
+r.Use(middleware.RateLimitWithConfig(cfg))
+```
+
+## Creating Custom Middleware
+
+You can create custom middleware by returning a `gra.Middleware`:
+
+```go
+func RequireHeader(name string) gra.Middleware {
+    return func(next gra.HandlerFunc) gra.HandlerFunc {
+        return func(c *gra.Context) {
+            if c.Request.Header.Get(name) == "" {
+                c.Error(http.StatusBadRequest, name+" header is required")
+                return
+            }
+            next(c)
         }
-        
-        // Call the next handler
-        c.Next()
     }
 }
 
-// Use the custom middleware
-r.Use(RateLimiter(10, 30))
+r.Use(RequireHeader("X-Request-ID"))
 ```
 
 ### Middleware Best Practices
 
-1. **Call `c.Next()` to continue** the request chain (unless you want to short-circuit)
-2. **Check `c.IsAborted()`** before executing code after `c.Next()`
-3. **Use `c.Set()`** to share data between middleware and handlers
+1. **Call `next(c)`** to continue the request chain (unless you want to short-circuit)
+2. **Validate inputs early** and return explicit errors
+3. **Use `c.WithValue(...)`** to attach request-scoped data
 4. **Handle errors properly** and set appropriate status codes
 5. **Keep middleware focused** on a single responsibility
 6. **Order middleware correctly** (e.g., Recovery should be first)
 
 ```go
-func MyMiddleware() gra.HandlerFunc {
-    return func(c *gra.Context) {
-        // Code executed before the request
-        
-        c.Next() // Call the next handler
-        
-        // Code executed after the request (if not aborted)
-        if !c.IsAborted() {
-            // Post-processing
+func MyMiddleware() gra.Middleware {
+    return func(next gra.HandlerFunc) gra.HandlerFunc {
+        return func(c *gra.Context) {
+            // Code executed before the request
+            next(c)
+            // Code executed after the request
         }
     }
 }
