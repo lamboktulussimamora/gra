@@ -250,9 +250,33 @@ func TestRefreshToken(t *testing.T) {
 	})
 
 	t.Run("should allow refresh for expired token", func(_ *testing.T) {
-		// We need to manually create an expired token that we can successfully parse
-		// This is a bit tricky to test properly without modifying the code
-		// For a real implementation, you'd want to make the jwt.Parse function mockable
-		// For now, this is left as a placeholder for this test case
+		// Create an expired token signed with the correct key/method.
+		expiredToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"sub":  testUserIDCommon,
+			"role": testRoleAdmin,
+			"exp":  time.Now().Add(-time.Hour).Unix(),
+			"iat":  time.Now().Add(-2 * time.Hour).Unix(),
+		})
+
+		tokenString, _ := expiredToken.SignedString([]byte(testSecretKey))
+
+		newToken, err := service.RefreshToken(tokenString)
+		if err != nil {
+			t.Errorf(errMsgNoError, err)
+		}
+		if newToken == tokenString {
+			t.Error(errTokenNotDifferent)
+		}
+
+		newClaims, err := service.ValidateToken(newToken)
+		if err != nil {
+			t.Errorf(errMsgNoError, err)
+		}
+		if newClaims["sub"] != testUserIDCommon {
+			t.Errorf(errMsgExpectedSubject, testUserIDCommon, newClaims["sub"])
+		}
+		if newClaims["role"] != testRoleAdmin {
+			t.Errorf(errMsgExpectedRole, testRoleAdmin, newClaims["role"])
+		}
 	})
 }

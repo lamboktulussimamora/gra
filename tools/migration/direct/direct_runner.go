@@ -25,8 +25,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
+	"github.com/lamboktulussimamora/gra/orm/migrations"
+	"github.com/lamboktulussimamora/gra/orm/models"
 	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
@@ -44,6 +48,10 @@ var (
 	connFlag   = flag.String("conn", "", "Database connection string")
 	verbose    = flag.Bool("verbose", false, "Show verbose output")
 	statusFlag = flag.Bool("status", false, "Show migration status")
+	generate   = flag.Bool("generate", false, "Generate migration file (Up/Down) from registered structs")
+	migDir     = flag.String("migrations-dir", "./migrations", "Directory to write migration files")
+	migName    = flag.String("name", "auto_migration", "Migration name when generating from structs")
+	driverFlag = flag.String("driver", "auto", "Database driver: auto|postgres|sqlite3|mysql")
 )
 
 const warnCloseDB = "Warning: failed to close db: %v"
@@ -72,7 +80,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := sql.Open("postgres", *connFlag)
+	// Detect driver for sql.Open and for generator
+	sqlDriverName, migDriver := detectDriver(*driverFlag, *connFlag)
+
+	db, err := sql.Open(sqlDriverName, *connFlag)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -87,6 +98,15 @@ func main() {
 
 	if err := ensureMigrationTable(db); err != nil {
 		exitWithDBClose(db, "Failed to ensure migration table: %v", err)
+	}
+
+	// Generate migration file from structs (HybridMigrator)
+	if *generate {
+		if err := generateFromStructs(db, migDriver, *migDir, *migName); err != nil {
+			exitWithDBClose(db, "Generate failed: %v", err)
+		}
+		closeDBWithWarn(db)
+		return
 	}
 
 	if *statusFlag {
@@ -114,6 +134,62 @@ func main() {
 	flag.Usage()
 	closeDBWithWarn(db)
 	os.Exit(1)
+}
+
+// detectDriver determines the Go sql driver name and migrations.DatabaseDriver from flag/connection string.
+func detectDriver(driverFlag, conn string) (string, migrations.DatabaseDriver) {
+	d := strings.ToLower(strings.TrimSpace(driverFlag))
+	if d == "postgres" || strings.HasPrefix(conn, "postgres://") || strings.Contains(conn, "user=") {
+		return "postgres", migrations.PostgreSQL
+	}
+	if d == "sqlite3" || strings.Contains(conn, "sqlite") || strings.HasSuffix(strings.ToLower(conn), ".db") {
+		return "sqlite3", migrations.SQLite
+	}
+	if d == "mysql" || strings.HasPrefix(strings.ToLower(conn), "mysql") {
+		// Note: mysql driver import is not included by default. Add it if needed.
+		// return "mysql", migrations.MySQL
+		return "postgres", migrations.PostgreSQL // fallback to postgres to avoid missing driver
+	}
+	// default
+	return "postgres", migrations.PostgreSQL
+}
+
+// generateFromStructs uses HybridMigrator to create a migration file with Up/Down from models.
+func generateFromStructs(db *sql.DB, driver migrations.DatabaseDriver, dir, name string) error {
+	if *verbose {
+		fmt.Printf("Generating migration from structs -> dir=%s name=%s driver=%s\n", dir, name, string(driver))
+	}
+
+	hm := migrations.NewHybridMigrator(db, driver, dir)
+
+	// Register built-in GRA models. Projects can modify this tool to register their own.
+	hm.DbSet(&models.User{})
+	hm.DbSet(&models.Product{})
+	hm.DbSet(&models.Category{})
+	hm.DbSet(&models.Order{})
+	hm.DbSet(&models.OrderItem{})
+	hm.DbSet(&models.Review{})
+	hm.DbSet(&models.Role{})
+	hm.DbSet(&models.UserRole{})
+
+	// Create migration file (generate only)
+	mf, err := hm.AddMigration(name, migrations.GenerateOnly)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no changes") {
+			fmt.Println("No changes detected. Nothing to generate.")
+			return nil
+		}
+		return err
+	}
+
+	if mf == nil {
+		fmt.Println("No changes detected. Nothing to generate.")
+		return nil
+	}
+
+	fmt.Printf("✓ Migration created: %s\n", mf.FilePath)
+	fmt.Printf("  Changes: %d, Destructive: %t\n", len(mf.Changes), mf.HasDestructiveChanges())
+	return nil
 }
 
 // ensureMigrationTable creates the schema_migrations table if it does not exist.

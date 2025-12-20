@@ -17,7 +17,9 @@ The GRA Framework team takes security seriously. We appreciate your efforts to r
 
 **Please DO NOT report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them via email to [security@example.com](mailto:security@example.com) (replace with your actual security contact).
+Preferred: report privately via GitHub Security Advisories for this repository.
+
+If you can’t use advisories, you may report via email to your project security contact (for example, `security@your-domain.example`).
 
 Please include:
 

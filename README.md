@@ -103,7 +103,7 @@ c.Error(http.StatusNotFound, "User not found")
 The `Router` handles HTTP routing:
 
 ```go
-r := core.New()
+ r := gra.New()
 
 // Register routes
 r.GET("/users", listUsers)

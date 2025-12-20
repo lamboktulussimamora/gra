@@ -57,3 +57,6 @@ sonar-project.properties.bak
 
 # Local Sonar analysis snapshots
 .sonar_*.json
+
+# macOS
+.DS_Store
