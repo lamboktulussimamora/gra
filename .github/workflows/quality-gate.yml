@@ -14,6 +14,9 @@ jobs:
   quality-checks:
     name: Quality Checks
     runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
     
     steps:
     - name: Checkout code
@@ -86,18 +89,21 @@ jobs:
       run: golangci-lint run --enable gosec --timeout=10m
 
     - name: SonarQube Scan
-      if: env.SONAR_TOKEN != ''
-      uses: sonarqube-quality-gate-action@master
+      if: env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != ''
+      uses: SonarSource/sonarqube-scan-action@v3
       env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
 
-    - name: Quality Gate Check
-      if: env.SONAR_TOKEN != ''
-      run: |
-        echo "Checking SonarQube Quality Gate status..."
-        # This would typically be handled by the SonarQube action above
-        echo "✅ All quality gates passed!"
+    - name: SonarQube Quality Gate
+      if: env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != ''
+      uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
+      with:
+        scanMetadataReportFile: .scannerwork/report-task.txt
+      env:
+        SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
 
   benchmark:
     name: Performance Benchmarks
