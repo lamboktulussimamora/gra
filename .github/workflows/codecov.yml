@@ -15,7 +15,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-          go-version: '1.25'
+        go-version: '1.25'
 
     - name: Test with coverage
       run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
@@ -24,5 +24,6 @@ jobs:
       uses: codecov/codecov-action@v4
       with:
         files: ./coverage.txt
-        fail_ci_if_error: true
+        token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: false
         verbose: true
