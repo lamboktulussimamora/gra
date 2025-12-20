@@ -4,6 +4,7 @@ package middleware
 import (
 	"crypto/rand"
 	"fmt"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -227,14 +228,16 @@ type RateLimiterStore interface {
 
 // InMemoryStore implements a simple in-memory store for rate limiting
 type InMemoryStore struct {
-	data map[string]map[int64]int
-	mu   sync.RWMutex
+	data    map[string]map[int64]int
+	mu      sync.RWMutex
+	maxKeys int
 }
 
 // NewInMemoryStore creates a new in-memory store for rate limiting
 func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{
-		data: make(map[string]map[int64]int),
+		data:    make(map[string]map[int64]int),
+		maxKeys: 10000,
 	}
 }
 
@@ -249,6 +252,15 @@ func (s *InMemoryStore) Increment(key string, limit int, windowSeconds int) (int
 	// Initialize counts for this key if not exists
 	if _, exists := s.data[key]; !exists {
 		s.data[key] = make(map[int64]int)
+		if s.maxKeys > 0 && len(s.data) > s.maxKeys {
+			// Evict an arbitrary other key to keep memory bounded.
+			for k := range s.data {
+				if k != key {
+					delete(s.data, k)
+					break
+				}
+			}
+		}
 	}
 
 	// Clean up old entries
@@ -296,7 +308,11 @@ func RateLimit(limit int, windowSeconds int) router.Middleware {
 		Window: windowSeconds,
 		KeyFunc: func(c *context.Context) string {
 			// Default to IP-based rate limiting
-			return c.Request.RemoteAddr
+			remote := c.Request.RemoteAddr
+			if host, _, err := net.SplitHostPort(remote); err == nil {
+				return host
+			}
+			return remote
 		},
 		ErrorMessage: "Rate limit exceeded. Try again later.",
 	}

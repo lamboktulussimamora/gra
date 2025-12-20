@@ -16,6 +16,10 @@ const (
 	HeaderAuthorization = "Authorization"
 
 	ContentTypeJSON = "application/json"
+
+	// DefaultMaxBodyBytes is the default maximum request body size used by BindJSON.
+	// This is a safety limit to avoid unbounded memory usage.
+	DefaultMaxBodyBytes int64 = 10 << 20 // 10 MiB
 )
 
 // APIResponse is a standardized response structure
@@ -62,17 +66,31 @@ func (c *Context) JSON(status int, obj any) {
 
 // BindJSON binds JSON request body to a struct
 func (c *Context) BindJSON(obj any) error {
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		return err
+	return c.BindJSONWithLimit(obj, DefaultMaxBodyBytes)
+}
+
+// BindJSONWithLimit binds JSON request body to a struct with a maximum body size.
+func (c *Context) BindJSONWithLimit(obj any, maxBytes int64) error {
+	if c.Request == nil || c.Request.Body == nil {
+		return io.EOF
+	}
+
+	body := c.Request.Body
+	if maxBytes > 0 {
+		body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
 	}
 	defer func() {
-		if cerr := c.Request.Body.Close(); cerr != nil {
+		if cerr := body.Close(); cerr != nil {
 			log.Printf("Error closing request body: %v", cerr)
 		}
 	}()
 
-	return json.Unmarshal(body, obj)
+	bytes, err := io.ReadAll(body)
+	if err != nil {
+		return err
+	}
+
+	return json.Unmarshal(bytes, obj)
 }
 
 // Success sends a success response

@@ -152,20 +152,66 @@ func (s *Service) ValidateToken(tokenString string) (map[string]interface{}, err
 	return result, nil
 }
 
+func (s *Service) parseClaims(tokenString string, skipClaimsValidation bool) (jwt.MapClaims, error) {
+	parserOptions := []jwt.ParserOption{
+		jwt.WithValidMethods([]string{s.config.SigningMethod.Alg()}),
+	}
+	if skipClaimsValidation {
+		parserOptions = append(parserOptions, jwt.WithoutClaimsValidation())
+	}
+
+	parser := jwt.NewParser(parserOptions...)
+
+	token, err := parser.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if token.Method.Alg() != s.config.SigningMethod.Alg() {
+			return nil, ErrInvalidToken
+		}
+		return s.config.SigningKey, nil
+	})
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+	if token == nil || token.Claims == nil {
+		return nil, ErrInvalidToken
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, ErrInvalidToken
+	}
+
+	return claims, nil
+}
+
 // RefreshToken generates a new token based on the claims in an existing token
 func (s *Service) RefreshToken(tokenString string) (string, error) {
-	// First validate the old token
+	// First validate the old token (normal path)
 	claims, err := s.ValidateToken(tokenString)
 	if err != nil {
-		// Allow refresh for expired tokens, but not for invalid tokens
+		// Allow refresh for expired tokens, but not for invalid tokens.
+		// For expired tokens we need to parse claims while skipping exp validation.
 		if err != ErrExpiredToken {
 			return "", err
 		}
+
+		parsedClaims, parseErr := s.parseClaims(tokenString, true)
+		if parseErr != nil {
+			return "", ErrInvalidToken
+		}
+		claims = make(map[string]interface{}, len(parsedClaims))
+		for k, v := range parsedClaims {
+			claims[k] = v
+		}
+	}
+
+	subject, ok := claims["sub"].(string)
+	if !ok || subject == "" {
+		return "", ErrInvalidToken
 	}
 
 	// Create a new StandardClaims object
 	newClaims := StandardClaims{
-		Subject: claims["sub"].(string),
+		Subject: subject,
 		// Add some randomness to ensure new token is different
 		ID:     generateRandomTokenID(),
 		Custom: make(map[string]interface{}),

@@ -1,6 +1,7 @@
 package context
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -254,6 +255,24 @@ func TestBindJSON(t *testing.T) {
 			t.Fatal(errExpectedError)
 		}
 	})
+}
+
+func TestBindJSONWithLimit_RejectsLargeBody(t *testing.T) {
+	w := httptest.NewRecorder()
+
+	// Create a JSON body bigger than the configured limit.
+	big := "{\"v\":\"" + strings.Repeat("a", 1024) + "\"}"
+	r := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(big))
+
+	c := New(w, r)
+	var dst struct {
+		V string `json:"v"`
+	}
+
+	err := c.BindJSONWithLimit(&dst, 10)
+	if err == nil {
+		t.Fatalf(errExpectedError)
+	}
 }
 
 func TestBindJSONReadError(t *testing.T) {

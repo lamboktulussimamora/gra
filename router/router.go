@@ -34,9 +34,10 @@ type Middleware func(HandlerFunc) HandlerFunc
 
 // Route represents a URL route and its handler
 type Route struct {
-	Method  string
-	Path    string
-	Handler HandlerFunc
+	Method      string
+	Path        string
+	Handler     HandlerFunc
+	middlewares []Middleware
 }
 
 // Router handles HTTP requests and routes them to the appropriate handler
@@ -50,8 +51,9 @@ type Router struct {
 
 // Group creates a new Router instance with a path prefix
 type Group struct {
-	router *Router // Parent router
-	prefix string  // Path prefix for this group
+	router      *Router // Parent router
+	prefix      string  // Path prefix for this group
+	middlewares []Middleware
 }
 
 // New creates a new router
@@ -80,6 +82,15 @@ func (r *Router) Handle(method, path string, handler HandlerFunc) {
 		Method:  method,
 		Path:    path,
 		Handler: handler,
+	})
+}
+
+func (r *Router) handleWithMiddlewares(method, path string, handler HandlerFunc, middlewares []Middleware) {
+	r.routes = append(r.routes, Route{
+		Method:      method,
+		Path:        path,
+		Handler:     handler,
+		middlewares: append([]Middleware(nil), middlewares...),
 	})
 }
 
@@ -131,62 +142,64 @@ func (r *Router) SetMethodNotAllowed(handler HandlerFunc) {
 // Group creates a new route group
 func (r *Router) Group(prefix string) *Group {
 	return &Group{
-		router: r,
-		prefix: normalizePrefix(prefix),
+		router:      r,
+		prefix:      normalizePrefix(prefix),
+		middlewares: nil,
 	}
 }
 
 // Use adds middleware to the group
 func (g *Group) Use(middleware ...Middleware) *Group {
-	g.router.middlewares = append(g.router.middlewares, middleware...)
+	g.middlewares = append(g.middlewares, middleware...)
 	return g
 }
 
 // GET adds a GET route to the group
 func (g *Group) GET(path string, handler HandlerFunc) {
-	g.router.GET(g.prefix+path, handler)
+	g.router.handleWithMiddlewares(http.MethodGet, g.prefix+path, handler, g.middlewares)
 }
 
 // POST adds a POST route to the group
 func (g *Group) POST(path string, handler HandlerFunc) {
-	g.router.POST(g.prefix+path, handler)
+	g.router.handleWithMiddlewares(http.MethodPost, g.prefix+path, handler, g.middlewares)
 }
 
 // PUT adds a PUT route to the group
 func (g *Group) PUT(path string, handler HandlerFunc) {
-	g.router.PUT(g.prefix+path, handler)
+	g.router.handleWithMiddlewares(http.MethodPut, g.prefix+path, handler, g.middlewares)
 }
 
 // DELETE adds a DELETE route to the group
 func (g *Group) DELETE(path string, handler HandlerFunc) {
-	g.router.DELETE(g.prefix+path, handler)
+	g.router.handleWithMiddlewares(http.MethodDelete, g.prefix+path, handler, g.middlewares)
 }
 
 // PATCH adds a PATCH route to the group
 func (g *Group) PATCH(path string, handler HandlerFunc) {
-	g.router.PATCH(g.prefix+path, handler)
+	g.router.handleWithMiddlewares(http.MethodPatch, g.prefix+path, handler, g.middlewares)
 }
 
 // HEAD adds a HEAD route to the group
 func (g *Group) HEAD(path string, handler HandlerFunc) {
-	g.router.HEAD(g.prefix+path, handler)
+	g.router.handleWithMiddlewares(http.MethodHead, g.prefix+path, handler, g.middlewares)
 }
 
 // OPTIONS adds an OPTIONS route to the group
 func (g *Group) OPTIONS(path string, handler HandlerFunc) {
-	g.router.OPTIONS(g.prefix+path, handler)
+	g.router.handleWithMiddlewares(http.MethodOptions, g.prefix+path, handler, g.middlewares)
 }
 
 // Handle adds a route with any method to the group
 func (g *Group) Handle(method, path string, handler HandlerFunc) {
-	g.router.Handle(method, g.prefix+path, handler)
+	g.router.handleWithMiddlewares(method, g.prefix+path, handler, g.middlewares)
 }
 
 // Group creates a sub-group with a prefix appended to the current group's prefix
 func (g *Group) Group(prefix string) *Group {
 	return &Group{
-		router: g.router,
-		prefix: g.prefix + normalizePrefix(prefix),
+		router:      g.router,
+		prefix:      g.prefix + normalizePrefix(prefix),
+		middlewares: append([]Middleware(nil), g.middlewares...),
 	}
 }
 
@@ -233,6 +246,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Find route
 	var handler HandlerFunc
 	var params map[string]string
+	var routeMiddlewares []Middleware
 
 	matchedPath := false
 
@@ -241,6 +255,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			if route.Method == req.Method {
 				handler = route.Handler
 				params = pathParams
+				routeMiddlewares = route.middlewares
 				break
 			}
 			// Path matched but method differs; mark that path matched
@@ -264,8 +279,11 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c.Params = params
 
 	// Apply middlewares
-	if len(r.middlewares) > 0 {
-		handler = Chain(r.middlewares...)(handler)
+	if len(r.middlewares) > 0 || len(routeMiddlewares) > 0 {
+		all := make([]Middleware, 0, len(r.middlewares)+len(routeMiddlewares))
+		all = append(all, r.middlewares...)
+		all = append(all, routeMiddlewares...)
+		handler = Chain(all...)(handler)
 	}
 
 	// Execute handler
