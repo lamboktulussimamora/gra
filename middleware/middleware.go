@@ -4,7 +4,6 @@ package middleware
 import (
 	"crypto/rand"
 	"fmt"
-	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -307,12 +306,10 @@ func RateLimit(limit int, windowSeconds int) router.Middleware {
 		Limit:  limit,
 		Window: windowSeconds,
 		KeyFunc: func(c *context.Context) string {
-			// Default to IP-based rate limiting
-			remote := c.Request.RemoteAddr
-			if host, _, err := net.SplitHostPort(remote); err == nil {
-				return host
-			}
-			return remote
+			// Default to remote IP-based rate limiting.
+			// Proxy headers are ignored unless the caller opts in by providing
+			// trusted proxies via ClientIPFromContext/ClientIPFromRequest.
+			return ClientIPFromContext(c, nil)
 		},
 		ErrorMessage: "Rate limit exceeded. Try again later.",
 	}
