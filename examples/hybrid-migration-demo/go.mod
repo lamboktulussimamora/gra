@@ -1,6 +1,6 @@
 module hybrid-migration-demo
 
-go 1.24.2
+go 1.25
 
 replace github.com/lamboktulussimamora/gra => ../../
 

@@ -10,6 +10,9 @@ jobs:
   sonarqube:
     name: SonarQube Analysis
     runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
     
     steps:
     - name: Checkout code
@@ -41,19 +44,27 @@ jobs:
         go tool cover -html=coverage.out -o coverage.html
 
     - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v3
+      uses: golangci/golangci-lint-action@v6
       with:
         version: latest
         args: --timeout=10m
 
     - name: SonarQube Scan
-      uses: sonarqube-quality-gate-action@master
+      if: env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != ''
+      uses: SonarSource/sonarqube-scan-action@v3
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+
+    - name: SonarQube Quality Gate
+      if: env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != ''
+      uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
       with:
         scanMetadataReportFile: .scannerwork/report-task.txt
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
 
     - name: Upload coverage reports
       uses: actions/upload-artifact@v4
