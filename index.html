@@ -77,7 +77,7 @@
 				
 				<option value="file10">github.com/lamboktulussimamora/gra/middleware/middleware.go (97.0%)</option>
 				
-				<option value="file11">github.com/lamboktulussimamora/gra/orm/dbcontext/db_context.go (58.9%)</option>
+				<option value="file11">github.com/lamboktulussimamora/gra/orm/dbcontext/db_context.go (58.0%)</option>
 				
 				<option value="file12">github.com/lamboktulussimamora/gra/orm/dbcontext/ef_context.go (65.6%)</option>
 				
@@ -89,11 +89,11 @@
 				
 				<option value="file16">github.com/lamboktulussimamora/gra/orm/migrations/cmd/migrate/main.go (8.1%)</option>
 				
-				<option value="file17">github.com/lamboktulussimamora/gra/orm/migrations/database_inspector.go (51.5%)</option>
+				<option value="file17">github.com/lamboktulussimamora/gra/orm/migrations/database_inspector.go (50.5%)</option>
 				
 				<option value="file18">github.com/lamboktulussimamora/gra/orm/migrations/demo.go (0.0%)</option>
 				
-				<option value="file19">github.com/lamboktulussimamora/gra/orm/migrations/ef_migration_system.go (64.9%)</option>
+				<option value="file19">github.com/lamboktulussimamora/gra/orm/migrations/ef_migration_system.go (65.1%)</option>
 				
 				<option value="file20">github.com/lamboktulussimamora/gra/orm/migrations/examples/usage_example.go (0.0%)</option>
 				
@@ -2926,6 +2926,7 @@ func CSP(builder *CSPBuilder) router.Middleware <span class="cov8" title="1">{
 package dbcontext
 
 import (
+        "context"
         "database/sql"
         "fmt"
         "log"
@@ -2943,17 +2944,42 @@ const (
 
 // detectDatabaseDriver detects the database driver type
 func detectDatabaseDriver(db *sql.DB) string <span class="cov0" title="0">{
+        // Use QueryRow to avoid leaking *sql.Rows.
+        var i int
+        var s string
+
         // Test queries to detect database type
-        if _, err := db.Query("SELECT 1::integer"); err == nil </span><span class="cov0" title="0">{
+        if err := db.QueryRow("SELECT 1::integer").Scan(&amp;i); err == nil </span><span class="cov0" title="0">{
                 return driverPostgres
         }</span>
-        <span class="cov0" title="0">if _, err := db.Query("SELECT sqlite_version()"); err == nil </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">if err := db.QueryRow("SELECT sqlite_version()").Scan(&amp;s); err == nil </span><span class="cov0" title="0">{
                 return driverSQLite
         }</span>
-        <span class="cov0" title="0">if _, err := db.Query("SELECT VERSION()"); err == nil </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">if err := db.QueryRow("SELECT VERSION()").Scan(&amp;s); err == nil </span><span class="cov0" title="0">{
                 return driverMySQL
         }</span>
         // Default to sqlite3 if detection fails
+        <span class="cov0" title="0">return driverSQLite</span>
+}
+
+func detectTxDriver(tx *sql.Tx) string <span class="cov8" title="1">{
+        if tx == nil </span><span class="cov8" title="1">{
+                return driverSQLite
+        }</span>
+
+        <span class="cov0" title="0">var i int
+        var s string
+
+        if err := tx.QueryRow("SELECT 1::integer").Scan(&amp;i); err == nil </span><span class="cov0" title="0">{
+                return driverPostgres
+        }</span>
+        <span class="cov0" title="0">if err := tx.QueryRow("SELECT sqlite_version()").Scan(&amp;s); err == nil </span><span class="cov0" title="0">{
+                return driverSQLite
+        }</span>
+        <span class="cov0" title="0">if err := tx.QueryRow("SELECT VERSION()").Scan(&amp;s); err == nil </span><span class="cov0" title="0">{
+                return driverMySQL
+        }</span>
+
         <span class="cov0" title="0">return driverSQLite</span>
 }
 
@@ -3058,6 +3084,26 @@ func (d *Database) Begin() (*sql.Tx, error) <span class="cov0" title="0">{
         return d.db.Begin()
 }</span>
 
+// BeginTx starts a new transaction with context.
+func (d *Database) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) <span class="cov0" title="0">{
+        return d.db.BeginTx(ctx, opts)
+}</span>
+
+// ExecContext executes a query without returning any rows.
+func (d *Database) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) <span class="cov0" title="0">{
+        return d.db.ExecContext(ctx, query, args...)
+}</span>
+
+// QueryContext executes a query that returns rows.
+func (d *Database) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) <span class="cov0" title="0">{
+        return d.db.QueryContext(ctx, query, args...)
+}</span>
+
+// QueryRowContext executes a query that is expected to return at most one row.
+func (d *Database) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row <span class="cov0" title="0">{
+        return d.db.QueryRowContext(ctx, query, args...)
+}</span>
+
 // EnhancedDbContext provides Entity Framework Core-like functionality
 type EnhancedDbContext struct {
         db            *sql.DB
@@ -3097,15 +3143,32 @@ func NewEnhancedDbContextWithDB(db *sql.DB) *EnhancedDbContext <span class="cov0
 
 // NewEnhancedDbContextWithTx creates a new enhanced database context with transaction
 func NewEnhancedDbContextWithTx(tx *sql.Tx) *EnhancedDbContext <span class="cov8" title="1">{
-        // Note: for transactions, we can't easily detect the driver type
-        // so we default to sqlite3. In practice, this constructor is used
-        // within an existing context that already has the driver detected.
+        // Detect driver via dialect-specific queries on the transaction.
         return &amp;EnhancedDbContext{
                 tx:            tx,
                 ChangeTracker: NewChangeTracker(),
-                driver:        "sqlite3", // default, should be set by parent context
+                driver:        detectTxDriver(tx),
         }
 }</span>
+
+// SetDriver overrides the detected driver (useful for tests or custom drivers).
+func (ctx *EnhancedDbContext) SetDriver(driver string) <span class="cov0" title="0">{
+        ctx.driver = driver
+}</span>
+
+func (ctx *EnhancedDbContext) execContext(opCtx context.Context, query string, args ...any) (sql.Result, error) <span class="cov0" title="0">{
+        if ctx.tx != nil </span><span class="cov0" title="0">{
+                return ctx.tx.ExecContext(opCtx, query, args...)
+        }</span>
+        <span class="cov0" title="0">return ctx.db.ExecContext(opCtx, query, args...)</span>
+}
+
+func (ctx *EnhancedDbContext) queryRowContext(opCtx context.Context, query string, args ...any) *sql.Row <span class="cov0" title="0">{
+        if ctx.tx != nil </span><span class="cov0" title="0">{
+                return ctx.tx.QueryRowContext(opCtx, query, args...)
+        }</span>
+        <span class="cov0" title="0">return ctx.db.QueryRowContext(opCtx, query, args...)</span>
+}
 
 // Add marks an entity for insertion
 func (ctx *EnhancedDbContext) Add(entity interface{}) <span class="cov0" title="0">{
@@ -3124,12 +3187,17 @@ func (ctx *EnhancedDbContext) Delete(entity interface{}) <span class="cov0" titl
 
 // SaveChanges persists all pending changes to the database
 func (ctx *EnhancedDbContext) SaveChanges() (int, error) <span class="cov0" title="0">{
+        return ctx.SaveChangesContext(context.Background())
+}</span>
+
+// SaveChangesContext persists all pending changes to the database using the provided context.
+func (ctx *EnhancedDbContext) SaveChangesContext(opCtx context.Context) (int, error) <span class="cov0" title="0">{
         affected := 0
 
         for entity, state := range ctx.ChangeTracker.entities </span><span class="cov0" title="0">{
                 switch state </span>{
                 case EntityStateAdded:<span class="cov0" title="0">
-                        err := ctx.insertEntity(entity)
+                        err := ctx.insertEntityContext(opCtx, entity)
                         if err != nil </span><span class="cov0" title="0">{
                                 return affected, err
                         }</span>
@@ -3137,7 +3205,7 @@ func (ctx *EnhancedDbContext) SaveChanges() (int, error) <span class="cov0" titl
                         affected++</span>
 
                 case EntityStateModified:<span class="cov0" title="0">
-                        err := ctx.updateEntity(entity)
+                        err := ctx.updateEntityContext(opCtx, entity)
                         if err != nil </span><span class="cov0" title="0">{
                                 return affected, err
                         }</span>
@@ -3145,7 +3213,7 @@ func (ctx *EnhancedDbContext) SaveChanges() (int, error) <span class="cov0" titl
                         affected++</span>
 
                 case EntityStateDeleted:<span class="cov0" title="0">
-                        err := ctx.deleteEntity(entity)
+                        err := ctx.deleteEntityContext(opCtx, entity)
                         if err != nil </span><span class="cov0" title="0">{
                                 return affected, err
                         }</span>
@@ -3159,6 +3227,10 @@ func (ctx *EnhancedDbContext) SaveChanges() (int, error) <span class="cov0" titl
 
 // insertEntity inserts a new entity into the database
 func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error <span class="cov0" title="0">{
+        return ctx.insertEntityContext(context.Background(), entity)
+}</span>
+
+func (ctx *EnhancedDbContext) insertEntityContext(opCtx context.Context, entity interface{}) error <span class="cov0" title="0">{
         // Set timestamps before inserting
         setTimestamps(entity, true) // true = create timestamps
 
@@ -3176,12 +3248,8 @@ func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error <span class
         if ctx.driver == driverPostgres </span><span class="cov0" title="0">{
                 queryWithReturning := query + " RETURNING id"
                 var id int64
-                if ctx.tx != nil </span><span class="cov0" title="0">{
-                        err = ctx.tx.QueryRow(queryWithReturning, values...).Scan(&amp;id)
-                }</span> else<span class="cov0" title="0"> {
-                        err = ctx.db.QueryRow(queryWithReturning, values...).Scan(&amp;id)
-                }</span>
-                <span class="cov0" title="0">if err != nil </span><span class="cov0" title="0">{
+                err = ctx.queryRowContext(opCtx, queryWithReturning, values...).Scan(&amp;id)
+                if err != nil </span><span class="cov0" title="0">{
                         return err
                 }</span>
                 <span class="cov0" title="0">if id &gt; 0 </span><span class="cov0" title="0">{
@@ -3191,13 +3259,8 @@ func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error <span class
         }
 
         // For SQLite/MySQL drivers, Exec and LastInsertId()
-        <span class="cov0" title="0">var result sql.Result
-        if ctx.tx != nil </span><span class="cov0" title="0">{
-                result, err = ctx.tx.Exec(query, values...)
-        }</span> else<span class="cov0" title="0"> {
-                result, err = ctx.db.Exec(query, values...)
-        }</span>
-        <span class="cov0" title="0">if err != nil </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">result, err := ctx.execContext(opCtx, query, values...)
+        if err != nil </span><span class="cov0" title="0">{
                 return err
         }</span>
         <span class="cov0" title="0">if id, err := result.LastInsertId(); err == nil &amp;&amp; id &gt; 0 </span><span class="cov0" title="0">{
@@ -3208,6 +3271,10 @@ func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error <span class
 
 // updateEntity updates an existing entity in the database
 func (ctx *EnhancedDbContext) updateEntity(entity interface{}) error <span class="cov0" title="0">{
+        return ctx.updateEntityContext(context.Background(), entity)
+}</span>
+
+func (ctx *EnhancedDbContext) updateEntityContext(opCtx context.Context, entity interface{}) error <span class="cov0" title="0">{
         // Set UpdatedAt timestamp before updating
         setTimestamps(entity, false) // false = update timestamp only
 
@@ -3228,16 +3295,16 @@ func (ctx *EnhancedDbContext) updateEntity(entity interface{}) error <span class
         // assign result of append back to same slice to satisfy linter and maintain behavior
         <span class="cov0" title="0">values = append(values, idValue)
 
-        if ctx.tx != nil </span><span class="cov0" title="0">{
-                _, err := ctx.tx.Exec(query, values...)
-                return err
-        }</span>
-        <span class="cov0" title="0">_, err := ctx.db.Exec(query, values...)
+        _, err := ctx.execContext(opCtx, query, values...)
         return err</span>
 }
 
 // deleteEntity removes an entity from the database
 func (ctx *EnhancedDbContext) deleteEntity(entity interface{}) error <span class="cov0" title="0">{
+        return ctx.deleteEntityContext(context.Background(), entity)
+}</span>
+
+func (ctx *EnhancedDbContext) deleteEntityContext(opCtx context.Context, entity interface{}) error <span class="cov0" title="0">{
         tableName := getTableName(entity)
         idValue := getIDValue(entity)
 
@@ -3248,24 +3315,9 @@ func (ctx *EnhancedDbContext) deleteEntity(entity interface{}) error <span class
         // Convert placeholders for PostgreSQL
         query = convertQueryPlaceholders(query, ctx.driver)
 
-        // Debug output
-        fmt.Printf("DEBUG DELETE: tableName=%s, idValue=%v, query=%s\n", tableName, idValue, query)
-
-        if ctx.tx != nil </span><span class="cov0" title="0">{
-                result, err := ctx.tx.Exec(query, idValue)
-                if err == nil </span><span class="cov0" title="0">{
-                        rowsAffected, _ := result.RowsAffected()
-                        fmt.Printf("DEBUG DELETE TX: rowsAffected=%d\n", rowsAffected)
-                }</span>
-                <span class="cov0" title="0">return err</span>
-        }
-        <span class="cov0" title="0">result, err := ctx.db.Exec(query, idValue)
-        if err == nil </span><span class="cov0" title="0">{
-                rowsAffected, _ := result.RowsAffected()
-                fmt.Printf("DEBUG DELETE DB: rowsAffected=%d\n", rowsAffected)
-        }</span>
-        <span class="cov0" title="0">return err</span>
-}
+        _, err := ctx.execContext(opCtx, query, idValue)
+        return err
+}</span>
 
 // EnhancedDbSet provides LINQ-style querying capabilities
 type EnhancedDbSet[T any] struct {
@@ -6737,8 +6789,6 @@ func (di *DatabaseInspector) parseIntValue(s string) int <span class="cov8" titl
 func (di *DatabaseInspector) CompareWithModelSnapshot(dbSchema map[string]*TableSchema, modelSnapshots map[string]*ModelSnapshot) ([]MigrationChange, error) <span class="cov8" title="1">{
         var changes []MigrationChange
 
-        fmt.Printf("DEBUG CompareWithModelSnapshot: dbSchema has %d tables, modelSnapshots has %d models\n", len(dbSchema), len(modelSnapshots))
-
         // Track which tables exist in both database and models
         processedTables := make(map[string]bool)
 
@@ -6747,11 +6797,8 @@ func (di *DatabaseInspector) CompareWithModelSnapshot(dbSchema map[string]*Table
                 tableName := snapshot.TableName
                 processedTables[tableName] = true
 
-                fmt.Printf("DEBUG: Processing model %s -&gt; table %s\n", modelName, tableName)
-
                 if _, exists := dbSchema[tableName]; !exists </span><span class="cov8" title="1">{
                         // Table doesn't exist in database - create it
-                        fmt.Printf("DEBUG: Table %s does not exist in database, creating CreateTable change\n", tableName)
                         changes = append(changes, MigrationChange{
                                 Type:      CreateTable,
                                 TableName: tableName,
@@ -6760,7 +6807,6 @@ func (di *DatabaseInspector) CompareWithModelSnapshot(dbSchema map[string]*Table
                         })
                 }</span> else<span class="cov8" title="1"> {
                         // Table exists - check for column changes
-                        fmt.Printf("DEBUG: Table %s exists, checking for column changes\n", tableName)
                         columnChanges := di.compareTableColumns(dbSchema[tableName], snapshot)
                         changes = append(changes, columnChanges...)
                 }</span>
@@ -6769,12 +6815,10 @@ func (di *DatabaseInspector) CompareWithModelSnapshot(dbSchema map[string]*Table
         // Check for tables to drop (exist in database but not in models)
         <span class="cov8" title="1">for tableName, tableSchema := range dbSchema </span><span class="cov8" title="1">{
                 if di.isSystemTable(tableName) </span><span class="cov8" title="1">{
-                        fmt.Printf("DEBUG: Skipping system table %s\n", tableName)
                         continue</span>
                 }
 
                 <span class="cov8" title="1">if !processedTables[tableName] </span><span class="cov0" title="0">{
-                        fmt.Printf("DEBUG: Table %s exists in database but not in models, creating DropTable change\n", tableName)
                         changes = append(changes, MigrationChange{
                                 Type:      DropTable,
                                 TableName: tableName,
@@ -6782,11 +6826,6 @@ func (di *DatabaseInspector) CompareWithModelSnapshot(dbSchema map[string]*Table
                         })
                 }</span>
         }
-
-        <span class="cov8" title="1">fmt.Printf("DEBUG CompareWithModelSnapshot: Generated %d changes\n", len(changes))
-        for i, change := range changes </span><span class="cov8" title="1">{
-                fmt.Printf("DEBUG: Change %d: %s %s.%s\n", i, change.Type, change.TableName, change.ColumnName)
-        }</span>
 
         <span class="cov8" title="1">return changes, nil</span>
 }
@@ -6804,7 +6843,6 @@ func (di *DatabaseInspector) compareTableColumns(dbTable *TableSchema, modelSnap
 
                 if dbColumn, exists := dbTable.Columns[columnName]; !exists </span><span class="cov8" title="1">{
                         // Column doesn't exist in database - add it
-                        fmt.Printf("DEBUG: Column %s.%s does not exist in database, creating AddColumn change\n", dbTable.Name, columnName)
                         changes = append(changes, MigrationChange{
                                 Type:       AddColumn,
                                 TableName:  dbTable.Name,
@@ -6813,7 +6851,6 @@ func (di *DatabaseInspector) compareTableColumns(dbTable *TableSchema, modelSnap
                         })
                 }</span> else<span class="cov8" title="1"> if di.hasColumnChanged(modelColumn, dbColumn) </span><span class="cov0" title="0">{
                         // Column exists - check if it has changed
-                        fmt.Printf("DEBUG: Column %s.%s has changed, creating AlterColumn change\n", dbTable.Name, columnName)
                         changes = append(changes, MigrationChange{
                                 Type:       AlterColumn,
                                 TableName:  dbTable.Name,
@@ -6827,7 +6864,6 @@ func (di *DatabaseInspector) compareTableColumns(dbTable *TableSchema, modelSnap
         // Check for columns to drop (exist in database but not in model)
         <span class="cov8" title="1">for columnName, dbColumn := range dbTable.Columns </span><span class="cov8" title="1">{
                 if !processedColumns[columnName] </span><span class="cov8" title="1">{
-                        fmt.Printf("DEBUG: Column %s.%s exists in database but not in model, creating DropColumn change\n", dbTable.Name, columnName)
                         changes = append(changes, MigrationChange{
                                 Type:       DropColumn,
                                 TableName:  dbTable.Name,
@@ -6842,51 +6878,34 @@ func (di *DatabaseInspector) compareTableColumns(dbTable *TableSchema, modelSnap
 
 // hasColumnChanged checks if a column definition has changed
 func (di *DatabaseInspector) hasColumnChanged(modelColumn *ColumnInfo, dbColumn *DatabaseColumnInfo) bool <span class="cov8" title="1">{
-        // Debug: Log column comparison
-        fmt.Printf("DEBUG: Comparing column %s:\n", dbColumn.Name)
-        fmt.Printf("DEBUG:   Model: DataType=%s, IsNullable=%t, DefaultValue=%v\n",
-                modelColumn.DataType, modelColumn.IsNullable, modelColumn.DefaultValue)
-        fmt.Printf("DEBUG:   DB: DataType=%s, IsNullable=%t, DefaultValue=%v\n",
-                dbColumn.DataType, dbColumn.IsNullable, dbColumn.DefaultValue)
-
         // Compare data types (normalize for comparison)
         if !di.isDataTypeCompatible(modelColumn.DataType, dbColumn.DataType) </span><span class="cov0" title="0">{
-                fmt.Printf("DEBUG:   -&gt; Data type mismatch: %s vs %s\n", modelColumn.DataType, dbColumn.DataType)
                 return true
         }</span>
 
         // Compare nullable
         <span class="cov8" title="1">if modelColumn.IsNullable != dbColumn.IsNullable </span><span class="cov0" title="0">{
-                fmt.Printf("DEBUG:   -&gt; Nullable mismatch: %t vs %t\n", modelColumn.IsNullable, dbColumn.IsNullable)
                 return true
         }</span>
 
         // Compare default values
         <span class="cov8" title="1">if (modelColumn.DefaultValue == nil) != (dbColumn.DefaultValue == nil) </span><span class="cov0" title="0">{
-                fmt.Printf("DEBUG:   -&gt; Default value existence mismatch\n")
                 return true
         }</span>
         <span class="cov8" title="1">if modelColumn.DefaultValue != nil &amp;&amp; dbColumn.DefaultValue != nil &amp;&amp;
                 *modelColumn.DefaultValue != *dbColumn.DefaultValue </span><span class="cov0" title="0">{
-                fmt.Printf("DEBUG:   -&gt; Default value content mismatch: %s vs %s\n",
-                        *modelColumn.DefaultValue, *dbColumn.DefaultValue)
                 return true
         }</span>
 
         // Compare length constraints
         <span class="cov8" title="1">if (modelColumn.MaxLength == nil) != (dbColumn.MaxLength == nil) </span><span class="cov0" title="0">{
-                fmt.Printf("DEBUG:   -&gt; Max length existence mismatch\n")
                 return true
         }</span>
         <span class="cov8" title="1">if modelColumn.MaxLength != nil &amp;&amp; dbColumn.MaxLength != nil &amp;&amp;
                 *modelColumn.MaxLength != *dbColumn.MaxLength </span><span class="cov0" title="0">{
-                fmt.Printf("DEBUG:   -&gt; Max length value mismatch: %d vs %d\n",
-                        *modelColumn.MaxLength, *dbColumn.MaxLength)
                 return true
         }</span>
-
-        <span class="cov8" title="1">fmt.Printf("DEBUG:   -&gt; No changes detected\n")
-        return false</span>
+        <span class="cov8" title="1">return false</span>
 }
 
 // isDataTypeCompatible checks if model and database data types are compatible
@@ -7182,14 +7201,18 @@ func NewEFMigrationManager(db *sql.DB, config *EFMigrationConfig) *EFMigrationMa
 
 // detectDatabaseDriver detects the database driver type
 func (em *EFMigrationManager) detectDatabaseDriver() DatabaseDriver <span class="cov8" title="1">{
+        // Use QueryRow to avoid leaking *sql.Rows.
+        var i int
+        var s string
+
         // Test queries to detect database type
-        if _, err := em.db.Query("SELECT 1::integer"); err == nil </span><span class="cov0" title="0">{
+        if err := em.db.QueryRow("SELECT 1::integer").Scan(&amp;i); err == nil </span><span class="cov0" title="0">{
                 return PostgreSQL
         }</span>
-        <span class="cov8" title="1">if _, err := em.db.Query("SELECT sqlite_version()"); err == nil </span><span class="cov8" title="1">{
+        <span class="cov8" title="1">if err := em.db.QueryRow("SELECT sqlite_version()").Scan(&amp;s); err == nil </span><span class="cov8" title="1">{
                 return SQLite
         }</span>
-        <span class="cov0" title="0">if _, err := em.db.Query("SELECT VERSION()"); err == nil </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">if err := em.db.QueryRow("SELECT VERSION()").Scan(&amp;s); err == nil </span><span class="cov0" title="0">{
                 return MySQL
         }</span>
         // Default to SQLite if detection fails
@@ -7532,20 +7555,16 @@ func (em *EFMigrationManager) applyMigration(migration Migration) error <span cl
 
         // Execute UP SQL with proper placeholder conversion
         upSQL := em.convertQueryPlaceholders(migration.UpSQL)
-
-        // Debug: Log the SQL being executed
-        fmt.Printf("DEBUG: Executing SQL:\n%s\n", upSQL)
+        em.logger.Printf("Executing migration SQL: %s", migration.ID)
 
         if _, err := tx.Exec(upSQL); err != nil </span><span class="cov0" title="0">{
                 // Record failed migration
                 em.recordMigrationResult(migration, MigrationStateFailed, 0, err.Error())
-                fmt.Printf("DEBUG: SQL execution failed: %v\n", err)
+                em.logger.Printf("Migration SQL failed: %s: %v", migration.ID, err)
                 return fmt.Errorf("failed to execute migration SQL: %w", err)
         }</span>
 
-        <span class="cov8" title="1">fmt.Printf("DEBUG: SQL executed successfully\n")
-
-        executionTime := int(time.Since(startTime).Milliseconds())
+        <span class="cov8" title="1">executionTime := int(time.Since(startTime).Milliseconds())
 
         // Record in EF migrations history table
         efHistoryQuery := em.convertQueryPlaceholders(
