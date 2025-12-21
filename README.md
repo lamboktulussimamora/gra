@@ -646,6 +646,10 @@ err = ctx.SaveChanges()
 
 ### Advanced Querying
 
+Security note: SQL fragments such as column names in `OrderBy(...)` (and any raw SQL snippets you pass as strings) must be trusted constants. Always pass user-supplied values via query parameters (the `?` args) rather than string concatenation.
+
+For timeouts/cancellation, prefer the context-aware query variants (e.g. `ToListContext(ctx)`, `FirstContext(ctx)`, `CountContext(ctx)`) when using `NewEnhancedDbSet[T](...)`.
+
 ```go
 userSet := dbcontext.EnhancedSet[models.User](ctx)
 
