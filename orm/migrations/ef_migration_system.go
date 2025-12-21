@@ -115,14 +115,18 @@ func NewEFMigrationManager(db *sql.DB, config *EFMigrationConfig) *EFMigrationMa
 
 // detectDatabaseDriver detects the database driver type
 func (em *EFMigrationManager) detectDatabaseDriver() DatabaseDriver {
+	// Use QueryRow to avoid leaking *sql.Rows.
+	var i int
+	var s string
+
 	// Test queries to detect database type
-	if _, err := em.db.Query("SELECT 1::integer"); err == nil {
+	if err := em.db.QueryRow("SELECT 1::integer").Scan(&i); err == nil {
 		return PostgreSQL
 	}
-	if _, err := em.db.Query("SELECT sqlite_version()"); err == nil {
+	if err := em.db.QueryRow("SELECT sqlite_version()").Scan(&s); err == nil {
 		return SQLite
 	}
-	if _, err := em.db.Query("SELECT VERSION()"); err == nil {
+	if err := em.db.QueryRow("SELECT VERSION()").Scan(&s); err == nil {
 		return MySQL
 	}
 	// Default to SQLite if detection fails
@@ -465,18 +469,14 @@ func (em *EFMigrationManager) applyMigration(migration Migration) error {
 
 	// Execute UP SQL with proper placeholder conversion
 	upSQL := em.convertQueryPlaceholders(migration.UpSQL)
-
-	// Debug: Log the SQL being executed
-	fmt.Printf("DEBUG: Executing SQL:\n%s\n", upSQL)
+	em.logger.Printf("Executing migration SQL: %s", migration.ID)
 
 	if _, err := tx.Exec(upSQL); err != nil {
 		// Record failed migration
 		em.recordMigrationResult(migration, MigrationStateFailed, 0, err.Error())
-		fmt.Printf("DEBUG: SQL execution failed: %v\n", err)
+		em.logger.Printf("Migration SQL failed: %s: %v", migration.ID, err)
 		return fmt.Errorf("failed to execute migration SQL: %w", err)
 	}
-
-	fmt.Printf("DEBUG: SQL executed successfully\n")
 
 	executionTime := int(time.Since(startTime).Milliseconds())
 
