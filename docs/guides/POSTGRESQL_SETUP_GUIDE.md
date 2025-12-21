@@ -88,6 +88,10 @@ func main() {
 }
 ```
 
+Security note: SQL fragments like `OrderBy("...")` (and any other string SQL snippets) must be trusted constants. Always pass user-supplied values via query parameters (`?` args), not string concatenation.
+
+Timeouts/cancellation: prefer the context-aware query variants (e.g. `ToListContext(ctx)`, `FirstOrDefaultContext(ctx)`, `CountContext(ctx)`) when you need deadlines or request-scoped cancellation.
+
 #### With Auto-Migration
 ```go
 import (

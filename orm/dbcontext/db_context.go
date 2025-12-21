@@ -4,6 +4,7 @@ package dbcontext
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"reflect"
@@ -533,15 +534,26 @@ func (set *EnhancedDbSet[T]) AsNoTracking() *EnhancedDbSet[T] {
 
 // ToList executes the query and returns all results
 func (set *EnhancedDbSet[T]) ToList() ([]*T, error) {
+	return set.ToListContext(context.Background())
+}
+
+// ToListContext executes the query and returns all results using the provided context.
+func (set *EnhancedDbSet[T]) ToListContext(opCtx context.Context) ([]*T, error) {
+	if err := opCtx.Err(); err != nil {
+		return nil, err
+	}
+
 	query := set.buildQuery()
 
-	var rows *sql.Rows
-	var err error
+	var (
+		rows *sql.Rows
+		err  error
+	)
 
 	if set.ctx.tx != nil {
-		rows, err = set.ctx.tx.Query(query, set.whereArgs...)
+		rows, err = set.ctx.tx.QueryContext(opCtx, query, set.whereArgs...)
 	} else {
-		rows, err = set.ctx.db.Query(query, set.whereArgs...)
+		rows, err = set.ctx.db.QueryContext(opCtx, query, set.whereArgs...)
 	}
 
 	if err != nil {
@@ -569,12 +581,29 @@ func (set *EnhancedDbSet[T]) ToList() ([]*T, error) {
 		results = append(results, entity)
 	}
 
-	return results, rows.Err()
+	err = rows.Err()
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil, err
+	}
+
+	return results, err
 }
 
 // FirstOrDefault returns the first result or nil if none found
 func (set *EnhancedDbSet[T]) FirstOrDefault() (*T, error) {
-	results, err := set.Take(1).ToList()
+	results, err := set.Take(1).ToListContext(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, nil
+	}
+	return results[0], nil
+}
+
+// FirstOrDefaultContext returns the first result or nil if none found using the provided context.
+func (set *EnhancedDbSet[T]) FirstOrDefaultContext(opCtx context.Context) (*T, error) {
+	results, err := set.Take(1).ToListContext(opCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -586,6 +615,15 @@ func (set *EnhancedDbSet[T]) FirstOrDefault() (*T, error) {
 
 // Count returns the number of entities matching the query
 func (set *EnhancedDbSet[T]) Count() (int, error) {
+	return set.CountContext(context.Background())
+}
+
+// CountContext returns the number of entities matching the query using the provided context.
+func (set *EnhancedDbSet[T]) CountContext(opCtx context.Context) (int, error) {
+	if err := opCtx.Err(); err != nil {
+		return 0, err
+	}
+
 	// Safe: table name is trusted, user data is parameterized (see whereArgs...)
 	//nolint:gosec // G201: Identifiers are not user-controlled; all user data is parameterized.
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", set.tableName)
@@ -597,9 +635,9 @@ func (set *EnhancedDbSet[T]) Count() (int, error) {
 	var err error
 
 	if set.ctx.tx != nil {
-		err = set.ctx.tx.QueryRow(query, set.whereArgs...).Scan(&count)
+		err = set.ctx.tx.QueryRowContext(opCtx, query, set.whereArgs...).Scan(&count)
 	} else {
-		err = set.ctx.db.QueryRow(query, set.whereArgs...).Scan(&count)
+		err = set.ctx.db.QueryRowContext(opCtx, query, set.whereArgs...).Scan(&count)
 	}
 
 	return count, err
@@ -614,14 +652,40 @@ func (set *EnhancedDbSet[T]) Any() (bool, error) {
 	return count > 0, nil
 }
 
+// AnyContext checks if any records match the query using the provided context.
+func (set *EnhancedDbSet[T]) AnyContext(opCtx context.Context) (bool, error) {
+	count, err := set.CountContext(opCtx)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // Find finds an entity by its primary key
 func (set *EnhancedDbSet[T]) Find(id interface{}) (*T, error) {
-	return set.Where("id = ?", id).FirstOrDefault()
+	return set.FindContext(context.Background(), id)
+}
+
+// FindContext finds an entity by its primary key using the provided context.
+func (set *EnhancedDbSet[T]) FindContext(opCtx context.Context, id interface{}) (*T, error) {
+	return set.Where("id = ?", id).FirstOrDefaultContext(opCtx)
 }
 
 // First returns the first result (errors if no results)
 func (set *EnhancedDbSet[T]) First() (*T, error) {
-	results, err := set.Take(1).ToList()
+	results, err := set.Take(1).ToListContext(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no results found")
+	}
+	return results[0], nil
+}
+
+// FirstContext returns the first result (errors if no results) using the provided context.
+func (set *EnhancedDbSet[T]) FirstContext(opCtx context.Context) (*T, error) {
+	results, err := set.Take(1).ToListContext(opCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -633,7 +697,22 @@ func (set *EnhancedDbSet[T]) First() (*T, error) {
 
 // Single returns a single result (errors if 0 or >1 results)
 func (set *EnhancedDbSet[T]) Single() (*T, error) {
-	results, err := set.Take(2).ToList()
+	results, err := set.Take(2).ToListContext(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no results found")
+	}
+	if len(results) > 1 {
+		return nil, fmt.Errorf("multiple results found, expected single result")
+	}
+	return results[0], nil
+}
+
+// SingleContext returns a single result (errors if 0 or >1 results) using the provided context.
+func (set *EnhancedDbSet[T]) SingleContext(opCtx context.Context) (*T, error) {
+	results, err := set.Take(2).ToListContext(opCtx)
 	if err != nil {
 		return nil, err
 	}
