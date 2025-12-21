@@ -605,8 +605,6 @@ func (di *DatabaseInspector) parseIntValue(s string) int {
 func (di *DatabaseInspector) CompareWithModelSnapshot(dbSchema map[string]*TableSchema, modelSnapshots map[string]*ModelSnapshot) ([]MigrationChange, error) {
 	var changes []MigrationChange
 
-	fmt.Printf("DEBUG CompareWithModelSnapshot: dbSchema has %d tables, modelSnapshots has %d models\n", len(dbSchema), len(modelSnapshots))
-
 	// Track which tables exist in both database and models
 	processedTables := make(map[string]bool)
 
@@ -615,11 +613,8 @@ func (di *DatabaseInspector) CompareWithModelSnapshot(dbSchema map[string]*Table
 		tableName := snapshot.TableName
 		processedTables[tableName] = true
 
-		fmt.Printf("DEBUG: Processing model %s -> table %s\n", modelName, tableName)
-
 		if _, exists := dbSchema[tableName]; !exists {
 			// Table doesn't exist in database - create it
-			fmt.Printf("DEBUG: Table %s does not exist in database, creating CreateTable change\n", tableName)
 			changes = append(changes, MigrationChange{
 				Type:      CreateTable,
 				TableName: tableName,
@@ -628,7 +623,6 @@ func (di *DatabaseInspector) CompareWithModelSnapshot(dbSchema map[string]*Table
 			})
 		} else {
 			// Table exists - check for column changes
-			fmt.Printf("DEBUG: Table %s exists, checking for column changes\n", tableName)
 			columnChanges := di.compareTableColumns(dbSchema[tableName], snapshot)
 			changes = append(changes, columnChanges...)
 		}
@@ -637,23 +631,16 @@ func (di *DatabaseInspector) CompareWithModelSnapshot(dbSchema map[string]*Table
 	// Check for tables to drop (exist in database but not in models)
 	for tableName, tableSchema := range dbSchema {
 		if di.isSystemTable(tableName) {
-			fmt.Printf("DEBUG: Skipping system table %s\n", tableName)
 			continue
 		}
 
 		if !processedTables[tableName] {
-			fmt.Printf("DEBUG: Table %s exists in database but not in models, creating DropTable change\n", tableName)
 			changes = append(changes, MigrationChange{
 				Type:      DropTable,
 				TableName: tableName,
 				OldValue:  tableSchema,
 			})
 		}
-	}
-
-	fmt.Printf("DEBUG CompareWithModelSnapshot: Generated %d changes\n", len(changes))
-	for i, change := range changes {
-		fmt.Printf("DEBUG: Change %d: %s %s.%s\n", i, change.Type, change.TableName, change.ColumnName)
 	}
 
 	return changes, nil
@@ -672,7 +659,6 @@ func (di *DatabaseInspector) compareTableColumns(dbTable *TableSchema, modelSnap
 
 		if dbColumn, exists := dbTable.Columns[columnName]; !exists {
 			// Column doesn't exist in database - add it
-			fmt.Printf("DEBUG: Column %s.%s does not exist in database, creating AddColumn change\n", dbTable.Name, columnName)
 			changes = append(changes, MigrationChange{
 				Type:       AddColumn,
 				TableName:  dbTable.Name,
@@ -681,7 +667,6 @@ func (di *DatabaseInspector) compareTableColumns(dbTable *TableSchema, modelSnap
 			})
 		} else if di.hasColumnChanged(modelColumn, dbColumn) {
 			// Column exists - check if it has changed
-			fmt.Printf("DEBUG: Column %s.%s has changed, creating AlterColumn change\n", dbTable.Name, columnName)
 			changes = append(changes, MigrationChange{
 				Type:       AlterColumn,
 				TableName:  dbTable.Name,
@@ -695,7 +680,6 @@ func (di *DatabaseInspector) compareTableColumns(dbTable *TableSchema, modelSnap
 	// Check for columns to drop (exist in database but not in model)
 	for columnName, dbColumn := range dbTable.Columns {
 		if !processedColumns[columnName] {
-			fmt.Printf("DEBUG: Column %s.%s exists in database but not in model, creating DropColumn change\n", dbTable.Name, columnName)
 			changes = append(changes, MigrationChange{
 				Type:       DropColumn,
 				TableName:  dbTable.Name,
@@ -710,50 +694,33 @@ func (di *DatabaseInspector) compareTableColumns(dbTable *TableSchema, modelSnap
 
 // hasColumnChanged checks if a column definition has changed
 func (di *DatabaseInspector) hasColumnChanged(modelColumn *ColumnInfo, dbColumn *DatabaseColumnInfo) bool {
-	// Debug: Log column comparison
-	fmt.Printf("DEBUG: Comparing column %s:\n", dbColumn.Name)
-	fmt.Printf("DEBUG:   Model: DataType=%s, IsNullable=%t, DefaultValue=%v\n",
-		modelColumn.DataType, modelColumn.IsNullable, modelColumn.DefaultValue)
-	fmt.Printf("DEBUG:   DB: DataType=%s, IsNullable=%t, DefaultValue=%v\n",
-		dbColumn.DataType, dbColumn.IsNullable, dbColumn.DefaultValue)
-
 	// Compare data types (normalize for comparison)
 	if !di.isDataTypeCompatible(modelColumn.DataType, dbColumn.DataType) {
-		fmt.Printf("DEBUG:   -> Data type mismatch: %s vs %s\n", modelColumn.DataType, dbColumn.DataType)
 		return true
 	}
 
 	// Compare nullable
 	if modelColumn.IsNullable != dbColumn.IsNullable {
-		fmt.Printf("DEBUG:   -> Nullable mismatch: %t vs %t\n", modelColumn.IsNullable, dbColumn.IsNullable)
 		return true
 	}
 
 	// Compare default values
 	if (modelColumn.DefaultValue == nil) != (dbColumn.DefaultValue == nil) {
-		fmt.Printf("DEBUG:   -> Default value existence mismatch\n")
 		return true
 	}
 	if modelColumn.DefaultValue != nil && dbColumn.DefaultValue != nil &&
 		*modelColumn.DefaultValue != *dbColumn.DefaultValue {
-		fmt.Printf("DEBUG:   -> Default value content mismatch: %s vs %s\n",
-			*modelColumn.DefaultValue, *dbColumn.DefaultValue)
 		return true
 	}
 
 	// Compare length constraints
 	if (modelColumn.MaxLength == nil) != (dbColumn.MaxLength == nil) {
-		fmt.Printf("DEBUG:   -> Max length existence mismatch\n")
 		return true
 	}
 	if modelColumn.MaxLength != nil && dbColumn.MaxLength != nil &&
 		*modelColumn.MaxLength != *dbColumn.MaxLength {
-		fmt.Printf("DEBUG:   -> Max length value mismatch: %d vs %d\n",
-			*modelColumn.MaxLength, *dbColumn.MaxLength)
 		return true
 	}
-
-	fmt.Printf("DEBUG:   -> No changes detected\n")
 	return false
 }
 

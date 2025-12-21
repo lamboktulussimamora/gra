@@ -2,6 +2,7 @@
 package dbcontext
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -19,17 +20,42 @@ const (
 
 // detectDatabaseDriver detects the database driver type
 func detectDatabaseDriver(db *sql.DB) string {
+	// Use QueryRow to avoid leaking *sql.Rows.
+	var i int
+	var s string
+
 	// Test queries to detect database type
-	if _, err := db.Query("SELECT 1::integer"); err == nil {
+	if err := db.QueryRow("SELECT 1::integer").Scan(&i); err == nil {
 		return driverPostgres
 	}
-	if _, err := db.Query("SELECT sqlite_version()"); err == nil {
+	if err := db.QueryRow("SELECT sqlite_version()").Scan(&s); err == nil {
 		return driverSQLite
 	}
-	if _, err := db.Query("SELECT VERSION()"); err == nil {
+	if err := db.QueryRow("SELECT VERSION()").Scan(&s); err == nil {
 		return driverMySQL
 	}
 	// Default to sqlite3 if detection fails
+	return driverSQLite
+}
+
+func detectTxDriver(tx *sql.Tx) string {
+	if tx == nil {
+		return driverSQLite
+	}
+
+	var i int
+	var s string
+
+	if err := tx.QueryRow("SELECT 1::integer").Scan(&i); err == nil {
+		return driverPostgres
+	}
+	if err := tx.QueryRow("SELECT sqlite_version()").Scan(&s); err == nil {
+		return driverSQLite
+	}
+	if err := tx.QueryRow("SELECT VERSION()").Scan(&s); err == nil {
+		return driverMySQL
+	}
+
 	return driverSQLite
 }
 
@@ -134,6 +160,26 @@ func (d *Database) Begin() (*sql.Tx, error) {
 	return d.db.Begin()
 }
 
+// BeginTx starts a new transaction with context.
+func (d *Database) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return d.db.BeginTx(ctx, opts)
+}
+
+// ExecContext executes a query without returning any rows.
+func (d *Database) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return d.db.ExecContext(ctx, query, args...)
+}
+
+// QueryContext executes a query that returns rows.
+func (d *Database) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return d.db.QueryContext(ctx, query, args...)
+}
+
+// QueryRowContext executes a query that is expected to return at most one row.
+func (d *Database) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return d.db.QueryRowContext(ctx, query, args...)
+}
+
 // EnhancedDbContext provides Entity Framework Core-like functionality
 type EnhancedDbContext struct {
 	db            *sql.DB
@@ -173,14 +219,31 @@ func NewEnhancedDbContextWithDB(db *sql.DB) *EnhancedDbContext {
 
 // NewEnhancedDbContextWithTx creates a new enhanced database context with transaction
 func NewEnhancedDbContextWithTx(tx *sql.Tx) *EnhancedDbContext {
-	// Note: for transactions, we can't easily detect the driver type
-	// so we default to sqlite3. In practice, this constructor is used
-	// within an existing context that already has the driver detected.
+	// Detect driver via dialect-specific queries on the transaction.
 	return &EnhancedDbContext{
 		tx:            tx,
 		ChangeTracker: NewChangeTracker(),
-		driver:        "sqlite3", // default, should be set by parent context
+		driver:        detectTxDriver(tx),
 	}
+}
+
+// SetDriver overrides the detected driver (useful for tests or custom drivers).
+func (ctx *EnhancedDbContext) SetDriver(driver string) {
+	ctx.driver = driver
+}
+
+func (ctx *EnhancedDbContext) execContext(opCtx context.Context, query string, args ...any) (sql.Result, error) {
+	if ctx.tx != nil {
+		return ctx.tx.ExecContext(opCtx, query, args...)
+	}
+	return ctx.db.ExecContext(opCtx, query, args...)
+}
+
+func (ctx *EnhancedDbContext) queryRowContext(opCtx context.Context, query string, args ...any) *sql.Row {
+	if ctx.tx != nil {
+		return ctx.tx.QueryRowContext(opCtx, query, args...)
+	}
+	return ctx.db.QueryRowContext(opCtx, query, args...)
 }
 
 // Add marks an entity for insertion
@@ -200,12 +263,17 @@ func (ctx *EnhancedDbContext) Delete(entity interface{}) {
 
 // SaveChanges persists all pending changes to the database
 func (ctx *EnhancedDbContext) SaveChanges() (int, error) {
+	return ctx.SaveChangesContext(context.Background())
+}
+
+// SaveChangesContext persists all pending changes to the database using the provided context.
+func (ctx *EnhancedDbContext) SaveChangesContext(opCtx context.Context) (int, error) {
 	affected := 0
 
 	for entity, state := range ctx.ChangeTracker.entities {
 		switch state {
 		case EntityStateAdded:
-			err := ctx.insertEntity(entity)
+			err := ctx.insertEntityContext(opCtx, entity)
 			if err != nil {
 				return affected, err
 			}
@@ -213,7 +281,7 @@ func (ctx *EnhancedDbContext) SaveChanges() (int, error) {
 			affected++
 
 		case EntityStateModified:
-			err := ctx.updateEntity(entity)
+			err := ctx.updateEntityContext(opCtx, entity)
 			if err != nil {
 				return affected, err
 			}
@@ -221,7 +289,7 @@ func (ctx *EnhancedDbContext) SaveChanges() (int, error) {
 			affected++
 
 		case EntityStateDeleted:
-			err := ctx.deleteEntity(entity)
+			err := ctx.deleteEntityContext(opCtx, entity)
 			if err != nil {
 				return affected, err
 			}
@@ -235,6 +303,10 @@ func (ctx *EnhancedDbContext) SaveChanges() (int, error) {
 
 // insertEntity inserts a new entity into the database
 func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error {
+	return ctx.insertEntityContext(context.Background(), entity)
+}
+
+func (ctx *EnhancedDbContext) insertEntityContext(opCtx context.Context, entity interface{}) error {
 	// Set timestamps before inserting
 	setTimestamps(entity, true) // true = create timestamps
 
@@ -252,11 +324,7 @@ func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error {
 	if ctx.driver == driverPostgres {
 		queryWithReturning := query + " RETURNING id"
 		var id int64
-		if ctx.tx != nil {
-			err = ctx.tx.QueryRow(queryWithReturning, values...).Scan(&id)
-		} else {
-			err = ctx.db.QueryRow(queryWithReturning, values...).Scan(&id)
-		}
+		err = ctx.queryRowContext(opCtx, queryWithReturning, values...).Scan(&id)
 		if err != nil {
 			return err
 		}
@@ -267,12 +335,7 @@ func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error {
 	}
 
 	// For SQLite/MySQL drivers, Exec and LastInsertId()
-	var result sql.Result
-	if ctx.tx != nil {
-		result, err = ctx.tx.Exec(query, values...)
-	} else {
-		result, err = ctx.db.Exec(query, values...)
-	}
+	result, err := ctx.execContext(opCtx, query, values...)
 	if err != nil {
 		return err
 	}
@@ -284,6 +347,10 @@ func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error {
 
 // updateEntity updates an existing entity in the database
 func (ctx *EnhancedDbContext) updateEntity(entity interface{}) error {
+	return ctx.updateEntityContext(context.Background(), entity)
+}
+
+func (ctx *EnhancedDbContext) updateEntityContext(opCtx context.Context, entity interface{}) error {
 	// Set UpdatedAt timestamp before updating
 	setTimestamps(entity, false) // false = update timestamp only
 
@@ -304,16 +371,16 @@ func (ctx *EnhancedDbContext) updateEntity(entity interface{}) error {
 	// assign result of append back to same slice to satisfy linter and maintain behavior
 	values = append(values, idValue)
 
-	if ctx.tx != nil {
-		_, err := ctx.tx.Exec(query, values...)
-		return err
-	}
-	_, err := ctx.db.Exec(query, values...)
+	_, err := ctx.execContext(opCtx, query, values...)
 	return err
 }
 
 // deleteEntity removes an entity from the database
 func (ctx *EnhancedDbContext) deleteEntity(entity interface{}) error {
+	return ctx.deleteEntityContext(context.Background(), entity)
+}
+
+func (ctx *EnhancedDbContext) deleteEntityContext(opCtx context.Context, entity interface{}) error {
 	tableName := getTableName(entity)
 	idValue := getIDValue(entity)
 
@@ -324,22 +391,7 @@ func (ctx *EnhancedDbContext) deleteEntity(entity interface{}) error {
 	// Convert placeholders for PostgreSQL
 	query = convertQueryPlaceholders(query, ctx.driver)
 
-	// Debug output
-	fmt.Printf("DEBUG DELETE: tableName=%s, idValue=%v, query=%s\n", tableName, idValue, query)
-
-	if ctx.tx != nil {
-		result, err := ctx.tx.Exec(query, idValue)
-		if err == nil {
-			rowsAffected, _ := result.RowsAffected()
-			fmt.Printf("DEBUG DELETE TX: rowsAffected=%d\n", rowsAffected)
-		}
-		return err
-	}
-	result, err := ctx.db.Exec(query, idValue)
-	if err == nil {
-		rowsAffected, _ := result.RowsAffected()
-		fmt.Printf("DEBUG DELETE DB: rowsAffected=%d\n", rowsAffected)
-	}
+	_, err := ctx.execContext(opCtx, query, idValue)
 	return err
 }
 
