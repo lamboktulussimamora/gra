@@ -8,7 +8,7 @@ on:
 
 env:
   GO_VERSION: '1.25'
-  GOLANGCI_LINT_VERSION: 'v1.54.2'
+  GOLANGCI_LINT_VERSION: 'v2.5.0'
 
 jobs:
   quality-checks:
@@ -57,10 +57,19 @@ jobs:
 
     - name: Install golangci-lint
       run: |
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin ${{ env.GOLANGCI_LINT_VERSION }}
+        set -euo pipefail
+        # Install pinned golangci-lint from GitHub releases (v2+).
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+          | sh -s -- -b "$(go env GOPATH)/bin" "${{ env.GOLANGCI_LINT_VERSION }}"
+
+    - name: Show golangci-lint version
+      run: |
+        echo "which golangci-lint: $(command -v golangci-lint || true)"
+        golangci-lint --version || true
+        "$(go env GOPATH)/bin/golangci-lint" --version
 
     - name: Run golangci-lint
-      run: golangci-lint run --timeout=10m
+      run: "$(go env GOPATH)/bin/golangci-lint" run --timeout=10m
 
     - name: Run tests
       run: go test -v -race -coverprofile=coverage.out ./...
@@ -86,7 +95,7 @@ jobs:
         name: codecov-umbrella
 
     - name: Run security scan
-      run: golangci-lint run --enable gosec --timeout=10m
+      run: "$(go env GOPATH)/bin/golangci-lint" run --enable gosec --timeout=10m
 
     - name: SonarQube Scan
       if: env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != ''

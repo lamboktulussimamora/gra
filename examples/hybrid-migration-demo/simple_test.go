@@ -32,11 +32,11 @@ func TestSimpleHybridMigration(t *testing.T) {
 	fmt.Printf("   ✓ Registered %d models\n", len(models))
 	for tableName, snapshot := range models {
 		fmt.Printf("   ✓ Table: %s with %d columns\n", tableName, len(snapshot.Columns))
-		
+
 		if len(snapshot.Columns) == 0 {
 			t.Errorf("Table %s should have columns", tableName)
 		}
-		
+
 		for colName, col := range snapshot.Columns {
 			fmt.Printf("     - %s: %s (%s)\n", colName, col.Type, col.SQLType)
 		}

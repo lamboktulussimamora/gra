@@ -138,9 +138,11 @@ func main() {
 
 // detectDriver determines the Go sql driver name and migrations.DatabaseDriver from flag/connection string.
 func detectDriver(driverFlag, conn string) (string, migrations.DatabaseDriver) {
+	const postgresDriver = "postgres"
+
 	d := strings.ToLower(strings.TrimSpace(driverFlag))
-	if d == "postgres" || strings.HasPrefix(conn, "postgres://") || strings.Contains(conn, "user=") {
-		return "postgres", migrations.PostgreSQL
+	if d == postgresDriver || strings.HasPrefix(conn, "postgres://") || strings.Contains(conn, "user=") {
+		return postgresDriver, migrations.PostgreSQL
 	}
 	if d == "sqlite3" || strings.Contains(conn, "sqlite") || strings.HasSuffix(strings.ToLower(conn), ".db") {
 		return "sqlite3", migrations.SQLite
@@ -148,10 +150,10 @@ func detectDriver(driverFlag, conn string) (string, migrations.DatabaseDriver) {
 	if d == "mysql" || strings.HasPrefix(strings.ToLower(conn), "mysql") {
 		// Note: mysql driver import is not included by default. Add it if needed.
 		// return "mysql", migrations.MySQL
-		return "postgres", migrations.PostgreSQL // fallback to postgres to avoid missing driver
+		return postgresDriver, migrations.PostgreSQL // fallback to postgres to avoid missing driver
 	}
 	// default
-	return "postgres", migrations.PostgreSQL
+	return postgresDriver, migrations.PostgreSQL
 }
 
 // generateFromStructs uses HybridMigrator to create a migration file with Up/Down from models.
