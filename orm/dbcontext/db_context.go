@@ -504,11 +504,33 @@ func (set *EnhancedDbSet[T]) OrderBy(column string) *EnhancedDbSet[T] {
 	return &newSet
 }
 
+// OrderBySafe adds an ORDER BY clause after validating the identifier.
+// This is intended for cases where the order column is dynamic (e.g. chosen from a list).
+func (set *EnhancedDbSet[T]) OrderBySafe(column string) (*EnhancedDbSet[T], error) {
+	if err := validateSQLIdentifierPath(column); err != nil {
+		return nil, err
+	}
+	newSet := *set
+	newSet.orderClause = column
+	return &newSet, nil
+}
+
 // OrderByDescending adds an ORDER BY DESC clause to the query
 func (set *EnhancedDbSet[T]) OrderByDescending(column string) *EnhancedDbSet[T] {
 	newSet := *set
 	newSet.orderClause = column + " DESC"
 	return &newSet
+}
+
+// OrderByDescendingSafe adds an ORDER BY DESC clause after validating the identifier.
+// This is intended for cases where the order column is dynamic (e.g. chosen from a list).
+func (set *EnhancedDbSet[T]) OrderByDescendingSafe(column string) (*EnhancedDbSet[T], error) {
+	if err := validateSQLIdentifierPath(column); err != nil {
+		return nil, err
+	}
+	newSet := *set
+	newSet.orderClause = column + " DESC"
+	return &newSet, nil
 }
 
 // Take limits the number of results

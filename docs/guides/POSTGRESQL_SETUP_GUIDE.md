@@ -88,7 +88,7 @@ func main() {
 }
 ```
 
-Security note: SQL fragments like `OrderBy("...")` (and any other string SQL snippets) must be trusted constants. Always pass user-supplied values via query parameters (`?` args), not string concatenation.
+Security note: SQL fragments like `OrderBy("...")` (and any other string SQL snippets) must be trusted constants. Always pass user-supplied values via query parameters (`?` args), not string concatenation. For dynamic ordering, prefer `OrderBySafe(...)` / `OrderByDescendingSafe(...)` which validate identifiers.
 
 Timeouts/cancellation: prefer the context-aware query variants (e.g. `ToListContext(ctx)`, `FirstOrDefaultContext(ctx)`, `CountContext(ctx)`) when you need deadlines or request-scoped cancellation.
 
