@@ -59,8 +59,14 @@ jobs:
       run: |
         go install github.com/golangci/golangci-lint/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
 
+    - name: Show golangci-lint version
+      run: |
+        echo "which golangci-lint: $(command -v golangci-lint || true)"
+        golangci-lint --version || true
+        "$(go env GOPATH)/bin/golangci-lint" --version
+
     - name: Run golangci-lint
-      run: golangci-lint run --timeout=10m
+      run: "$(go env GOPATH)/bin/golangci-lint" run --timeout=10m
 
     - name: Run tests
       run: go test -v -race -coverprofile=coverage.out ./...
@@ -86,7 +92,7 @@ jobs:
         name: codecov-umbrella
 
     - name: Run security scan
-      run: golangci-lint run --enable gosec --timeout=10m
+      run: "$(go env GOPATH)/bin/golangci-lint" run --enable gosec --timeout=10m
 
     - name: SonarQube Scan
       if: env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != ''
