@@ -77,7 +77,7 @@
 				
 				<option value="file10">github.com/lamboktulussimamora/gra/middleware/middleware.go (97.0%)</option>
 				
-				<option value="file11">github.com/lamboktulussimamora/gra/orm/dbcontext/db_context.go (56.1%)</option>
+				<option value="file11">github.com/lamboktulussimamora/gra/orm/dbcontext/db_context.go (56.5%)</option>
 				
 				<option value="file12">github.com/lamboktulussimamora/gra/orm/dbcontext/ef_context.go (65.6%)</option>
 				
@@ -3228,11 +3228,6 @@ func (ctx *EnhancedDbContext) SaveChangesContext(opCtx context.Context) (int, er
         <span class="cov0" title="0">return affected, nil</span>
 }
 
-// insertEntity inserts a new entity into the database
-func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error <span class="cov0" title="0">{
-        return ctx.insertEntityContext(context.Background(), entity)
-}</span>
-
 func (ctx *EnhancedDbContext) insertEntityContext(opCtx context.Context, entity interface{}) error <span class="cov0" title="0">{
         // Set timestamps before inserting
         setTimestamps(entity, true) // true = create timestamps
@@ -3272,11 +3267,6 @@ func (ctx *EnhancedDbContext) insertEntityContext(opCtx context.Context, entity 
         <span class="cov0" title="0">return nil</span>
 }
 
-// updateEntity updates an existing entity in the database
-func (ctx *EnhancedDbContext) updateEntity(entity interface{}) error <span class="cov0" title="0">{
-        return ctx.updateEntityContext(context.Background(), entity)
-}</span>
-
 func (ctx *EnhancedDbContext) updateEntityContext(opCtx context.Context, entity interface{}) error <span class="cov0" title="0">{
         // Set UpdatedAt timestamp before updating
         setTimestamps(entity, false) // false = update timestamp only
@@ -3301,11 +3291,6 @@ func (ctx *EnhancedDbContext) updateEntityContext(opCtx context.Context, entity 
         _, err := ctx.execContext(opCtx, query, values...)
         return err</span>
 }
-
-// deleteEntity removes an entity from the database
-func (ctx *EnhancedDbContext) deleteEntity(entity interface{}) error <span class="cov0" title="0">{
-        return ctx.deleteEntityContext(context.Background(), entity)
-}</span>
 
 func (ctx *EnhancedDbContext) deleteEntityContext(opCtx context.Context, entity interface{}) error <span class="cov0" title="0">{
         tableName := getTableName(entity)
@@ -4990,13 +4975,13 @@ func validateSQLIdentifier(value string) error <span class="cov8" title="1">{
                 isUnderscore := b == '_'
 
                 if i == 0 </span><span class="cov8" title="1">{
-                        if !(isAlpha || isUnderscore) </span><span class="cov8" title="1">{
+                        if !isAlpha &amp;&amp; !isUnderscore </span><span class="cov8" title="1">{
                                 return fmt.Errorf("identifier must start with a letter or underscore")
                         }</span>
                         <span class="cov8" title="1">continue</span>
                 }
 
-                <span class="cov8" title="1">if !(isAlpha || isDigit || isUnderscore) </span><span class="cov8" title="1">{
+                <span class="cov8" title="1">if !isAlpha &amp;&amp; !isDigit &amp;&amp; !isUnderscore </span><span class="cov8" title="1">{
                         return fmt.Errorf("identifier contains invalid character")
                 }</span>
         }
@@ -13032,9 +13017,11 @@ func main() <span class="cov0" title="0">{
 
 // detectDriver determines the Go sql driver name and migrations.DatabaseDriver from flag/connection string.
 func detectDriver(driverFlag, conn string) (string, migrations.DatabaseDriver) <span class="cov0" title="0">{
+        const postgresDriver = "postgres"
+
         d := strings.ToLower(strings.TrimSpace(driverFlag))
-        if d == "postgres" || strings.HasPrefix(conn, "postgres://") || strings.Contains(conn, "user=") </span><span class="cov0" title="0">{
-                return "postgres", migrations.PostgreSQL
+        if d == postgresDriver || strings.HasPrefix(conn, "postgres://") || strings.Contains(conn, "user=") </span><span class="cov0" title="0">{
+                return postgresDriver, migrations.PostgreSQL
         }</span>
         <span class="cov0" title="0">if d == "sqlite3" || strings.Contains(conn, "sqlite") || strings.HasSuffix(strings.ToLower(conn), ".db") </span><span class="cov0" title="0">{
                 return "sqlite3", migrations.SQLite
@@ -13042,10 +13029,10 @@ func detectDriver(driverFlag, conn string) (string, migrations.DatabaseDriver) <
         <span class="cov0" title="0">if d == "mysql" || strings.HasPrefix(strings.ToLower(conn), "mysql") </span><span class="cov0" title="0">{
                 // Note: mysql driver import is not included by default. Add it if needed.
                 // return "mysql", migrations.MySQL
-                return "postgres", migrations.PostgreSQL // fallback to postgres to avoid missing driver
+                return postgresDriver, migrations.PostgreSQL // fallback to postgres to avoid missing driver
         }</span>
         // default
-        <span class="cov0" title="0">return "postgres", migrations.PostgreSQL</span>
+        <span class="cov0" title="0">return postgresDriver, migrations.PostgreSQL</span>
 }
 
 // generateFromStructs uses HybridMigrator to create a migration file with Up/Down from models.
