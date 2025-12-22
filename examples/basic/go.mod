@@ -1,6 +1,6 @@
 module github.com/lamboktulussimamora/gra/examples/basic
 
-go 1.24
+go 1.25
 
 replace github.com/lamboktulussimamora/gra => ../../
 
