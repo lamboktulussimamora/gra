@@ -68,6 +68,7 @@ type EFMigrationManager struct {
 	pendingMigrations []Migration
 	loadedMigrations  map[string]Migration // Store all loaded migrations with their SQL
 	driver            DatabaseDriver       // Database driver for placeholder conversion
+	debug             bool                 // Enable verbose debug logging
 }
 
 // EFMigrationConfig configures the migration manager
@@ -77,6 +78,7 @@ type EFMigrationConfig struct {
 	HistoryTable   string
 	SnapshotTable  string
 	Logger         *log.Logger
+	Debug          bool
 }
 
 // DefaultEFMigrationConfig returns default configuration
@@ -87,6 +89,7 @@ func DefaultEFMigrationConfig() *EFMigrationConfig {
 		HistoryTable:   "__ef_migration_history", // Changed to avoid conflict with hybrid migrator
 		SnapshotTable:  "__model_snapshot",
 		Logger:         log.Default(),
+		Debug:          false,
 	}
 }
 
@@ -105,12 +108,20 @@ func NewEFMigrationManager(db *sql.DB, config *EFMigrationConfig) *EFMigrationMa
 		autoMigrate:       config.AutoMigrate,
 		pendingMigrations: make([]Migration, 0),
 		loadedMigrations:  make(map[string]Migration),
+		debug:             config.Debug,
 	}
 
 	// Detect database driver
 	em.driver = em.detectDatabaseDriver()
 
 	return em
+}
+
+func (em *EFMigrationManager) debugf(format string, args ...any) {
+	if !em.debug {
+		return
+	}
+	em.logger.Printf(format, args...)
 }
 
 // detectDatabaseDriver detects the database driver type
@@ -172,13 +183,13 @@ func (em *EFMigrationManager) getAutoIncrementSQL() string {
 func (em *EFMigrationManager) ensureSchemaTables(tableQueries []string) error {
 	for i, query := range tableQueries {
 		convertedQuery := em.convertQueryPlaceholders(query)
-		em.logger.Printf("DEBUG: Executing table creation query %d: %s", i+1, convertedQuery)
+		em.debugf("DEBUG: Executing table creation query %d: %s", i+1, convertedQuery)
 		if _, err := em.db.Exec(convertedQuery); err != nil {
 			em.logger.Printf("ERROR: Failed to execute table creation query %d: %v", i+1, err)
 			em.logger.Printf("ERROR: Query was: %s", convertedQuery)
 			return fmt.Errorf("failed to create migration schema: %w", err)
 		}
-		em.logger.Printf("DEBUG: Successfully executed table creation query %d", i+1)
+		em.debugf("DEBUG: Successfully executed table creation query %d", i+1)
 	}
 	return nil
 }
@@ -187,22 +198,26 @@ func (em *EFMigrationManager) ensureSchemaTables(tableQueries []string) error {
 func (em *EFMigrationManager) ensureSchemaIndexes(indexQueries []string) error {
 	for i, query := range indexQueries {
 		convertedQuery := em.convertQueryPlaceholders(query)
-		em.logger.Printf("DEBUG: Executing index creation query %d: %s", i+1, convertedQuery)
+		em.debugf("DEBUG: Executing index creation query %d: %s", i+1, convertedQuery)
 		if _, err := em.db.Exec(convertedQuery); err != nil {
 			em.logger.Printf("ERROR: Failed to execute index creation query %d: %v", i+1, err)
 			em.logger.Printf("ERROR: Query was: %s", convertedQuery)
 			return fmt.Errorf("failed to create migration schema: %w", err)
 		}
-		em.logger.Printf("DEBUG: Successfully executed index creation query %d", i+1)
+		em.debugf("DEBUG: Successfully executed index creation query %d", i+1)
 	}
 	return nil
 }
 
 // debugSQLiteSchema logs the __migration_history table structure for SQLite
 func (em *EFMigrationManager) debugSQLiteSchema() {
+	if !em.debug {
+		return
+	}
+
 	rows, err := em.db.Query("PRAGMA table_info(__migration_history)")
 	if err != nil {
-		em.logger.Printf("DEBUG: Failed to get table info: %v", err)
+		em.debugf("DEBUG: Failed to get table info: %v", err)
 		return
 	}
 	defer func() {
@@ -210,14 +225,14 @@ func (em *EFMigrationManager) debugSQLiteSchema() {
 			log.Printf(warnFailedToCloseRows, closeErr)
 		}
 	}()
-	em.logger.Println("DEBUG: __migration_history table columns:")
+	em.debugf("DEBUG: __migration_history table columns:")
 	for rows.Next() {
 		var cid int
 		var name, dataType string
 		var notNull, pk int
 		var defaultValue interface{}
 		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err == nil {
-			em.logger.Printf("DEBUG:   Column: %s, Type: %s, NotNull: %d, PK: %d", name, dataType, notNull, pk)
+			em.debugf("DEBUG:   Column: %s, Type: %s, NotNull: %d, PK: %d", name, dataType, notNull, pk)
 		}
 	}
 }

@@ -148,6 +148,19 @@ func (es *EnhancedSet[T]) OrderBy(column string) *EnhancedSet[T] {
 	return es
 }
 
+// OrderBySafe adds an ORDER BY clause after validating the identifier.
+// This is intended for cases where the order column is dynamic (e.g. chosen from a list).
+func (es *EnhancedSet[T]) OrderBySafe(column string) (*EnhancedSet[T], error) {
+	if err := validateSQLIdentifierPath(column); err != nil {
+		return nil, err
+	}
+	es.builder.orderClauses = append(es.builder.orderClauses, OrderClause{
+		Column: column,
+		Desc:   false,
+	})
+	return es, nil
+}
+
 // OrderByDesc adds an ORDER BY DESC clause to the query
 func (es *EnhancedSet[T]) OrderByDesc(column string) *EnhancedSet[T] {
 	es.builder.orderClauses = append(es.builder.orderClauses, OrderClause{
@@ -155,6 +168,19 @@ func (es *EnhancedSet[T]) OrderByDesc(column string) *EnhancedSet[T] {
 		Desc:   true,
 	})
 	return es
+}
+
+// OrderByDescSafe adds an ORDER BY DESC clause after validating the identifier.
+// This is intended for cases where the order column is dynamic (e.g. chosen from a list).
+func (es *EnhancedSet[T]) OrderByDescSafe(column string) (*EnhancedSet[T], error) {
+	if err := validateSQLIdentifierPath(column); err != nil {
+		return nil, err
+	}
+	es.builder.orderClauses = append(es.builder.orderClauses, OrderClause{
+		Column: column,
+		Desc:   true,
+	})
+	return es, nil
 }
 
 // Take limits the number of results
