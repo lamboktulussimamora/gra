@@ -8,7 +8,7 @@ on:
 
 env:
   GO_VERSION: '1.25'
-  GOLANGCI_LINT_VERSION: 'latest'
+  GOLANGCI_LINT_VERSION: 'v2.5.0'
 
 jobs:
   quality-checks:
@@ -57,7 +57,10 @@ jobs:
 
     - name: Install golangci-lint
       run: |
-        go install github.com/golangci/golangci-lint/cmd/golangci-lint@${{ env.GOLANGCI_LINT_VERSION }}
+        set -euo pipefail
+        # Install pinned golangci-lint from GitHub releases (v2+).
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+          | sh -s -- -b "$(go env GOPATH)/bin" "${{ env.GOLANGCI_LINT_VERSION }}"
 
     - name: Show golangci-lint version
       run: |
