@@ -8,7 +8,7 @@ on:
 
 env:
   GO_VERSION: '1.25'
-  GOLANGCI_LINT_VERSION: 'v1.64.8'
+  GOLANGCI_LINT_VERSION: 'latest'
 
 jobs:
   quality-checks:

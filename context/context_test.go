@@ -271,7 +271,7 @@ func TestBindJSONWithLimit_RejectsLargeBody(t *testing.T) {
 
 	err := c.BindJSONWithLimit(&dst, 10)
 	if err == nil {
-		t.Fatalf(errExpectedError)
+		t.Fatal(errExpectedError)
 	}
 }
 

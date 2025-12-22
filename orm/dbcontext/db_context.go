@@ -302,11 +302,6 @@ func (ctx *EnhancedDbContext) SaveChangesContext(opCtx context.Context) (int, er
 	return affected, nil
 }
 
-// insertEntity inserts a new entity into the database
-func (ctx *EnhancedDbContext) insertEntity(entity interface{}) error {
-	return ctx.insertEntityContext(context.Background(), entity)
-}
-
 func (ctx *EnhancedDbContext) insertEntityContext(opCtx context.Context, entity interface{}) error {
 	// Set timestamps before inserting
 	setTimestamps(entity, true) // true = create timestamps
@@ -346,11 +341,6 @@ func (ctx *EnhancedDbContext) insertEntityContext(opCtx context.Context, entity 
 	return nil
 }
 
-// updateEntity updates an existing entity in the database
-func (ctx *EnhancedDbContext) updateEntity(entity interface{}) error {
-	return ctx.updateEntityContext(context.Background(), entity)
-}
-
 func (ctx *EnhancedDbContext) updateEntityContext(opCtx context.Context, entity interface{}) error {
 	// Set UpdatedAt timestamp before updating
 	setTimestamps(entity, false) // false = update timestamp only
@@ -374,11 +364,6 @@ func (ctx *EnhancedDbContext) updateEntityContext(opCtx context.Context, entity 
 
 	_, err := ctx.execContext(opCtx, query, values...)
 	return err
-}
-
-// deleteEntity removes an entity from the database
-func (ctx *EnhancedDbContext) deleteEntity(entity interface{}) error {
-	return ctx.deleteEntityContext(context.Background(), entity)
 }
 
 func (ctx *EnhancedDbContext) deleteEntityContext(opCtx context.Context, entity interface{}) error {

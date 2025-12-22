@@ -49,13 +49,13 @@ func validateSQLIdentifier(value string) error {
 		isUnderscore := b == '_'
 
 		if i == 0 {
-			if !(isAlpha || isUnderscore) {
+			if !isAlpha && !isUnderscore {
 				return fmt.Errorf("identifier must start with a letter or underscore")
 			}
 			continue
 		}
 
-		if !(isAlpha || isDigit || isUnderscore) {
+		if !isAlpha && !isDigit && !isUnderscore {
 			return fmt.Errorf("identifier contains invalid character")
 		}
 	}
